@@ -2367,6 +2367,7 @@ onUnmounted(() => {
   font-size: 25rpx;
   font-weight: 900;
   text-align: center;
+  transform: translateX(-24rpx);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
