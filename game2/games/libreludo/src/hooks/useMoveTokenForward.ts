@@ -1,0 +1,72 @@
+import { useDispatch, useStore } from 'react-redux';
+import {
+  deactivateAllTokens,
+  markTokenAsReachedHome,
+  setIsAnyTokenMoving,
+} from '../state/slices/playersSlice';
+import { type TToken } from '../types';
+import { ERRORS } from '../utils/errors';
+import type { AppDispatch, RootState } from '../state/store';
+import { areCoordsEqual } from '../game/coords/logic';
+import { updateTokenPositionAndAlignmentThunk } from '../state/thunks/updateTokenPositionAndAlignmentThunk';
+import { setTokenTransitionTime } from '../utils/setTokenTransitionTime';
+import { useCallback } from 'react';
+import { FORWARD_TOKEN_TRANSITION_TIME } from '../game/tokens/constants';
+import { tokenPaths } from '../game/tokens/paths';
+import { getTokenDOMId } from '../game/tokens/logic';
+import type { TMoveTokenCompletionData } from '../types/tokens';
+
+export const useMoveTokenForward = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const store = useStore<RootState>();
+
+  return useCallback(
+    (diceNumber: number, token: TToken): Promise<TMoveTokenCompletionData> => {
+      return new Promise((resolve) => {
+        if (diceNumber < 0) throw new Error(ERRORS.numberOfStepsNegative());
+        const { colour, id, coordinates, isLocked } = token;
+        if (isLocked) throw new Error(ERRORS.lockedToken(colour, id));
+        const tokenPath = tokenPaths[colour];
+        const players = store.getState().players.players;
+        dispatch(deactivateAllTokens(colour));
+        setTokenTransitionTime(FORWARD_TOKEN_TRANSITION_TIME, token);
+        dispatch(setIsAnyTokenMoving(true));
+        const tokenEl = document.getElementById(getTokenDOMId(colour, id));
+        if (!tokenEl) throw new Error(ERRORS.tokenDoesNotExist(colour, id));
+        const initialCoordinateIndex = tokenPath.findIndex((v) => areCoordsEqual(v, coordinates));
+        let i = initialCoordinateIndex;
+        let count = 0;
+
+        const handleTransitionEnd = () => {
+          const hasTokenReachedHome = areCoordsEqual(tokenPath[i], tokenPath[tokenPath.length - 1]);
+          if (count >= diceNumber || hasTokenReachedHome) {
+            const player = players.find((p) => p.colour === colour);
+            if (!player) return;
+            const hasPlayerWon =
+              hasTokenReachedHome &&
+              player.tokens.filter((t) => t.hasTokenReachedHome).length === 3;
+            if (hasTokenReachedHome) dispatch(markTokenAsReachedHome({ colour, id }));
+            tokenEl.removeEventListener('transitionend', handleTransitionEnd);
+            dispatch(setIsAnyTokenMoving(false));
+            resolve({
+              lastTokenCoord: tokenPath[i],
+              hasTokenReachedHome,
+              moved: true,
+              hasPlayerWon,
+            });
+            return;
+          }
+          i++;
+          count++;
+          dispatch(updateTokenPositionAndAlignmentThunk({ colour, id, newCoords: tokenPath[i] }));
+        };
+        // Trigger the first transition
+        i++;
+        count++;
+        dispatch(updateTokenPositionAndAlignmentThunk({ colour, id, newCoords: tokenPath[i] }));
+        tokenEl.addEventListener('transitionend', handleTransitionEnd);
+      });
+    },
+    [dispatch, store]
+  );
+};

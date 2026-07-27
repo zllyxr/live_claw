@@ -1,0 +1,52 @@
+<extend name="public@layout" />
+<block name="main">
+<div class="wrap">
+    <ul class="layui-tab-title">
+        <foreach name="nav_tabs" item="tab" key="tab_key">
+            <li <if condition="$active_tab eq $tab_key">class="active"</if>><a href="{$tab.url}">{$tab.title}</a></li>
+        </foreach>
+        <li class="active"><a>{$game.game_name}玩法</a></li>
+    </ul>
+
+    <div class="margin-top-20">
+        <a class="btn btn-default" href="{:url('Lotterygame/index')}">返回游戏</a>
+        <a class="btn btn-success" href="{:url('Lotterygame/addPlay',array('game_id'=>$game['id']))}">添加玩法</a>
+    </div>
+
+    <table class="layui-table js-layui-table margin-top-20" lay-filter="admin-lotterygame-plays-1" lay-skin="line">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>玩法</th>
+            <th>结算规则</th>
+            <th>投注项</th>
+            <th>排序</th>
+            <th>状态</th>
+            <th align="center">{:lang('ACTIONS')}</th>
+        </tr>
+        </thead>
+        <tbody>
+        <foreach name="list" item="vo">
+            <tr>
+                <td>{$vo.id}</td>
+                <td>{$vo.play_name}<br><small>{$vo.play_code}</small></td>
+                <td>{$vo.result_rule_name}</td>
+                <td>{$vo.options_count}</td>
+                <td>{$vo.sort}</td>
+                <td><if condition="$vo['status'] eq 1"><span class="label label-success">启用</span><else/><span class="label label-default">隐藏</span></if></td>
+                <td align="center">
+                    <a class="btn btn-xs btn-primary" href="{:url('Lotterygame/editPlay',array('id'=>$vo['id']))}">编辑</a>
+                    <a class="btn btn-xs btn-info" href="{:url('Lotterygame/options',array('play_id'=>$vo['id']))}">投注项</a>
+                    <if condition="$vo['status'] neq 1">
+                        <a class="btn btn-xs btn-success js-ajax-dialog-btn" href="{:url('Lotterygame/setPlayStatus',array('id'=>$vo['id'],'status'=>1))}" data-msg="确定启用该玩法？">启用</a>
+                    <else/>
+                        <a class="btn btn-xs btn-danger js-ajax-dialog-btn" href="{:url('Lotterygame/setPlayStatus',array('id'=>$vo['id'],'status'=>0))}" data-msg="确定隐藏该玩法？">隐藏</a>
+                    </if>
+                </td>
+            </tr>
+        </foreach>
+        </tbody>
+    </table>
+    <div class="pagination">{$page}</div>
+</div>
+</block>

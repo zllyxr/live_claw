@@ -1,0 +1,221 @@
+page {
+  --brand: #ff4d6e;
+  --brand-deep: #f03a5f;
+  --brand-soft: #fff0f4;
+  --violet: #7a5cff;
+  --violet-soft: #f1edff;
+  --grad-brand: linear-gradient(135deg, #ff5878 0%, #ff8a4d 100%);
+  --grad-cosmic: linear-gradient(135deg, #7a5cff 0%, #c44dff 46%, #ff4d88 100%);
+  --green: #11b981;
+  --green-deep: #0a8f66;
+  --ink: #191b26;
+  --ink-2: #5a6070;
+  --ink-3: #9aa0b0;
+  --line: #edeff5;
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --shadow-soft: 0 8rpx 28rpx rgba(25, 27, 38, 0.06);
+  --shadow-card: 0 12rpx 32rpx rgba(25, 27, 38, 0.08);
+  --shadow-brand: 0 14rpx 30rpx rgba(255, 77, 110, 0.26);
+  --radius: 24rpx;
+  --radius-lg: 32rpx;
+
+  min-height: 100%;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+}
+
+view,
+scroll-view,
+text,
+input,
+textarea,
+button,
+image {
+  box-sizing: border-box;
+}
+
+button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  line-height: 1;
+  font: inherit;
+  text-align: inherit;
+  white-space: nowrap;
+  appearance: none;
+  background: transparent;
+}
+
+button::after {
+  border: 0;
+}
+
+uni-button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  line-height: 1;
+  font: inherit;
+  text-align: inherit;
+  white-space: nowrap;
+  background: transparent;
+}
+
+uni-button::after {
+  border: 0;
+}
+
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.safe-page {
+  min-height: 100vh;
+  padding: 24rpx 28rpx calc(30rpx + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.title-xl {
+  color: var(--ink);
+  font-size: 44rpx;
+  font-weight: 800;
+  letter-spacing: 0.5rpx;
+}
+
+.title-lg {
+  color: var(--ink);
+  font-size: 36rpx;
+  font-weight: 800;
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128rpx;
+  height: 64rpx;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--grad-brand);
+  box-shadow: 0 8rpx 20rpx rgba(255, 77, 110, 0.22);
+}
+
+.ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 60rpx;
+  padding: 0 24rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 999rpx;
+  color: var(--ink-2);
+  font-size: 25rpx;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface);
+}
+
+.card {
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.input {
+  width: 100%;
+  height: 92rpx;
+  padding: 0 28rpx;
+  border: 2rpx solid transparent;
+  border-radius: 20rpx;
+  color: var(--ink);
+  font-size: 30rpx;
+  background: var(--bg);
+}
+
+.primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 92rpx;
+  border-radius: 46rpx;
+  color: #fff;
+  font-size: 31rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--grad-brand);
+  box-shadow: var(--shadow-brand);
+}
+
+.primary-button[disabled] {
+  opacity: 0.45;
+}
+
+.empty {
+  padding: 70rpx 24rpx;
+  color: var(--ink-3);
+  font-size: 27rpx;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.badge {
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 10rpx;
+  border-radius: 17rpx;
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 34rpx;
+  text-align: center;
+  background: var(--brand);
+}
+
+.media-cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- H5 tabbar polish (uni-h5 runtime DOM) ---- */
+.uni-tabbar {
+  border-top: none !important;
+  box-shadow: 0 -6rpx 30rpx rgba(25, 27, 38, 0.07);
+}
+
+.uni-tabbar .uni-tabbar-border {
+  display: none;
+}
+
+.uni-tabbar__label {
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}

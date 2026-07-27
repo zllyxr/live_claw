@@ -1,0 +1,63 @@
+{
+  "name": "星域",
+  "appid": "__UNI__CLAWMVP",
+  "description": "星域 uni-app Android MVP",
+  "versionName": "8.1.0",
+  "versionCode": "210",
+  "transformPx": false,
+  "h5": {
+    "publicPath": "/h5/",
+    "router": {
+      "mode": "hash",
+      "base": "/h5/"
+    }
+  },
+  "app-plus": {
+    "usingComponents": true,
+    "nvueCompiler": "uni-app",
+    "compilerVersion": 3,
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
+    },
+    "modules": {
+      "Camera": {},
+      "VideoPlayer": {},
+      "Audio": {},
+      "OAuth": {},
+      "Share": {}
+    },
+    "distribute": {
+      "android": {
+        "packagename": "com.yunbao.phonelive",
+        "minSdkVersion": 23,
+        "targetSdkVersion": 36,
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+          "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
+          "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"/>",
+          "<uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\"/>",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
+          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"28\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>",
+          "<uses-permission android:name=\"android.permission.VIBRATE\"/>"
+        ]
+      },
+      "icons": {
+        "android": {
+          "hdpi": "static/brand/icon.webp",
+          "xhdpi": "static/brand/icon.webp",
+          "xxhdpi": "static/brand/icon.webp",
+          "xxxhdpi": "static/brand/icon.webp"
+        }
+      }
+    }
+  }
+}

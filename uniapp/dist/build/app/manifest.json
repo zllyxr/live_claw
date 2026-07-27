@@ -1,0 +1,171 @@
+{
+  "@platforms": [
+    "android",
+    "iPhone",
+    "iPad"
+  ],
+  "id": "__UNI__CLAWMVP",
+  "name": "星域",
+  "version": {
+    "name": "8.1.0",
+    "code": "210"
+  },
+  "description": "星域 uni-app Android MVP",
+  "developer": {
+    "name": "",
+    "email": "",
+    "url": ""
+  },
+  "permissions": {
+    "Camera": {},
+    "VideoPlayer": {},
+    "Audio": {},
+    "OAuth": {},
+    "Share": {},
+    "UniNView": {
+      "description": "UniNView原生渲染"
+    }
+  },
+  "plus": {
+    "useragent": {
+      "value": "uni-app",
+      "concatenate": true
+    },
+    "splashscreen": {
+      "target": "id:1",
+      "autoclose": true,
+      "waiting": true,
+      "delay": 0
+    },
+    "popGesture": "close",
+    "launchwebview": {
+      "id": "1",
+      "kernel": "WKWebview"
+    },
+    "usingComponents": true,
+    "nvueCompiler": "uni-app",
+    "compilerVersion": 3,
+    "distribute": {
+      "icons": {
+        "android": {
+          "hdpi": "static/brand/icon.webp",
+          "xhdpi": "static/brand/icon.webp",
+          "xxhdpi": "static/brand/icon.webp",
+          "xxxhdpi": "static/brand/icon.webp"
+        }
+      },
+      "google": {
+        "packagename": "com.yunbao.phonelive",
+        "minSdkVersion": 23,
+        "targetSdkVersion": 36,
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+          "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
+          "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"/>",
+          "<uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\"/>",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
+          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"28\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>",
+          "<uses-permission android:name=\"android.permission.VIBRATE\"/>"
+        ]
+      },
+      "plugins": {
+        "audio": {
+          "mp3": {
+            "description": "Android平台录音支持MP3格式文件"
+          }
+        }
+      }
+    },
+    "statusbar": {
+      "immersed": "supportedDevice",
+      "style": "dark",
+      "background": "#ffffff"
+    },
+    "allowsInlineMediaPlayback": true,
+    "safearea": {
+      "background": "#ffffff",
+      "bottom": {
+        "offset": "auto"
+      }
+    },
+    "uni-app": {
+      "control": "uni-v3",
+      "vueVersion": "3",
+      "compilerVersion": "5.07",
+      "nvueCompiler": "uni-app",
+      "renderer": "auto",
+      "nvue": {
+        "flex-direction": "column"
+      },
+      "nvueLaunchMode": "normal",
+      "webView": {
+        "minUserAgentVersion": "49.0"
+      }
+    },
+    "tabBar": {
+      "position": "bottom",
+      "color": "#9AA0B0",
+      "selectedColor": "#FF4D6E",
+      "borderStyle": "rgba(0,0,0,0.4)",
+      "blurEffect": "none",
+      "fontSize": "10px",
+      "iconWidth": "24px",
+      "spacing": "3px",
+      "height": "50px",
+      "list": [
+        {
+          "pagePath": "pages/tabbar/live/index",
+          "text": "直播",
+          "iconPath": "/static/tabbar/live.png",
+          "selectedIconPath": "/static/tabbar/live-active.png"
+        },
+        {
+          "pagePath": "pages/tabbar/game/index",
+          "text": "游戏",
+          "iconPath": "/static/tabbar/game.png",
+          "selectedIconPath": "/static/tabbar/game-active.png"
+        },
+        {
+          "pagePath": "pages/tabbar/sports/index",
+          "text": "体育",
+          "iconPath": "/static/tabbar/sports.png",
+          "selectedIconPath": "/static/tabbar/sports-active.png"
+        },
+        {
+          "pagePath": "pages/tabbar/dynamic/index",
+          "text": "动态",
+          "iconPath": "/static/tabbar/dynamic.png",
+          "selectedIconPath": "/static/tabbar/dynamic-active.png"
+        },
+        {
+          "pagePath": "pages/tabbar/me/index",
+          "text": "我的",
+          "iconPath": "/static/tabbar/me.png",
+          "selectedIconPath": "/static/tabbar/me-active.png"
+        }
+      ],
+      "backgroundColor": "#ffffff",
+      "selectedIndex": 0,
+      "shown": true
+    }
+  },
+  "app-harmony": {
+    "useragent": {
+      "value": "uni-app",
+      "concatenate": true
+    },
+    "safearea": {
+      "background": "#ffffff",
+      "bottom": {
+        "offset": "auto"
+      }
+    }
+  },
+  "launch_path": "__uniappview.html"
+}

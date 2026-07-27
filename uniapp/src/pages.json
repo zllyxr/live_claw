@@ -1,0 +1,424 @@
+{
+  "pages": [
+    {
+      "path": "pages/launch/index",
+      "style": {
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/tabbar/live/index",
+      "style": {
+        "navigationBarTitleText": "直播",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/tabbar/game/index",
+      "style": {
+        "navigationBarTitleText": "游戏",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/tabbar/sports/index",
+      "style": {
+        "navigationBarTitleText": "体育",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/tabbar/dynamic/index",
+      "style": {
+        "navigationBarTitleText": "动态",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/tabbar/me/index",
+      "style": {
+        "navigationBarTitleText": "我的",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/auth/login",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/auth/register",
+      "style": {
+        "navigationBarTitleText": "注册",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/auth/forgot",
+      "style": {
+        "navigationBarTitleText": "找回密码",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/auth/country",
+      "style": {
+        "navigationBarTitleText": "选择国家和地区",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/auth/invalid",
+      "style": {
+        "navigationBarTitleText": "登录失效"
+      }
+    },
+    {
+      "path": "pages/search/index",
+      "style": {
+        "navigationBarTitleText": "搜索",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/message/index",
+      "style": {
+        "navigationBarTitleText": "消息",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/message/chat",
+      "style": {
+        "navigationBarTitleText": "聊天",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/message/new-chat",
+      "style": {
+        "navigationBarTitleText": "发起聊天"
+      }
+    },
+    {
+      "path": "pages/message/group-info",
+      "style": {
+        "navigationBarTitleText": "群聊资料",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/message/notice",
+      "style": {
+        "navigationBarTitleText": "通知详情"
+      }
+    },
+    {
+      "path": "pages/dynamic/publish",
+      "style": {
+        "navigationBarTitleText": "发布动态"
+      }
+    },
+    {
+      "path": "pages/dynamic/detail",
+      "style": {
+        "navigationBarTitleText": "动态详情",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/dynamic/my",
+      "style": {
+        "navigationBarTitleText": "我的动态",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/live/player",
+      "style": {
+        "navigationBarTitleText": "直播间",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/live/follow",
+      "style": {
+        "navigationBarTitleText": "关注直播",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/redpack/index",
+      "style": {
+        "navigationBarTitleText": "直播间红包",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/game/bet",
+      "style": {
+        "navigationBarTitleText": "星河牌桌",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/game/record",
+      "style": {
+        "navigationBarTitleText": "彩票投注记录",
+        "enablePullDownRefresh": true,
+        "onReachBottomDistance": 80
+      }
+    },
+    {
+      "path": "pages/minigame/index",
+      "style": {
+        "navigationBarTitleText": "小游戏",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/sports/record",
+      "style": {
+        "navigationBarTitleText": "投注历史",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/user/home",
+      "style": {
+        "navigationBarTitleText": "用户主页",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/user/list",
+      "style": {
+        "navigationBarTitleText": "用户列表",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/profile/edit",
+      "style": {
+        "navigationBarTitleText": "我的资料",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/wallet/recharge",
+      "style": {
+        "navigationBarTitleText": "充值",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/wallet/withdraw",
+      "style": {
+        "navigationBarTitleText": "提现",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/wallet/promo",
+      "style": {
+        "navigationBarTitleText": "优惠",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/wallet/detail",
+      "style": {
+        "navigationBarTitleText": "明细"
+      }
+    },
+    {
+      "path": "pages/favorite/index",
+      "style": {
+        "navigationBarTitleText": "我的收藏",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/video/my",
+      "style": {
+        "navigationBarTitleText": "我的视频",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/video/detail",
+      "style": {
+        "navigationBarTitleText": "视频详情"
+      }
+    },
+    {
+      "path": "pages/task/index",
+      "style": {
+        "navigationBarTitleText": "每日任务",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/room/manage",
+      "style": {
+        "navigationBarTitleText": "房间管理",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/service/index",
+      "style": {
+        "navigationBarTitleText": "在线客服",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/verify/index",
+      "style": {
+        "navigationBarTitleText": "认证"
+      }
+    },
+    {
+      "path": "pages/invite/index",
+      "style": {
+        "navigationBarTitleText": "邀请"
+      }
+    },
+    {
+      "path": "pages/detail/index",
+      "style": {
+        "navigationBarTitleText": "详情"
+      }
+    },
+    {
+      "path": "pages/settings/index",
+      "style": {
+        "navigationBarTitleText": "设置"
+      }
+    },
+    {
+      "path": "pages/settings/password",
+      "style": {
+        "navigationBarTitleText": "修改密码"
+      }
+    },
+    {
+      "path": "pages/settings/cancel",
+      "style": {
+        "navigationBarTitleText": "账号注销"
+      }
+    },
+    {
+      "path": "pages/gameview/index",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "backgroundColor": "#041b13",
+        "app-plus": {
+          "bounce": "none",
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/webview/index",
+      "style": {
+        "navigationBarTitleText": "星域"
+      }
+    }
+  ],
+  "tabBar": {
+    "color": "#9AA0B0",
+    "selectedColor": "#FF4D6E",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/tabbar/live/index",
+        "text": "直播",
+        "iconPath": "static/tabbar/live.png",
+        "selectedIconPath": "static/tabbar/live-active.png"
+      },
+      {
+        "pagePath": "pages/tabbar/game/index",
+        "text": "游戏",
+        "iconPath": "static/tabbar/game.png",
+        "selectedIconPath": "static/tabbar/game-active.png"
+      },
+      {
+        "pagePath": "pages/tabbar/sports/index",
+        "text": "体育",
+        "iconPath": "static/tabbar/sports.png",
+        "selectedIconPath": "static/tabbar/sports-active.png"
+      },
+      {
+        "pagePath": "pages/tabbar/dynamic/index",
+        "text": "动态",
+        "iconPath": "static/tabbar/dynamic.png",
+        "selectedIconPath": "static/tabbar/dynamic-active.png"
+      },
+      {
+        "pagePath": "pages/tabbar/me/index",
+        "text": "我的",
+        "iconPath": "static/tabbar/me.png",
+        "selectedIconPath": "static/tabbar/me-active.png"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "星域",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f7f8fb"
+  }
+}

@@ -1,0 +1,16 @@
+/sw.js
+  Cache-Control: no-cache, no-transform
+
+/workbox-*.js
+  Cache-Control: no-cache, no-transform
+
+/manifest.webmanifest
+  Cache-Control: no-cache, no-transform
+
+/*
+  Cache-Control: no-transform
+  Cross-Origin-Opener-Policy: same-origin
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';
+  Content-Security-Policy-Report-Only: require-trusted-types-for 'script';

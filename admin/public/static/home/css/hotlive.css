@@ -1,0 +1,11 @@
+.top_nav{
+	width: 1165px;
+	margin: 0 auto;
+	margin-top: 20px;
+	margin-bottom: 20px;
+	font-size: 16px;
+}
+
+.top_nav span{
+	color: #FFD350;
+}

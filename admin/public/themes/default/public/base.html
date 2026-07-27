@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <block name="seo">
+        <title>首页 {$site_info.site_name|default=''}</title>
+        <meta name="keywords" content="{$site_info.site_seo_keywords|default=''}"/>
+        <meta name="description" content="{$site_info.site_seo_description|default=''}">
+    </block>
+    <include file="public@head"/>
+    <widgetsHead/>
+</head>
+<body class="body-white">
+<widgetsBlock tag="div" name="top"/>
+<widgetsBlock tag="div" name="body"/>
+<div class="container g-0">
+    <div class="row g-0">
+        <div class="col-md-9">
+            <widgetsBlock tag="div" name="body_left"/>
+        </div>
+        <div class="col-md-3">
+            <widgetsBlock tag="div" name="body_right"/>
+        </div>
+    </div>
+</div>
+<widgetsBlock tag="div" name="footer"/>
+<include file="public@scripts"/>
+<widgetsScript/>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "note": "清理未用模块 + 接入热更新",
+  "min_app_code": 0,
+  "force": false
+}

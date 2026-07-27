@@ -1,0 +1,68 @@
+{
+    "name": "文章页",
+    "action": "portal/Article/index",
+    "description": "文章页模板文件",
+    "order": 10,
+    "more": {
+        "widgets_blocks": {
+            "top": {
+                "title": "顶部",
+                "widgets": {
+                    "top_nav_202206300003": {
+                        "title": "顶部导航",
+                        "name": "nav",
+                        "display": "1",
+                        "public_widget_id": "top_nav",
+                        "vars": {}
+                    }
+                }
+            },
+            "body_left": {
+                "title": "主体左",
+                "widgets": {
+                    "article_202206300003": {
+                        "title": "文章内容",
+                        "name": "article",
+                        "display": "1",
+                        "vars": {}
+                    },
+                    "article_last_news_202206300003": {
+                        "title": "最新资讯",
+                        "name": "last_news",
+                        "display": "1",
+                        "vars": {}
+                    }
+                }
+            },
+            "body_right": {
+                "title": "主体右",
+                "widgets": {
+                    "article_side_hot_articles_202206300004": {
+                        "title": "热门文章",
+                        "name": "side_hot_articles",
+                        "display": "1",
+                        "vars": {}
+                    },
+                    "article_side_last_articles_202206300004": {
+                        "title": "最新文章",
+                        "name": "side_last_articles",
+                        "display": "1",
+                        "vars": {}
+                    }
+                }
+            },
+            "footer": {
+                "title": "底部",
+                "widgets": {
+                    "footer_202206300003": {
+                        "title": "底部",
+                        "name": "footer",
+                        "display": "1",
+                        "public_widget_id": "footer",
+                        "vars": {}
+                    }
+                }
+            }
+        }
+    }
+}

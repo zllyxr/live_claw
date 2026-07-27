@@ -1,0 +1,98 @@
+.game-rules-button {
+  position: fixed;
+  z-index: 81;
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(64px + env(safe-area-inset-left));
+  min-width: 50px;
+  width: 50px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  border: 1px solid rgba(248,216,119,.48);
+  border-radius: 999px;
+  color: #f8d877;
+  background: rgba(2,24,17,.78);
+  box-shadow: 0 7px 18px rgba(0,0,0,.32);
+  font-size: 12px;
+  font-weight: 900;
+  backdrop-filter: blur(8px);
+}
+
+body.rules-enabled .top,
+body.rules-enabled .topbar {
+  padding-left: calc(124px + env(safe-area-inset-left)) !important;
+}
+
+.game-rules-modal[hidden] { display: none; }
+.game-rules-modal {
+  position: fixed;
+  z-index: 220;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(1,12,10,.8);
+  backdrop-filter: blur(10px);
+}
+.game-rules-card {
+  width: min(680px, 88vw);
+  max-height: 84vh;
+  overflow: auto;
+  border: 1px solid rgba(248,216,119,.42);
+  border-radius: 22px;
+  background: linear-gradient(155deg, rgba(20,82,62,.98), rgba(5,27,22,.99));
+  box-shadow: 0 28px 80px rgba(0,0,0,.58);
+  color: #f4fff9;
+}
+.game-rules-head {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  background: rgba(7,43,34,.97);
+}
+.game-rules-head div { display: grid; gap: 2px; }
+.game-rules-head small { color: rgba(244,255,249,.58); font-size: 10px; letter-spacing: .14em; }
+.game-rules-head strong { color: #f8d877; font-size: 20px; }
+.game-rules-close {
+  min-width: 38px;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255,255,255,.1);
+  box-shadow: none;
+  font-size: 22px;
+}
+.game-rules-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+  padding: 14px;
+}
+.game-rule-section {
+  padding: 13px 14px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 15px;
+  background: rgba(0,0,0,.18);
+}
+.game-rule-section h3 { margin: 0 0 7px; color: #f8d877; font-size: 14px; }
+.game-rule-section ul { margin: 0; padding-left: 18px; }
+.game-rule-section li {
+  margin: 5px 0;
+  color: rgba(244,255,249,.78);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.game-rule-section.wallet { grid-column: 1 / -1; border-color: rgba(248,216,119,.2); }
+@media (max-width: 700px) {
+  .game-rules-content { grid-template-columns: 1fr 1fr; }
+  .game-rules-card { width: 91vw; }
+}

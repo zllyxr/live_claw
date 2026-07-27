@@ -1,0 +1,135 @@
+<include file="public@head"/>
+<title>{$configpub['site_name']}</title>
+<link type="text/css" rel="stylesheet" href="__STATIC__/home/css/programe.css"/>
+
+</head>
+<body>
+<div class="wrapper">
+    <include file="public@header"/>
+</div>
+
+<div class="content">
+    <div class="con_center">
+        <div class="con_left fl">
+            
+            <div class="c-banner">
+                <div class="banner">
+                    <ul>
+                        <foreach name="slide_list" id="vo">
+                            <li>
+                                <if condition="$vo['url'] neq ''">
+                                    <a href="{$vo['url']}" target="_blank">
+                                </if>
+                                    <img src="{$vo['image']}">
+                                
+                                <if condition="$vo['url'] neq ''">
+                                    </a>
+                                </if>
+                            </li>
+
+                        </foreach>
+                        
+                    </ul>
+                </div>
+
+                <div class="jumpBtn">
+                    <ul>
+                        <foreach name="slide_list" id="vo">
+                            <li jumpImg="{$key}"></li>
+                        </foreach>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+        <div class="con_right fr">
+            <div class="live_logo_area fl">
+                <p class="app_logo"><img src="__STATIC__/home/images/index/app_logo.png" /></p>
+                <p><img src="__STATIC__/home/images/index/pro_img.png" /></p>
+            </div>
+            <div class="ewm_area fr">
+                <p class="down_ewm"><img src="{:get_upload_path($configpub['qr_url'])}" /></p>
+                <p class="ewm_text">扫描二维码下载演示APP</p>
+                <p class="ewm_text">下载iOS/Android</p>
+            </div>
+            <div class="clearboth"></div>
+        </div>
+        <div class="clearboth"></div>
+    </div>
+</div>
+
+
+<include file="public@footer"/>
+<include file="public@scripts"/>
+<script type="text/javascript">
+    //定时器返回值
+    var time=null;
+    //记录当前位置
+    var nexImg = 0;
+    //用于获取轮播图图片个数
+    var imgLength = $(".c-banner .banner ul li").length;
+    //当时动态数据的时候使用,上面那个删除
+    // var imgLength =0;
+    //设置底部第一个按钮样式
+    $(".c-banner .jumpBtn ul li[jumpImg="+nexImg+"]").css({"background-color":"#FF347C","width":'30px',"border-radius":'8px'});
+
+    //页面加载
+    $(document).ready(function(){
+        // dynamicData();
+        //启动定时器,设置时间为3秒一次
+        time =setInterval(intervalImg,3000);
+    });
+
+    //轮播图
+    function intervalImg(){
+        if(nexImg<imgLength-1){
+            nexImg++;
+        }else{
+            nexImg=0;
+        }
+        
+        //将当前图片试用绝对定位,下一张图片试用相对定位
+        $(".c-banner .banner ul img").eq(nexImg-1).css("position","absolute");
+        $(".c-banner .banner ul img").eq(nexImg).css("position","relative");
+        
+        $(".c-banner .banner ul li").eq(nexImg).css("display","block");
+        $(".c-banner .banner ul li").eq(nexImg).stop().animate({"opacity":1},1000);
+        $(".c-banner .banner ul li").eq(nexImg-1).stop().animate({"opacity":0},1000,function(){
+            $(".c-banner .banner ul li").eq(nexImg-1).css("display","none");
+        });
+        $(".c-banner .jumpBtn ul li").css({"background-color":"white","width":'15px',"border-radius":'50%'});
+        $(".c-banner .jumpBtn ul li[jumpImg="+nexImg+"]").css({"background-color":"#FF347C","width":'30px',"border-radius":'8px'});
+    }
+
+    //轮播图底下按钮
+    //动态数据加载的试用应放在请求成功后执行该代码,否则按钮无法使用
+    $(".c-banner .jumpBtn ul li").each(function(){
+        //为每个按钮定义点击事件
+        $(this).click(function(){
+            clearInterval(time);
+            $(".c-banner .jumpBtn ul li").css({"background-color":"white","width":'15px',"border-radius":'50%'});
+            jumpImg = $(this).attr("jumpImg");
+            if(jumpImg!=nexImg){
+                var after =$(".c-banner .banner ul li").eq(jumpImg);
+                var befor =$(".c-banner .banner ul li").eq(nexImg);
+                
+                //将当前图片试用绝对定位,下一张图片试用相对定位
+                $(".c-banner .banner ul img").eq(nexImg).css("position","absolute");
+                $(".c-banner .banner ul img").eq(jumpImg).css("position","relative");
+                
+                after.css("display","block");
+                after.stop().animate({"opacity":1},1000);
+                befor.stop().animate({"opacity":0},1000,function(){
+                    befor.css("display","none");
+                });
+                nexImg=jumpImg;
+            }
+            $(this).css({"background-color":"#FF347C","width":'30px',"border-radius":'8px'});
+            time =setInterval(intervalImg,3000);
+        });
+    });
+
+
+</script>
+</body>
+</html>

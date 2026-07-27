@@ -1,0 +1,53 @@
+<extend name="public@layout" />
+<block name="main">
+<div class="wrap">
+    <ul class="layui-tab-title">
+        <foreach name="nav_tabs" item="tab" key="tab_key">
+            <li <if condition="$active_tab eq $tab_key">class="active"</if>><a href="{$tab.url}">{$tab.title}</a></li>
+        </foreach>
+    </ul>
+
+    <form class="well form-inline margin-top-20" method="post" action="{:url('Sportsbet/settleLogs')}">
+        赛事编号：
+        <input class="form-control" type="text" name="match_id" value="{:input('request.match_id')}" placeholder="1880731" style="width:150px;">
+        <input type="submit" class="btn btn-primary" value="搜索">
+    </form>
+
+    <table class="layui-table js-layui-table" lay-filter="admin-sportsbet-settle-logs-1" lay-skin="line">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>比赛</th>
+            <th>结算键</th>
+            <th>比分</th>
+            <th>注单</th>
+            <th>派彩</th>
+            <th>结果</th>
+            <th>时间</th>
+        </tr>
+        </thead>
+        <tbody>
+        <foreach name="list" item="vo">
+            <tr>
+                <td>{$vo.id}</td>
+                <td>
+                    <if condition="!empty($vo['match'])">
+                        {$vo.match.home_name} vs {$vo.match.away_name}<br><small>{$vo.match.competition}</small>
+                    <else/>
+                        {$vo.match_id}
+                    </if>
+                    <br><small>赛事编号 {$vo.display_match_id}</small>
+                </td>
+                <td>{$vo.settle_key}</td>
+                <td>{$vo.home_score}:{$vo.away_score}</td>
+                <td>总 {$vo.orders_total} / 中 {$vo.orders_win} / 输 {$vo.orders_lose} / 退 {$vo.orders_refund}</td>
+                <td>{$vo.payout_total}</td>
+                <td><if condition="$vo['success'] eq 1"><span class="label label-success">成功</span><else/><span class="label label-danger">失败</span></if> {$vo.message}</td>
+                <td><if condition="$vo['create_time'] gt 0">{:date('Y-m-d H:i:s',$vo['create_time'])}<else/>-</if></td>
+            </tr>
+        </foreach>
+        </tbody>
+    </table>
+    <div class="pagination">{$page}</div>
+</div>
+</block>

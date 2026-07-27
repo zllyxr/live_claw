@@ -1,0 +1,101 @@
+<extend name="public@layout" />
+<block name="main">
+<div class="wrap">
+    <ul class="layui-tab-title">
+        <foreach name="nav_tabs" item="tab" key="tab_key">
+            <li <if condition="$active_tab eq $tab_key">class="active"</if>><a href="{$tab.url}">{$tab.title}</a></li>
+        </foreach>
+        <li class="active"><a><if condition="$is_edit eq 1">编辑分类<else/>添加分类</if></a></li>
+    </ul>
+
+    <form method="post" class="form-horizontal js-ajax-form margin-top-20" action="{$post_url}">
+        <div class="form-group">
+            <label class="col-sm-2 control-label"><span class="form-required">*</span>分类名称</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="name" value="{$data.name}" maxlength="80">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">英文名称</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="name_en" value="{$data.name_en}" maxlength="80">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">图标</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="hidden" name="icon" id="category-icon" value="{$data.icon}">
+                <div class="form-inline" style="margin-bottom:8px;">
+                    <select class="form-control js-lottery-icon-select"
+                            data-input="#category-icon"
+                            data-preview="#category-icon-preview"
+                            style="min-width:260px;">
+                        <option value="">选择内置彩票图标</option>
+                        <foreach name="icon_choices" item="icon">
+                            <option value="{$icon.key}" data-url="{$icon.url}" <if condition="$data['icon'] eq $icon['key']">selected</if>>{$icon.label}</option>
+                        </foreach>
+                    </select>
+                    <span class="help-block" style="display:inline;margin-left:8px;">或上传自定义图片</span>
+                </div>
+                <a class="js-lottery-icon-upload" data-select=".js-lottery-icon-select" href="javascript:uploadOneImage('分类图标上传','#category-icon');">
+                    <if condition="empty($data.icon_url)">
+                        <img src="__TMPL__/public/assets/images/default-thumbnail.png"
+                             id="category-icon-preview"
+                             style="cursor:pointer;width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid #ddd;"/>
+                    <else/>
+                        <img src="{$data.icon_url}"
+                             id="category-icon-preview"
+                             style="cursor:pointer;width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid #ddd;"/>
+                    </if>
+                </a>
+                <input type="button" class="btn btn-sm btn-cancel-category-icon" value="取消图标">
+                <p class="help-block">建议尺寸：100 X 100。旧文字标识会保留，上传图片后 App 将优先显示图片。</p>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">排序</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="sort" value="{$data.sort}" oninput="this.value=this.value.replace(/[^\d-]/g,'')" maxlength="9">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">状态</label>
+            <div class="col-md-6 col-sm-10">
+                <select class="form-control" name="status">
+                    <option value="1" <if condition="$data['status'] eq 1">selected</if>>启用</option>
+                    <option value="0" <if condition="$data['status'] eq 0">selected</if>>隐藏</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="col-sm-offset-2 col-sm-10">
+                <if condition="$is_edit eq 1"><input type="hidden" name="id" value="{$data.id}"></if>
+                <button type="submit" class="btn btn-primary js-ajax-submit">保存</button>
+                <a class="btn btn-default" href="{:url('Lotterygame/categories')}">{:lang('BACK')}</a>
+            </div>
+        </div>
+    </form>
+</div>
+</block>
+<block name="scripts">
+<script>
+    (function(){
+        var defaultThumbnail = '__TMPL__/public/assets/images/default-thumbnail.png';
+        $('.js-lottery-icon-select').change(function () {
+            var $select = $(this);
+            var value = $select.val() || '';
+            var previewUrl = $select.find('option:selected').data('url') || defaultThumbnail;
+            $($select.data('input')).val(value);
+            $($select.data('preview')).attr('src', previewUrl);
+        });
+        $('.js-lottery-icon-upload').click(function () {
+            $($(this).data('select')).val('');
+        });
+        $('.btn-cancel-category-icon').click(function () {
+            $('#category-icon-preview').attr('src', defaultThumbnail);
+            $('#category-icon').val('');
+            $('.js-lottery-icon-select').val('');
+        });
+    })()
+</script>
+</block>

@@ -1,0 +1,57 @@
+# macOS / editor files
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+
+# Local agent and audit state
+.audit/
+.claude/
+.codex/
+.code-review-graph/
+**/.codex/
+**/.code-review-graph/
+
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+admin/.env
+admin/.env.*
+!admin/.example.env
+docker/php/admin-production.env
+docs/PRODUCTION_DEPLOYMENT_TMPAI2.md
+服务器信息.md
+pay.md
+admin/data/live_proxy.conf
+admin/sdk/wxpay/cert/
+
+# Private databases, backups and migration artifacts
+backup/
+backups/
+bepusdt-data/
+admin/claw_live_*.sql
+*.sql.gz
+*.archive.gz
+*.sqlite
+*.sqlite3
+*.db
+
+# Dependencies regenerated from lock files
+**/node_modules/
+
+# Runtime state, logs, caches and user-only uploads
+tmp/
+admin/data/runtime/
+admin/data/runtime_cli/
+admin/log/
+admin/phalapi/runtime/
+admin/public/upload/qr/
+admin/public/upload/user/
+*.log
+*.pid
+
+# Test and coverage output
+coverage/
+**/coverage/
+*.lcov

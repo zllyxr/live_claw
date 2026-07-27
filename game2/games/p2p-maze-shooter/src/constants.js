@@ -1,0 +1,460 @@
+// ===========================================
+// Constants & Configuration
+// ===========================================
+// All gameplay tuning lives in CONFIG below so you only need to look
+// in one place. The flat aliases at the bottom let the rest of the
+// code use short names like PLAYER_SPEED instead of CONFIG.PLAYER.SPEED.
+
+const CONFIG = {
+  CANVAS: {
+    WIDTH: 1200,
+    HEIGHT: 800,
+  },
+  PLAYER: {
+    SIZE: 20,
+    SPEED: 4, // px per frame
+    HEALTH: 12,
+    RESPAWN_MS: 3000,
+  },
+  BULLET: {
+    WIDTH: 12,
+    HEIGHT: 5,
+    SIZE: 8, // kept for legacy bounds checks
+    SPEED: 10, // px per frame
+    FIRE_RATE_MS: 150,
+  },
+  SCORE: {
+    WIN: 8,
+  },
+  DIRECTIONS: {
+    P1: { dx: 1, dy: 0 },
+    P2: { dx: -1, dy: 0 },
+  },
+  CELLS: {
+    PATH: 0,
+    WALL: 1,
+    P1: 2,
+    P2: 3,
+    ZOMBIE: 4,
+    BOMB: 5,
+  },
+  MAZE: {
+    COLS: 21,
+    ROWS: 15,
+    ROTATION_MS: 1 * 60 * 1000,
+  },
+  COUNTDOWN: {
+    DURATION_S: 3,
+  },
+  BOMB: {
+    SPAWN_INTERVAL_MS: 5000,
+    FUSE_MS: 1500,       // how long the fuse burns before detonation
+    BLAST_RADIUS: 200,
+    BLAST_DAMAGE: 4,
+    BLAST_ANIM_MS: 500,
+    MAX_BOMBS: 4,        // cap that climbs toward over the life of each maze
+    INITIAL_COUNT: 3,    // active bombs allowed from the very start
+  },
+  ZOMBIE: {
+    SPAWN_INTERVAL_MS: 6000,
+    MAX_ZOMBIES: 3,
+    FREEZE_MS: 3000,
+    HITBOX_RADIUS: 18,
+    LIFETIME_MS: 10000,
+    SPEED: 0.8,           // px per physics tick chase speed
+  },
+  GAMEPLAY: {
+    DAMAGE_FLASH_MS: 150,             // red-edge flash after taking a hit
+    LOW_HEALTH_THRESHOLD: 4,          // vignette activates at this HP or below
+    HEALTH_PACK_SPAWN_INTERVAL_MS: 8000,
+    HEALTH_PACK_MAX: 1,
+    HEALTH_PACK_HEAL: 3,
+    FLOATING_TEXT_DURATION_MS: 1200,  // how long damage/kill popups float
+    URGENT_MAZE_TIME_S: 10,           // last N seconds trigger tick sound + shake
+    SPEED_BOOST_SPAWN_INTERVAL_MS: 12000,
+    SPEED_BOOST_MAX: 1,
+    SPEED_BOOST_DURATION_MS: 4000,
+    SPEED_BOOST_MULTIPLIER: 1.6,
+    WEAPON_SPAWN_INTERVAL_MS: 10000,
+    WEAPON_MAX: 1,
+    RAPID_FIRE_DURATION_MS: 5000,
+    RAPID_FIRE_RATE_MS: 50,           // fire-rate cooldown in rapid-fire mode
+    SCATTER_DURATION_MS: 5000,
+    SCATTER_SPREAD_DEG: 25,           // angle between each scatter bullet
+  },
+  COLORS: {
+    // --- World / map ---
+    background:     "#0a0a1a",
+    border:         "#2a2a4a",
+    wall:           "#2d2d4a",
+    wallStroke:     "#4a4a6a",
+    wallInner:      "rgba(100,100,180,0.2)",   // inner inset border on wall tiles
+    wallShadowDark: "rgba(0,0,0,0.15)",        // bottom-right depth shadow on walls
+    wallHighlight:  "rgba(100,100,160,0.15)",  // top-left highlight on walls
+    gridLine:       "#1a1a2e",                 // subtle cell grid overlay
+    path:           "#0a0a1a",
+
+    // --- Players ---
+    p1:             "#00d4ff",
+    p1Dark:         "#0099bb",
+    p1Spawn:        "#003344",
+    p1SpawnBorder:  "#00d4ff",
+    p2:             "#ff4444",
+    p2Dark:         "#cc2222",
+    p2Spawn:        "#330011",
+    p2SpawnBorder:  "#ff4444",
+    // Raw RGB triplets for use inside rgba() template literals
+    p1RGB:          "0,180,255",
+    p2RGB:          "255,60,60",
+
+    // --- Zombies ---
+    zombie:         "#44ff44",
+    zombieGlow:     "#0a1a0a",
+
+    // --- Bombs ---
+    bomb:           "#ffaa00",
+    bombGlow:       "#1a1500",
+    bombBody:       "#333",       // bomb body fill circle
+    bombSpark:      "#ffff88",    // fuse spark dot
+    bombFuseLow:    "#ff3333",    // timer text when < 33% fuse left
+
+    // --- Bullets ---
+    bullet:         "#f39c12",
+    bulletStroke:   "#e67e22",
+    bulletP1:       "#88ffff",
+    bulletP1Glow:   "#00ffff",
+    bulletP2:       "#ff8888",
+    bulletP2Glow:   "#ff4444",
+    bulletHotWhite: "rgba(255,255,255,0.7)", // hot-white center streak
+
+    // --- HUD / UI ---
+    healthGreen:    "#2ecc71",
+    healthRed:      "#e74c3c",
+    healthBg:       "#333333",
+    hudText:        "#ccccee",
+    white:          "#ffffff",
+    accent:         "#ff6b00",    // corner accents, map name glow, announce glow
+    textLight:      "#aaa",       // light secondary text
+    textMuted:      "#888",       // muted secondary text
+    textDim:        "#666",       // less prominent text
+
+    // --- Overlays ---
+    overlayHudBg:     "rgba(0,0,0,0.5)",    // semi-transparent HUD bar
+    overlayModal:     "rgba(0,0,0,0.85)",   // disconnect / game-over modals
+    overlayCountdown: "rgba(0,0,0,0.7)",    // countdown backdrop
+    glassPanelBg:     "rgba(8,8,22,0.88)",  // glass card fill (dark themes)
+    glassPanelBorder: "rgba(255,255,255,0.28)", // glass card inner border
+
+    // --- Countdown ---
+    countdownGo:    "#44ff44",    // "GO!" text glow color
+
+    // --- Explosions ---
+    explosionBase:         "#ff6400",      // danger-zone indicator circle
+    explosionParticle:     "#ff7700",      // inner fireball fill
+    explosionLight:        "#ffffc8",      // hot white center
+    explosionShockwaveRGB: "255,150,0",    // shockwave ring rgb triplet
+    explosionSparkRGB:     "255,255,100",  // scattered sparks rgb triplet
+
+    // --- Freeze effect ---
+    freezeOverlay:  "#88ddff",    // icy blue overlay circle
+    freezeStroke:   "#aaeeff",    // icy border stroke
+    freezeGlow:     "#00ccff",    // glow shadow + "FROZEN" text
+
+    // --- Speed boost pickup ---
+    speedBoostYellow: "#ffe600",  // lightning bolt fill + ground circle
+    speedBoostStroke: "#fff8a0",  // lightning bolt outline
+
+    // --- Weapon pickups ---
+    weaponRapidfire: "#33aaff",   // rapid-fire pickup (#3af)
+    weaponScatter:   "#ff9933",   // scatter pickup (#f93)
+
+    // --- Online / connection ---
+    disconnectAlert: "#ff4444",   // disconnect overlay glow / text
+    reconnectAlert:  "#ffaa00",   // reconnecting overlay glow / text
+
+    // --- Floating event texts ---
+    floatingHeal:           "#00ff88",
+    floatingSpeed:          "#ffff00",
+    floatingWeaponRapid:    "#00aaff",
+    floatingWeaponScatter:  "#ff6600",
+  },
+};
+
+// Flat aliases — short names used throughout the rest of the codebase
+const CANVAS_WIDTH  = CONFIG.CANVAS.WIDTH;
+const CANVAS_HEIGHT = CONFIG.CANVAS.HEIGHT;
+
+// Player size is derived so it fits neatly inside a single grid cell
+const PLAYER_SIZE = Math.floor(
+  Math.min(CANVAS_WIDTH / CONFIG.MAZE.COLS, CANVAS_HEIGHT / CONFIG.MAZE.ROWS) / 2,
+);
+const PLAYER_SPEED  = CONFIG.PLAYER.SPEED;
+const PLAYER_HEALTH = CONFIG.PLAYER.HEALTH;
+const RESPAWN_TIME  = CONFIG.PLAYER.RESPAWN_MS;
+
+const BULLET_SIZE   = CONFIG.BULLET.SIZE;
+const BULLET_WIDTH  = CONFIG.BULLET.WIDTH;
+const BULLET_HEIGHT = CONFIG.BULLET.HEIGHT;
+const BULLET_SPEED  = CONFIG.BULLET.SPEED;
+const FIRE_RATE     = CONFIG.BULLET.FIRE_RATE_MS;
+
+const WIN_SCORE = CONFIG.SCORE.WIN;
+
+const COLORS = CONFIG.COLORS;
+
+// Default facing directions (P1 faces right, P2 faces left)
+const DEFAULT_DIR_P1 = CONFIG.DIRECTIONS.P1;
+const DEFAULT_DIR_P2 = CONFIG.DIRECTIONS.P2;
+
+// Maze cell type constants
+const CELL_PATH  = CONFIG.CELLS.PATH;
+const CELL_WALL  = CONFIG.CELLS.WALL;
+const CELL_P1    = CONFIG.CELLS.P1;
+const CELL_P2    = CONFIG.CELLS.P2;
+const CELL_ZOMBIE = CONFIG.CELLS.ZOMBIE;
+const CELL_BOMB  = CONFIG.CELLS.BOMB;
+
+// Grid dimensions (all mazes are 21×15)
+const MAZE_COLS = CONFIG.MAZE.COLS;
+const MAZE_ROWS = CONFIG.MAZE.ROWS;
+const CELL_W    = CANVAS_WIDTH  / MAZE_COLS;
+const CELL_H    = CANVAS_HEIGHT / MAZE_ROWS;
+
+const MAZE_ROTATION_MS = CONFIG.MAZE.ROTATION_MS;
+
+// ---- All Mazes ----
+const MAZES = {
+  arena_classic: {
+    name: "ARENA CLASSIC",
+    desc: "Symmetrical combat arena with central crossroads and corner bunkers",
+    data: [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 1],
+      [1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+      [1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+      [1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1],
+      [1, 1, 1, 0, 1, 4, 0, 1, 0, 1, 5, 1, 0, 1, 0, 4, 1, 0, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 5, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 0, 1, 4, 0, 1, 0, 1, 5, 1, 0, 1, 0, 4, 1, 0, 1, 1, 1],
+      [1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1],
+      [1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+      [1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1],
+      [1, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ],
+  },
+  the_labyrinth: {
+    name: "THE LABYRINTH",
+    desc: "Winding corridors with dead ends — perfect for ambushes",
+    data: [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 3, 1],
+      [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+      [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 4, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1],
+      [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+      [1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 4, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+      [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1],
+      [1, 3, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 2, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ],
+  },
+  bomb_alley: {
+    name: "BOMB ALLEY",
+    desc: "Open corridors with many bomb zones — nowhere is safe for long",
+    data: [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 2, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 3, 1],
+      [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
+      [1, 3, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 2, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ],
+  },
+  fortress: {
+    name: "FORTRESS",
+    desc: "Four fortified rooms with a dangerous open center",
+    data: [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 3, 1],
+      [1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1],
+      [1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+      [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1],
+      [1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+      [1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1],
+      [1, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ],
+  },
+  snake_pit: {
+    name: "SNAKE PIT",
+    desc: "Long winding corridors force close-range encounters",
+    data: [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+      [1, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1],
+      [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ],
+  },
+  crossfire: {
+    name: "CROSSFIRE",
+    desc: "Long sight lines and open crosses — a sniper's paradise",
+    data: [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 3, 1],
+      [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+      [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+      [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 4, 0, 0, 0, 0, 5, 0, 0, 0, 0, 4, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 5, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 4, 0, 0, 0, 0, 5, 0, 0, 0, 0, 4, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+      [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+      [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+      [1, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ],
+  },
+};
+
+const MAZE_KEYS = Object.keys(MAZES);
+
+// ---- Maze parsing ----
+
+// Builds wall collision rects and spawn-point lists from a maze definition.
+// Returns the same shape that Physics and Renderer both expect.
+function parseMaze(mazeKey) {
+  const maze = MAZES[mazeKey];
+  const walls = [];
+  let p1Spawns = [];
+  let p2Spawns = [];
+
+  for (let r = 0; r < MAZE_ROWS; r++) {
+    for (let c = 0; c < MAZE_COLS; c++) {
+      const cell = maze.data[r][c];
+      const rect = { x: c * CELL_W, y: r * CELL_H, w: CELL_W, h: CELL_H };
+
+      if (cell === CELL_WALL) {
+        walls.push(rect);
+      } else if (cell === CELL_P1) {
+        p1Spawns.push({
+          x: c * CELL_W + (CELL_W - PLAYER_SIZE) / 2,
+          y: r * CELL_H + (CELL_H - PLAYER_SIZE) / 2,
+          row: r,
+          col: c,
+        });
+      } else if (cell === CELL_P2) {
+        p2Spawns.push({
+          x: c * CELL_W + (CELL_W - PLAYER_SIZE) / 2,
+          y: r * CELL_H + (CELL_H - PLAYER_SIZE) / 2,
+          row: r,
+          col: c,
+        });
+      }
+    }
+  }
+
+  // Collect open-path cells so spawning logic can pick random safe spots
+  const pathCells = [];
+  for (let r = 0; r < MAZE_ROWS; r++) {
+    for (let c = 0; c < MAZE_COLS; c++) {
+      if (maze.data[r][c] === CELL_PATH) pathCells.push({ r, c });
+    }
+  }
+
+  return {
+    key: mazeKey,
+    name: maze.name,
+    desc: maze.desc,
+    walls,
+    p1Spawns,
+    p2Spawns,
+    pathCells,
+    grid: maze.data,
+  };
+}
+
+// Active maze — overwritten by Game whenever the map rotates
+let activeMaze = parseMaze("arena_classic");
+
+// Game state machine values
+const STATE = {
+  LOBBY:        "lobby",
+  COUNTDOWN:    "countdown",
+  PLAYING:      "playing",
+  GAME_OVER:    "game_over",
+  RECONNECTING: "reconnecting",
+};
+
+const COUNTDOWN_DURATION = CONFIG.COUNTDOWN.DURATION_S;
+
+// Bomb aliases
+const BOMB_SPAWN_INTERVAL = CONFIG.BOMB.SPAWN_INTERVAL_MS;
+const BOMB_FUSE_TIME      = CONFIG.BOMB.FUSE_MS;
+const BOMB_BLAST_RADIUS   = CONFIG.BOMB.BLAST_RADIUS;
+const BOMB_BLAST_DAMAGE   = CONFIG.BOMB.BLAST_DAMAGE;
+const BOMB_BLAST_ANIM_MS  = CONFIG.BOMB.BLAST_ANIM_MS;
+const BOMB_MAX            = CONFIG.BOMB.MAX_BOMBS;
+const BOMB_INITIAL_COUNT  = CONFIG.BOMB.INITIAL_COUNT;
+
+// Zombie aliases
+const ZOMBIE_SPAWN_INTERVAL = CONFIG.ZOMBIE.SPAWN_INTERVAL_MS;
+const ZOMBIE_MAX            = CONFIG.ZOMBIE.MAX_ZOMBIES;
+const ZOMBIE_FREEZE_MS      = CONFIG.ZOMBIE.FREEZE_MS;
+const ZOMBIE_HITBOX_RADIUS  = CONFIG.ZOMBIE.HITBOX_RADIUS;
+const ZOMBIE_LIFETIME       = CONFIG.ZOMBIE.LIFETIME_MS;
+const ZOMBIE_SPEED          = CONFIG.ZOMBIE.SPEED;
+
+// Gameplay feel aliases
+const DAMAGE_FLASH_MS              = CONFIG.GAMEPLAY.DAMAGE_FLASH_MS;
+const LOW_HEALTH_THRESHOLD         = CONFIG.GAMEPLAY.LOW_HEALTH_THRESHOLD;
+const HEALTH_PACK_SPAWN_INTERVAL   = CONFIG.GAMEPLAY.HEALTH_PACK_SPAWN_INTERVAL_MS;
+const HEALTH_PACK_MAX              = CONFIG.GAMEPLAY.HEALTH_PACK_MAX;
+const HEALTH_PACK_HEAL             = CONFIG.GAMEPLAY.HEALTH_PACK_HEAL;
+const FLOATING_TEXT_DURATION_MS    = CONFIG.GAMEPLAY.FLOATING_TEXT_DURATION_MS;
+const URGENT_MAZE_TIME_S           = CONFIG.GAMEPLAY.URGENT_MAZE_TIME_S;
+const SPEED_BOOST_SPAWN_INTERVAL   = CONFIG.GAMEPLAY.SPEED_BOOST_SPAWN_INTERVAL_MS;
+const SPEED_BOOST_MAX              = CONFIG.GAMEPLAY.SPEED_BOOST_MAX;
+const SPEED_BOOST_DURATION_MS      = CONFIG.GAMEPLAY.SPEED_BOOST_DURATION_MS;
+const SPEED_BOOST_MULTIPLIER       = CONFIG.GAMEPLAY.SPEED_BOOST_MULTIPLIER;
+const WEAPON_SPAWN_INTERVAL        = CONFIG.GAMEPLAY.WEAPON_SPAWN_INTERVAL_MS;
+const WEAPON_MAX                   = CONFIG.GAMEPLAY.WEAPON_MAX;
+const RAPID_FIRE_DURATION_MS       = CONFIG.GAMEPLAY.RAPID_FIRE_DURATION_MS;
+const RAPID_FIRE_RATE_MS           = CONFIG.GAMEPLAY.RAPID_FIRE_RATE_MS;
+const SCATTER_DURATION_MS          = CONFIG.GAMEPLAY.SCATTER_DURATION_MS;
+const SCATTER_SPREAD_DEG           = CONFIG.GAMEPLAY.SCATTER_SPREAD_DEG;

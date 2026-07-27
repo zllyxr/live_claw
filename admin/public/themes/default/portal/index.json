@@ -1,0 +1,63 @@
+{
+    "name": "首页",
+    "action": "portal/Index/index",
+    "description": "首页模板文件",
+    "order": 5,
+    "more": {
+        "widgets_blocks": {
+            "top": {
+                "title": "顶部",
+                "widgets": {
+                    "top_nav_202206300003": {
+                        "title": "顶部导航",
+                        "name": "nav",
+                        "display": "1",
+                        "public_widget_id": "top_nav",
+                        "vars": {}
+                    }
+                }
+            },
+            "body": {
+                "title": "主体",
+                "widgets": {
+                    "home_slider_202206300003": {
+                        "title": "首页幻灯片",
+                        "name": "slider",
+                        "display": "1",
+                        "vars": {}
+                    },
+                    "home_features_202206300003": {
+                        "title": "产品特性",
+                        "name": "features",
+                        "display": "1",
+                        "vars": {}
+                    },
+                    "home_last_news_202206300003": {
+                        "title": "最新资讯",
+                        "name": "last_news",
+                        "display": "1",
+                        "vars": {}
+                    },
+                    "home_last_news_202206300004": {
+                        "title": "最新资讯",
+                        "name": "last_news",
+                        "display": "1",
+                        "vars": {}
+                    }
+                }
+            },
+            "footer": {
+                "title": "底部",
+                "widgets": {
+                    "home_footer_202206300003": {
+                        "title": "底部",
+                        "name": "footer",
+                        "display": "1",
+                        "public_widget_id": "footer",
+                        "vars": {}
+                    }
+                }
+            }
+        }
+    }
+}

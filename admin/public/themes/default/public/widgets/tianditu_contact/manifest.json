@@ -1,0 +1,75 @@
+{
+    "title": "联系我们-天地图",
+    "name": "tianditu_contact",
+    "display": "1",
+    "version": "1.0.0",
+    "demo_url": "http://demo.thinkcmf.com",
+    "author": "ThinkCMF",
+    "author_url": "http://www.thinkcmf.com",
+    "keywords": "ThinkCMF模板联系我们-天地图控件",
+    "description": "ThinkCMF模板联系我们-天地图控件",
+    "action": "",
+    "css": {
+        "margin-bottom": {
+            "title": "下边距",
+            "name": "margin-bottom",
+            "value": "15px",
+            "type": "text",
+            "tip": "下边距,支持单位如px(像素),em(字符),rem",
+            "rule": []
+        }
+    },
+    "vars": {
+        "map_secret_key": {
+            "title": "地图密钥",
+            "name": "map_secret_key",
+            "value": "",
+            "type": "text",
+            "tip": "请在https://console.tianditu.gov.cn/api/key获取",
+            "rule": []
+        },
+        "map_info_window_text": {
+            "title": "地图标注文字",
+            "name": "map_info_window_text",
+            "value": "ThinkCMF<br/><span class=''>地址：上海市徐汇区斜土路2601号</span>",
+            "type": "text",
+            "tip": "地图标注文字,支持简单html代码",
+            "rule": []
+        },
+        "map_info_window_rich_text": {
+            "title": "地图标注文字",
+            "name": "map_info_window_rich_text",
+            "value": "ThinkCMF<br/><span class=''>地址：上海市徐汇区斜土路2601号</span>",
+            "type": "rich_text",
+            "tip": "地图标注文字,支持简单html代码",
+            "rule": []
+        },
+        "map_info_window_rich_text2": {
+            "title": "地图标注文字2",
+            "name": "map_info_window_rich_text2",
+            "value": "ThinkCMF<br/><span class=''>地址：上海市徐汇区斜土路2601号</span>",
+            "type": "rich_text",
+            "tip": "地图标注文字,支持简单html代码",
+            "rule": []
+        },
+        "company_location": {
+            "title": "公司坐标",
+            "value": "",
+            "type": "location",
+            "tip": "",
+            "rule": {
+                "require": true
+            }
+        },
+        "fullscreen": {
+            "title": "全屏显示",
+            "type": "select",
+            "value": 1,
+            "options": {
+                "1": "开启",
+                "0": "关闭"
+            },
+            "tip": ""
+        }
+    }
+}

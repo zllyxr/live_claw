@@ -1,0 +1,55 @@
+<extend name="public@layout" />
+<block name="main">
+<div class="wrap">
+    <ul class="layui-tab-title">
+        <foreach name="nav_tabs" item="tab" key="tab_key">
+            <li <if condition="$active_tab eq $tab_key">class="active"</if>><a href="{$tab.url}">{$tab.title}</a></li>
+        </foreach>
+    </ul>
+
+    <form class="well form-inline margin-top-20" method="post" action="{:url('Lotterygame/syncLogs')}">
+        游戏：
+        <select class="form-control" name="game_id">
+            <option value="">全部</option>
+            <foreach name="games" item="game">
+                <option value="{$game.id}" <if condition="input('request.game_id') neq '' && input('request.game_id') eq $game['id']">selected</if>>{$game.game_name}({$game.game_code})</option>
+            </foreach>
+        </select>
+        结果：
+        <select class="form-control" name="success">
+            <option value="">全部</option>
+            <option value="1" <if condition="input('request.success') neq '' && input('request.success') eq 1">selected</if>>成功</option>
+            <option value="0" <if condition="input('request.success') neq '' && input('request.success') eq 0">selected</if>>失败</option>
+        </select>
+        <input type="submit" class="btn btn-primary" value="搜索">
+    </form>
+
+    <table class="layui-table js-layui-table" lay-filter="admin-lotterygame-sync-logs-1" lay-skin="line">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>数据源</th>
+            <th>游戏</th>
+            <th>接口</th>
+            <th>结果</th>
+            <th>消息</th>
+            <th>时间</th>
+        </tr>
+        </thead>
+        <tbody>
+        <foreach name="list" item="vo">
+            <tr>
+                <td>{$vo.id}</td>
+                <td>{$vo.source.name|default=''}</td>
+                <td>{$vo.game.game_name|default=''}<br><small>{$vo.game.game_code|default=''}</small></td>
+                <td>{$vo.api_name}<br><small style="word-break:break-all;">{$vo.request_url}</small></td>
+                <td><if condition="$vo['success'] eq 1"><span class="label label-success">成功</span><else/><span class="label label-danger">失败</span></if></td>
+                <td style="max-width:360px;word-break:break-all;">{$vo.message}</td>
+                <td><if condition="$vo['create_time'] gt 0">{:date('Y-m-d H:i:s',$vo['create_time'])}<else/>-</if></td>
+            </tr>
+        </foreach>
+        </tbody>
+    </table>
+    <div class="pagination">{$page}</div>
+</div>
+</block>

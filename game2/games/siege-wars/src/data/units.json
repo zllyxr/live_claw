@@ -1,0 +1,66 @@
+{
+  "KNT" : {
+    "name" : "Knight",
+    "img"  : {
+      "blue"   : 115,
+      "red"    : 122,
+      "yellow" : 129,
+      "green"  : 136
+    },
+    "move" : 5,
+    "damage" : {
+      "Knight"    : 50,
+      "Swdman" : 35,
+      "Spearman"  : 25,
+      "Archer"    : 75
+    }
+  },
+  "SWD" : {
+    "name" : "Swdman",
+    "img"  : {
+      "blue"   : 114,
+      "red"    : 121,
+      "yellow" : 128,
+      "green"  : 136
+    },
+    "move" : 2,
+    "damage" : {
+      "Knight"    : 35,
+      "Swdman" : 50,
+      "Spearman"  : 70,
+      "Archer"    : 75
+    }
+  },
+  "SPR" : {
+    "name" : "Spearman",
+    "img"  : {
+      "blue"   : 113,
+      "red"    : 120,
+      "yellow" : 127,
+      "green"  : 135
+    },
+    "move" : 3,
+    "damage" : {
+      "Knight"    : 70,
+      "Swdman" : 20,
+      "Spearman"  : 50,
+      "Archer"    : 50
+    }
+  },
+  "ARC" : {
+    "name" : "Archer",
+    "img"  : {
+      "blue"   : 112,
+      "red"    : 119,
+      "yellow" : 126,
+      "green"  : 134
+    },
+    "move" : 3,
+    "damage" : {
+      "Knight"    : 20,
+      "Swdman" : 15,
+      "Spearman"  : 75,
+      "Archer"    : 65
+    }
+  }
+}

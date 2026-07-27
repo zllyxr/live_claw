@@ -1,0 +1,61 @@
+<extend name="public@layout" />
+<block name="main">
+<div class="wrap">
+    <ul class="layui-tab-title">
+        <foreach name="nav_tabs" item="tab" key="tab_key">
+            <li <if condition="$active_tab eq $tab_key">class="active"</if>><a href="{$tab.url}">{$tab.title}</a></li>
+        </foreach>
+        <li class="active"><a><if condition="$is_edit eq 1">编辑投注项<else/>添加投注项</if></a></li>
+    </ul>
+
+    <form method="post" class="form-horizontal js-ajax-form margin-top-20" action="{$post_url}">
+        <div class="form-group">
+            <label class="col-sm-2 control-label">游戏/玩法</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" value="{$game.game_name} - {$play.play_name}" readonly>
+                <input type="hidden" name="play_id" value="{$play.id}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label"><span class="form-required">*</span>投注项编码</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="option_code" value="{$data.option_code}" maxlength="60" placeholder="BIG/SMALL/ODD/EVEN/0-45">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label"><span class="form-required">*</span>投注项名称</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="option_name" value="{$data.option_name}" maxlength="100">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">赔率</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="odds" value="{$data.odds}" maxlength="12" placeholder="1.9500">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">排序</label>
+            <div class="col-md-6 col-sm-10">
+                <input type="text" class="form-control" name="sort" value="{$data.sort}" oninput="this.value=this.value.replace(/[^\d-]/g,'')" maxlength="9">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-2 control-label">状态</label>
+            <div class="col-md-6 col-sm-10">
+                <select class="form-control" name="status">
+                    <option value="1" <if condition="$data['status'] eq 1">selected</if>>启用</option>
+                    <option value="0" <if condition="$data['status'] eq 0">selected</if>>隐藏</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="col-sm-offset-2 col-sm-10">
+                <if condition="$is_edit eq 1"><input type="hidden" name="id" value="{$data.id}"></if>
+                <button type="submit" class="btn btn-primary js-ajax-submit">保存</button>
+                <a class="btn btn-default" href="{:url('Lotterygame/options',array('play_id'=>$play['id']))}">{:lang('BACK')}</a>
+            </div>
+        </div>
+    </form>
+</div>
+</block>

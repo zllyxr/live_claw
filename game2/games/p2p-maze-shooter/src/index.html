@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+
+    <!-- ===== Primary SEO ===== -->
+    <title>P2P Maze Shooter — FOSS Multiplayer Game | WebRTC</title>
+    <meta
+      name="description"
+      content="A free real-time peer-to-peer multiplayer shooter that runs entirely in your browser. Share a room code and battle a friend across 6 retro-neon maze arenas — no download, no sign-up, no server. Powered by WebRTC and vanilla JavaScript."
+    />
+    <meta name="author" content="Ariful Islam" />
+    <meta
+      name="keywords"
+      content="p2p multiplayer game, webrtc browser game, free online shooter, maze shooter, peer to peer game, vanilla javascript game, no download multiplayer, browser game, retro shooter, arcade game"
+    />
+    <meta name="robots" content="index, follow" />
+    <meta name="application-name" content="P2P Maze Shooter" />
+    <!-- Canonical: safe to include — hash fragments (#room=CODE) are client-side
+         only and never stripped by scrapers, so this doesn't affect invite links.
+         Helps Google consolidate PageRank on the authoritative base URL. -->
+    <link rel="canonical" href="https://arifulislamat.github.io/p2p-maze-shooter/" />
+
+    <!-- ===== Open Graph / Facebook ===== -->
+    <!-- og:url intentionally omitted: if set, Messenger/Facebook navigate users
+         to og:url on click (losing #room=CODE). Without it, the actual shared
+         URL (with hash) is used, so room-code invite links keep working. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="P2P Maze Shooter" />
+    <meta property="og:title" content="P2P Maze Shooter — FOSS Multiplayer Game" />
+    <meta
+      property="og:description"
+      content="Battle a friend in real-time across 6 retro-neon maze arenas. Just share a room code and play instantly in any browser."
+    />
+    <!-- GIF first: Discord/Telegram pick this and display it animated.
+         Facebook/WhatsApp/Messenger see a GIF, reject it, then fall back to the
+         JPEG block below which meets their JPEG/PNG + dimension requirements. -->
+    <meta
+      property="og:image"
+      content="https://arifulislamat.github.io/p2p-maze-shooter/assets/demo.gif"
+    />
+    <meta
+      property="og:image:alt"
+      content="P2P Maze Shooter gameplay — two players battling in a neon maze"
+    />
+    <!-- JPEG fallback: used by WhatsApp, Messenger, Instagram, iMessage -->
+    <meta
+      property="og:image"
+      content="https://arifulislamat.github.io/p2p-maze-shooter/assets/preview.png"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://arifulislamat.github.io/p2p-maze-shooter/assets/preview.png"
+    />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="P2P Maze Shooter — real-time browser multiplayer game with retro-neon maze arenas"
+    />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- ===== Twitter Card ===== -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="P2P Maze Shooter — FOSS Multiplayer Game" />
+    <meta
+      name="twitter:description"
+      content="Battle a friend in real-time across 6 retro-neon maze arenas. No download, no server — just share a room code and play."
+    />
+    <meta
+      name="twitter:image"
+      content="https://arifulislamat.github.io/p2p-maze-shooter/assets/demo.gif"
+    />
+    <meta name="twitter:creator" content="@arifulislamat" />
+
+    <!-- ===== Structured Data (JSON-LD) ===== -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "P2P Maze Shooter",
+        "description": "A free real-time peer-to-peer multiplayer shooter that runs entirely in the browser. Battle a friend across 6 rotating retro-neon maze arenas using WebRTC — no download, no server required.",
+        "url": "https://arifulislamat.github.io/p2p-maze-shooter/",
+        "image": "https://arifulislamat.github.io/p2p-maze-shooter/assets/preview.png",
+        "author": {
+          "@type": "Person",
+          "name": "Ariful Islam",
+          "url": "https://arifulislamat.com"
+        },
+        "genre": ["Shooter", "Multiplayer", "Arcade"],
+        "gamePlatform": "Web Browser",
+        "numberOfPlayers": {
+          "@type": "QuantitativeValue",
+          "minValue": 1,
+          "maxValue": 2
+        },
+        "applicationCategory": "Game",
+        "operatingSystem": "Any (Web Browser)",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        }
+      }
+    </script>
+
+    <!-- ===== Resource Hints ===== -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+
+    <meta name="theme-color" content="#0a0a1a" />
+    <!-- Inline SVG favicon — no external file needed -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cdefs%3E%3ClinearGradient id='bgDark' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%230f0c29'/%3E%3Cstop offset='60%25' stop-color='%23141428'/%3E%3Cstop offset='100%25' stop-color='%23000000'/%3E%3C/linearGradient%3E%3Cfilter id='neonGlowDark' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='6' flood-color='%23ff6b00'/%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='14' flood-color='%23ff6b00'/%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='22' flood-color='%23ffae42'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='180' height='180' rx='40' fill='url(%23bgDark)'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='middle' font-size='140' fill='%23ff6b00' filter='url(%23neonGlowDark)'%3E%E2%9A%94%3C/text%3E%3C/svg%3E"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cdefs%3E%3ClinearGradient id='bgLight' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ffffff'/%3E%3Cstop offset='100%25' stop-color='%23f3f3f7'/%3E%3C/linearGradient%3E%3Cfilter id='neonGlowLight' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='4' flood-color='%23ff6b00'/%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='10' flood-color='%23ff6b00'/%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='16' flood-color='%23ffc27a'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='180' height='180' rx='40' fill='url(%23bgLight)'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='middle' font-size='140' fill='%23ff6b00' filter='url(%23neonGlowLight)'%3E%E2%9A%94%3C/text%3E%3C/svg%3E"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cdefs%3E%3ClinearGradient id='bgDark' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%230f0c29'/%3E%3Cstop offset='60%25' stop-color='%23141428'/%3E%3Cstop offset='100%25' stop-color='%23000000'/%3E%3C/linearGradient%3E%3Cfilter id='neonGlowDark' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='6' flood-color='%23ff6b00'/%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='14' flood-color='%23ff6b00'/%3E%3CfeDropShadow dx='0' dy='0' stdDeviation='22' flood-color='%23ffae42'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='180' height='180' rx='40' fill='url(%23bgDark)'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='middle' font-size='140' fill='%23ff6b00' filter='url(%23neonGlowDark)'%3E%E2%9A%94%3C/text%3E%3C/svg%3E"
+      media="(prefers-color-scheme: dark)"
+    />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <noscript>
+      <div style="text-align:center;padding:2rem;color:#e0e0f0;background:#0a0a1a;font-family:sans-serif">
+        <h1>⚔ P2P Maze Shooter</h1>
+        <p>A free real-time peer-to-peer multiplayer shooter that runs entirely in your browser.</p>
+        <p>Please <strong>enable JavaScript</strong> to play the game.</p>
+        <p><a href="https://github.com/arifulislamat/p2p-maze-shooter" style="color:#00d4ff">View source on GitHub</a></p>
+      </div>
+    </noscript>
+
+    <!-- ===== Lobby Screen ===== -->
+    <main id="lobby">
+      <header>
+        <h1> ⚔ </h1>
+        <h1>P2P Maze Shooter</h1>
+        <p>A peer-to-peer browser battle game</p>
+      </header>
+
+      <!-- Maze Selector -->
+      <div id="maze-selector">
+        <h3>SELECT MAP</h3>
+        <div id="maze-grid"></div>
+      </div>
+
+      <div class="lobby-buttons">
+        <button
+          class="btn btn-primary"
+          onclick="
+            Sound.init();
+            Sound.resume();
+            Game.showOnlineUI('host');
+          "
+        >
+          CREATE GAME ROOM
+        </button>
+        <button
+          class="btn btn-secondary"
+          onclick="
+            Sound.init();
+            Sound.resume();
+            Game.showOnlineUI('join');
+          "
+        >
+          JOIN GAME ROOM
+        </button>
+      </div>
+
+      <p class="maze-rotation-note">
+        Two players. six arenas. sixty seconds per map.<br>share a code and fight.
+      </p>
+
+    </main>
+
+    <!-- Maze selector builder script (runs after constants.js) -->
+    <script>
+      // Draw maze cell data onto an existing canvas context using current COLORS.
+      function drawMazePreviewCanvas(pctx, pw, ph, mazeData) {
+        const cols = mazeData[0].length;
+        const rows = mazeData.length;
+        const cw = pw / cols;
+        const ch = ph / rows;
+        pctx.clearRect(0, 0, pw, ph);
+        pctx.fillStyle = COLORS.background;
+        pctx.fillRect(0, 0, pw, ph);
+        mazeData.forEach((row, r) => {
+          row.forEach((cell, c) => {
+            const x = c * cw, y = r * ch;
+            if (cell === 1) {
+              pctx.fillStyle = COLORS.wall;
+              pctx.fillRect(x, y, cw + 0.5, ch + 0.5);
+              pctx.fillStyle = COLORS.wallHighlight || "rgba(255,255,255,0.07)";
+              pctx.fillRect(x, y, cw + 0.5, 1.2);
+            } else if (cell === 2) {
+              pctx.fillStyle = COLORS.p1 + "8c";
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 2.2, 0, Math.PI * 2);
+              pctx.fill();
+              pctx.strokeStyle = COLORS.p1 + "33";
+              pctx.lineWidth = 1;
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 1.5, 0, Math.PI * 2);
+              pctx.stroke();
+            } else if (cell === 3) {
+              pctx.fillStyle = COLORS.p2 + "8c";
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 2.2, 0, Math.PI * 2);
+              pctx.fill();
+              pctx.strokeStyle = COLORS.p2 + "33";
+              pctx.lineWidth = 1;
+              pctx.beginPath();
+              pctx.arc(x + cw / 2, y + ch / 2, Math.min(cw, ch) / 1.5, 0, Math.PI * 2);
+              pctx.stroke();
+            }
+          });
+        });
+        // Subtle center vignette
+        const grd = pctx.createRadialGradient(pw / 2, ph / 2, 0, pw / 2, ph / 2, pw / 2.2);
+        grd.addColorStop(0, "rgba(0,0,0,0.04)");
+        grd.addColorStop(1, "transparent");
+        pctx.fillStyle = grd;
+        pctx.fillRect(0, 0, pw, ph);
+      }
+
+      // Re-draw all existing maze preview canvases after a theme change.
+      function redrawMazePreviews() {
+        document.querySelectorAll(".maze-card[data-maze]").forEach((card) => {
+          const maze = MAZES[card.dataset.maze];
+          if (!maze) return;
+          const cv = card.querySelector("canvas");
+          if (!cv) return;
+          drawMazePreviewCanvas(cv.getContext("2d"), cv.width, cv.height, maze.data);
+        });
+      }
+
+      function buildMazeSelector() {
+        const grid = document.getElementById("maze-grid");
+        if (!grid) return;
+        grid.innerHTML = "";
+        const defaultIdx = Math.min(1, MAZE_KEYS.length - 1);
+        MAZE_KEYS.forEach((key, i) => {
+          const maze = MAZES[key];
+          const div = document.createElement("div");
+          div.className = "maze-card" + (i === defaultIdx ? " sel" : "");
+          div.dataset.maze = key;
+          if (i === defaultIdx) Game.selectMaze(key);
+          div.onclick = () => {
+            Game.selectMaze(key);
+            document
+              .querySelectorAll(".maze-card")
+              .forEach((el) => el.classList.remove("sel"));
+            div.classList.add("sel");
+            div.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+          };
+
+          // Preview canvas (4:3 ratio)
+          const preview = document.createElement("canvas");
+          const pw = 252, ph = 189;
+          preview.width = pw;
+          preview.height = ph;
+          drawMazePreviewCanvas(preview.getContext("2d"), pw, ph, maze.data);
+
+          const name = document.createElement("div");
+          name.className = "maze-card-name";
+          name.textContent = maze.name;
+
+          const desc = document.createElement("div");
+          desc.className = "maze-card-desc";
+          desc.textContent = maze.desc;
+
+          const body = document.createElement("div");
+          body.className = "maze-card-body";
+          body.appendChild(preview);
+          body.appendChild(name);
+          body.appendChild(desc);
+          div.appendChild(body);
+          grid.appendChild(div);
+        });
+        // Scroll the default-selected card to center so cards appear on both sides
+        requestAnimationFrame(() => {
+          const sel = grid.querySelector(".maze-card.sel");
+          if (sel) sel.scrollIntoView({ behavior: "instant", block: "nearest", inline: "center" });
+        });
+      }
+      // Build after DOM + constants are ready
+      // Shared helper: read #room=CODE from the URL hash and open join UI.
+      // Returns true if a room code was found and acted on.
+      function initThemeSelector() {
+        const grid = document.getElementById("settings-theme-grid");
+        if (!grid) return;
+        const themes = ThemeManager.getThemeList();
+        const activeId = ThemeManager.active ? ThemeManager.active.id : ThemeRegistry.defaultTheme;
+        themes.forEach(({ id, label }) => {
+          const themeData = ThemeRegistry.themes[id];
+          const accent = (themeData && themeData.colors && themeData.colors.accent) || "#ff6b00";
+          const card = document.createElement("button");
+          card.className = "theme-card" + (id === activeId ? " active" : "");
+          card.dataset.themeId = id;
+          card.style.setProperty("--t-accent", accent);
+          card.innerHTML = '<span class="theme-dot"></span><span>' + label + "</span>";
+          card.onclick = () => ThemeManager.apply(id);
+          grid.appendChild(card);
+        });
+        document.addEventListener("themechange", (e) => {
+          grid.querySelectorAll(".theme-card").forEach((c) => {
+            c.classList.toggle("active", c.dataset.themeId === e.detail.id);
+          });
+        });
+      }
+
+      function openSettings() {
+        document.getElementById("settingsModal").classList.add("open");
+      }
+
+      function closeSettings() {
+        document.getElementById("settingsModal").classList.remove("open");
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeSettings();
+      });
+
+      function openRoomFromHash() {
+        const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        const queryParams = new URLSearchParams(window.location.search);
+        const room = hashParams.get("room") || queryParams.get("room");
+        if (!room) return false;
+        setTimeout(() => {
+          // Tear down any existing connection/game before joining new room
+          const state = Game.getState();
+          if (state.gameMode !== "lobby") {
+            Game.returnToLobby();
+          } else {
+            // May be in the connection UI (host/join panel) — cancel that too
+            Game.cancelOnline();
+          }
+          Game.showOnlineUI("join");
+          const input = document.getElementById("roomCodeInput");
+          if (input) input.value = room.toUpperCase().trim();
+        }, 0);
+        return true;
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        ThemeManager.init();
+        Sound.init();
+        Sound.resume();
+        Voice.init();
+        setTimeout(buildMazeSelector, 0);
+        initThemeSelector();
+        document.addEventListener("themechange", redrawMazePreviews);
+
+        // Auto-rejoin saved session (host/guest page reload)
+        if (Game.rejoinSession()) return;
+
+        // Hash fragment (#room=CODE) is used for sharing — Messenger/WhatsApp
+        // do not strip # from URLs, unlike ? query parameters.
+        // Also falls back to ?room= for old shared links.
+        openRoomFromHash();
+      });
+
+      // When the user pastes a new invite link in the same tab, only the hash
+      // changes — the browser won't reload. Listen for that and open the new room.
+      window.addEventListener("hashchange", () => {
+        openRoomFromHash();
+      });
+    </script>
+
+    <!-- ===== Connection UI (Online Play) ===== -->
+    <div id="connectionUI">
+      <!-- Host Panel -->
+      <div id="hostUI" style="display: none">
+        <div class="conn-panel stagger">
+          <div class="panel-label">SHARE THIS ROOM CODE</div>
+          <div class="room-code" id="roomCode">------</div>
+          <a id="shareLink" href="#" target="_blank" rel="noopener" style="display: none"></a>
+          <div class="room-code-line"></div>
+          <div class="host-status">
+            <span class="dot"></span>
+            <span id="connectionStatus">Creating room...</span>
+          </div>
+          <div class="panel-actions">
+            <button id="copyLinkBtn" class="btn btn-primary" onclick="Game.copyShareLink()">COPY INVITE LINK</button>
+            <button class="btn btn-secondary" onclick="Game.cancelOnline()">CANCEL</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Join Panel -->
+      <div id="joinUI" style="display: none">
+        <div class="conn-panel stagger">
+          <div class="panel-label">ENTER ROOM CODE</div>
+          <input
+            class="room-input"
+            type="text"
+            id="roomCodeInput"
+            placeholder="——————"
+            maxlength="6"
+            minlength="6"
+            autocomplete="off"
+            inputmode="text"
+            onkeydown="if (event.key === 'Enter') Game.joinOnlineGame();"
+            oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);"
+          />
+          <div class="join-actions">
+            <button class="btn btn-primary" onclick="Sound.init();Sound.resume();Game.joinOnlineGame();">CONNECT</button>
+            <button class="btn btn-secondary" onclick="Game.cancelOnline()">CANCEL</button>
+          </div>
+          <p id="joinStatus"></p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===== Back / Leave Button ===== -->
+    <button id="backBtn" title="Leave match" style="display:none" onclick="Game.showLeaveConfirm()">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    </button>
+
+    <!-- ===== Leave Confirmation Modal ===== -->
+    <div id="leaveModal" style="display:none">
+      <div id="leaveModalBox">
+        <p id="leaveModalMsg">Leave match?<br><span>This will end the current game.</span></p>
+        <div id="leaveModalBtns">
+          <button id="leaveCancel" onclick="Game.hideLeaveConfirm()">Cancel</button>
+          <button id="leaveConfirm" onclick="Game.confirmLeave()">Leave</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Mute Toggle ===== -->
+    <button
+      id="muteBtn"
+      onclick="Sound.toggleMute()"
+      title="Toggle Sound"
+      style="padding: 6px"
+    >
+      <svg
+        id="icon-sound-on"
+        width="32"
+        height="32"
+        viewBox="0 0 28 28"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        style="vertical-align: middle"
+      >
+        <polygon points="13 7 7 12 3 12 3 18 7 18 13 23 13 7"></polygon>
+        <path d="M23 7a9 9 0 0 1 0 14"></path>
+      </svg>
+      <svg
+        id="icon-sound-off"
+        width="32"
+        height="32"
+        viewBox="0 0 28 28"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        style="vertical-align: middle; display: none"
+      >
+        <polygon points="13 7 7 12 3 12 3 18 7 18 13 23 13 7"></polygon>
+        <line x1="26" y1="2" x2="2" y2="26"></line>
+      </svg>
+    </button>
+
+    <!-- ===== Settings Button ===== -->
+    <button
+      id="settingsBtn"
+      onclick="openSettings()"
+      title="Settings"
+      aria-label="Settings"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+
+    <!-- ===== Settings Modal ===== -->
+    <div id="settingsModal" role="dialog" aria-modal="true" aria-label="Settings" onclick="if(event.target===this)closeSettings()">
+      <div id="settingsBox">
+        <div class="settings-header">
+          <span class="settings-title">⚙ &nbsp;SETTINGS</span>
+          <button id="settingsClose" onclick="closeSettings()" aria-label="Close settings">✕</button>
+        </div>
+        <div class="settings-section settings-voice-row">
+          <div class="settings-section-label settings-voice-label">Voice Chat</div>
+          <button id="micBtn" onclick="Voice.toggle()" aria-label="Toggle voice chat">
+            <svg id="icon-mic-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <svg id="icon-mic-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span class="mic-btn-label" id="mic-btn-label">Off</span>
+          </button>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">Theme</div>
+          <div id="settings-theme-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Game Canvas ===== -->
+    <div id="gameContainer" style="display:none">
+      <canvas id="gameCanvas"></canvas>
+
+      <!-- Touch Controls (portrait mobile only, shown via CSS media query) -->
+      <div id="touch-controls">
+        <div id="shoot-zone">
+          <button id="shoot-btn" aria-label="Shoot">&#9679;</button>
+        </div>
+        <div id="joystick-zone">
+          <div id="joystick-base">
+            <div id="joystick-knob"></div>
+          </div>
+        </div>
+      </div>
+
+
+    </div>
+
+    <!-- ===== Controls Help ===== -->
+    <div id="controls-help" style="display: none"></div>
+
+    <!-- ===== Global Site Footer ===== -->
+    <footer id="site-footer">
+      <div class="footer-meta">
+        <span>⚔ P2P Maze Shooter</span>
+        <span class="footer-sep">·</span>
+        <span>WebRTC P2P</span>
+        <span class="footer-sep">·</span>
+        <span>Vanilla JS</span>
+        <span class="footer-sep">·</span>
+        <span>No Server</span>
+        <span class="footer-sep">·</span>
+        <span>No Download</span>
+        <span class="footer-sep">·</span>
+        <span>Open Source</span>
+      </div>
+      <div class="footer-links">
+        <span><a href="https://arifulislamat.com" target="_blank" rel="noopener">Ariful Islam</a></span>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter" target="_blank" rel="noopener">Github</a>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter/blob/master/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter/issues" target="_blank" rel="noopener">Report Issue</a>
+        <span class="footer-sep">·</span>
+        <a href="https://github.com/arifulislamat/p2p-maze-shooter/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute</a>
+      </div>
+    </footer>
+
+    <!-- ===== Scripts (order matters) ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <!-- Theme system: load before constants.js so registry is ready at startup -->
+    <script src="themes/retro-neon.js"></script>
+    <script src="themes/midnight-void.js"></script>
+    <script src="themes/sandstorm.js"></script>
+    <script src="themes/cyber-sakura.js"></script>
+    <script src="themes/index.js"></script>
+    <script src="core/ThemeManager.js"></script>
+    <script src="constants.js"></script>
+    <script src="sound.js"></script>
+    <script src="voice.js"></script>
+    <script src="physics.js"></script>
+    <script src="renderer.js"></script>
+    <script src="network.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>

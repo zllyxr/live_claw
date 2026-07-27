@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="180" viewBox="0 0 128 180">
+<rect x="7" y="9" width="118" height="170" rx="14" fill="#000" opacity=".18"/>
+<rect x="4" y="4" width="118" height="170" rx="14" fill="#FAFCFF" stroke="#485269" stroke-width="2"/>
+<rect x="8" y="8" width="110" height="162" rx="10" fill="none" stroke="#A953FF" stroke-opacity=".55"/>
+<text x="64" y="82" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="54" fill="#111111">★</text>
+<text x="64" y="120" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="23" fill="#111111">JOKER</text>
+<text x="64" y="146" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="18" fill="#111111">BLACK</text>
+</svg>

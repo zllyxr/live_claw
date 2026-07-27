@@ -1,0 +1,149 @@
+/*星球探宝*/
+.xqtb{
+	width: 100%;
+	background-image: url("../images/game/xqtb_bg.png");
+	background-repeat: no-repeat;
+	background-size: auto;
+}
+.xqtb .content{
+	width: 90%;
+	margin: 0 auto;
+	overflow-y: auto;
+	padding: 0 5%;
+}
+.top_img{
+	margin:0.5rem 0;
+	text-align: center;
+}
+.top_img img{
+	width: 60%;
+}
+
+.list_area{
+	width: 94%;
+	margin: 0 auto;
+	padding: 0.1rem 2%;
+	background: #2D0159;
+	border:0.06rem solid #694396;
+	border-radius: 0.2rem;
+	margin-bottom: 0.5rem;
+}
+
+.list_title{
+	color: #D4CFDB;
+}
+
+.list_title p{
+	font-size: 0.33rem;
+	color: #F900B1;
+	margin: 0.2rem 0;
+}
+
+.xqtb .list_con{
+	width: 100%;
+	color: #D4CFDB;
+	margin-top: 0.4rem;
+	margin-bottom: 0.4rem;
+}
+.xqtb .list_con th{
+	color: #30CCF5;
+	width: 33.3%;
+	height: 0.6rem;
+	line-height: 0.6rem;
+	text-align: center;
+	border: 0.02rem solid #7E56AC;
+	overflow: hidden;
+	background: #3F0384;
+}
+.xqtb .list_con td{
+	width: 33.3%;
+	height: 0.6rem;
+	line-height: 0.6rem;
+	text-align: center;
+	border: 0.02rem solid #7E56AC;
+	overflow: hidden;
+	background: #3F0384;
+}
+
+.xqtb .list_con td.coin{
+	color: #E9C676;
+}
+
+/*幸运大转盘*/
+.xydzp{
+	width: 100%;
+	background-image: url("../images/game/xydzp_bg.png");
+	background-repeat: no-repeat;
+	background-size: auto;
+}
+.xydzp .content{
+	width: 90%;
+	margin: 0 auto;
+	overflow-y: auto;
+	padding: 0 5%;
+}
+
+.xydzp .content .top{
+	text-align: center;
+	margin-top: 1rem;
+}
+
+.xydzp .content .top img{
+	width: 70%;
+}
+
+.xydzp .content .title{
+	width: 100%;
+	height: 0.4rem;
+	border-radius: 0.2rem 0.2rem 0 0;
+	background: #FFA560;
+	margin-top: -0.2rem;
+}
+
+.xydzp .content .list{
+	height: auto;
+	background-image: url("../images/game/list_bg.png");
+	background-size: 100%;
+	background-repeat: repeat-y;
+	padding: 0.3rem 7%;
+}
+
+.xydzp .content .list .list_title{
+	height: 0.6rem;
+	line-height: 0.6rem;
+	color: #FFF;
+	font-weight: bold;
+}
+
+.xydzp .list_con{
+	width: 100%;
+	color: #FF3C00;
+	margin-bottom: 0.4rem;
+}
+.xydzp .list_con th{
+	width: 33.3%;
+	height: 0.6rem;
+	line-height: 0.6rem;
+	text-align: center;
+	border: 0.02rem solid #FDAF66;
+	overflow: hidden;
+	background: #FBC074;
+}
+.xydzp .list_con td{
+	width: 33.3%;
+	height: 0.6rem;
+	line-height: 0.6rem;
+	text-align: center;
+	border: 0.02rem solid #FDAF66;
+	overflow: hidden;
+	background: #FBC074;
+}
+
+.xydzp .content .bottom{
+	text-align: center;
+	margin-bottom: 0.6rem;
+}
+
+.xydzp .content .bottom img{
+	width: 100%;
+}

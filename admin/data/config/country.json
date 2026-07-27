@@ -1,0 +1,375 @@
+
+{ 
+	"comment":["以下内容用于App注册登录功能,获取国家列表"],
+    "country":[	 
+	 {
+	    "title":"A",
+		"lists":[
+		
+			{"name":"阿尔巴尼亚","name_en":"Albania","tel":"355"},
+			{"name":"阿尔及利亚","name_en":"Algeria","tel":"213"},
+			{"name":"阿富汗","name_en":"Afghanistan","tel":"93"},
+			{"name":"阿根廷","name_en":"Argentina","tel":"54"},
+			{"name":"阿拉伯联合酋长国","name_en":"UnitedArabEmirates","tel":"971"},
+			{"name":"阿曼","name_en":"Oman","tel":"968"},
+			{"name":"阿美尼亚","name_en":"Armenia","tel":"374"},
+			{"name":"阿塞拜疆","name_en":"Azerbaijan","tel":"994"},
+			{"name":"爱尔兰","name_en":"Ireland","tel":"353"},
+			{"name":"埃及","name_en":"Egypt","tel":"20"},
+			{"name":"埃塞俄比亚","name_en":"Ethiopia","tel":"251"},
+			{"name":"爱沙尼亚","name_en":"Estonia","tel":"372"},
+			{"name":"澳大利亚","name_en":"Australia","tel":"61"},
+			{"name":"奥地利","name_en":"Austria","tel":"43"},
+			{"name":"澳门（中国）","name_en":"Macao","tel":"853"},
+	 	    {"name":"安道尔共和国","name_en":"Andorra","tel":"376"},
+			{"name":"安哥拉","name_en":"Angola","tel":"244"},
+			{"name":"安圭拉岛","name_en":"Anguilla","tel":"1264"},
+	 	    {"name":"安提瓜和巴布达","name_en":"AntiguaandBarbuda","tel":"1268"}
+			
+		]
+	 },
+	 {
+	     "title":"B",
+	     "lists":[
+	 	    {"name":"巴巴多斯","name_en":"Barbados","tel":"1246"},
+			{"name":"巴布亚新几内亚","name_en":"PapuaNewCuinea","tel":"971"},
+			{"name":"巴哈马","name_en":"Bahamas","tel":"1242"},
+			{"name":"巴基斯坦","name_en":"Pakistan","tel":"92"},
+			{"name":"巴拉圭","name_en":"Paraguay","tel":"595"},
+			{"name":"巴勒斯坦","name_en":"Palestine","tel":"970"},
+			{"name":"巴林","name_en":"Bahrain","tel":"973"},
+			{"name":"巴拿马","name_en":"Panama","tel":"507"},
+			{"name":"巴西","name_en":"Brazil","tel":"55"},
+			{"name":"白俄罗斯","name_en":"Belarus","tel":"375"},
+			{"name":"百慕大群岛","name_en":"BermudaIs","tel":"1441"},
+			{"name":"保加利亚","name_en":"Bulgaria","tel":"359"},
+			{"name":"贝宁","name_en":"Benin","tel":"229"},
+			{"name":"秘鲁","name_en":"Peru","tel":"51"},
+			{"name":"比利时","name_en":"Belgium","tel":"32"},
+			{"name":"冰岛","name_en":"Iceland","tel":"354"},
+			{"name":"波多黎各","name_en":"PuertoRico","tel":"1787"},
+			{"name":"波兰","name_en":"Poland","tel":"48"},
+			{"name":"玻利维亚","name_en":"Bolivia","tel":"591"},
+			{"name":"伯利兹","name_en":"Belize","tel":"501"},
+			{"name":"博茨瓦纳","name_en":"Botswana","tel":"267"},
+			{"name":"布基纳法索","name_en":"Burkina-faso","tel":"226"},
+	 	    {"name":"布隆迪","name_en":"Burundi","tel":"257"}
+			
+		]
+	 },
+	 {
+	     "title":"C",
+	     "lists":[
+	 	    {"name":"朝鲜","name_en":"NorthKorea","tel":"850"}
+		 ]
+	 },
+	 {
+	     
+		 "title":"D",
+		 "lists":[
+			{"name":"丹麦","name_en":"Denmark","tel":"45"},
+			{"name":"德国","name_en":"Germany","tel":"49"},
+			{"name":"多哥","name_en":"Togo","tel":"228"},
+			{"name":"多米尼加共和国","name_en":"DominicaRep","tel":"1890"}
+			
+		 ]
+		
+	 },
+	 {
+	     "title":"E",
+	     "lists":[
+			
+			{"name":"厄瓜多尔","name_en":"Ecuador","tel":"593"},
+			{"name":"俄罗斯","name_en":"Russia","tel":"7"}
+			
+			
+		 ]
+	 },
+	 {
+	     "title":"F",
+	     "lists":[
+			{"name":"法国","name_en":"France","tel":"33"},
+			{"name":"法属玻利尼西亚","name_en":"FrenchPolynesia","tel":"675"},
+			{"name":"法属圭亚那","name_en":"FrenchGuiana","tel":"594"},
+			{"name":"斐济","name_en":"Fiji","tel":"679"},
+			{"name":"菲律宾","name_en":"Philippines","tel":"63"},
+			{"name":"芬兰","name_en":"Finland","tel":"358"}
+	 	  ]
+	 		
+	 },
+	 {
+	    "title":"G",
+	     "lists":[
+		
+			{"name":"刚果","name_en":"Congo","tel":"242"},
+			{"name":"冈比亚","name_en":"Gambia","tel":"220"},
+			{"name":"格林纳达","name_en":"Grenada","tel":"1809"},
+			{"name":"哥伦比亚","name_en":"Colombia","tel":"57"},
+			{"name":"格鲁吉亚","name_en":"Georgia","tel":"995"},
+			{"name":"哥斯达黎加","name_en":"CostaRica","tel":"506"},
+			{"name":"古巴","name_en":"Cuba","tel":"53"},
+			{"name":"关岛","name_en":"Guam","tel":"1671"},
+			{"name":"圭亚那","name_en":"Guyana","tel":"592"}
+			
+		]
+			
+	 },
+	 {
+	    "title":"H",
+	     "lists":[
+			{"name":"哈萨克斯坦","name_en":"Kazakstan","tel":"327"},
+			{"name":"海地","name_en":"Haiti","tel":"509"},
+			{"name":"韩国","name_en":"Korea","tel":"82"},
+			{"name":"荷兰","name_en":"Netherlands","tel":"31"},
+			{"name":"洪都拉斯","name_en":"Honduras","tel":"504"}
+		 ]
+	 },
+	 {
+	    "title":"I",
+	     "lists":[
+				
+		 ]
+            
+	 },
+	 {
+	    "title":"J",
+	     "lists":[
+			{"name":"加纳","name_en":"Ghana","tel":"233"},
+			{"name":"加拿大","name_en":"Canada","tel":"1"},
+			{"name":"加蓬","name_en":"Gabon","tel":"241"},
+			{"name":"几内亚","name_en":"Guinea","tel":"224"},
+			{"name":"捷克","name_en":"Czech","tel":"420"},
+			{"name":"吉布提","name_en":"Djibouti","tel":"253"},
+			{"name":"吉尔吉斯坦","name_en":"Kyrgyzstan","tel":"331"},
+			{"name":"柬埔寨","name_en":"Kampuchea(Cambodia)","tel":"855"},
+			{"name":"津巴布韦","name_en":"Zimbabwe","tel":"263"}
+			
+		 ]
+            
+	 },
+	 {
+	    "title":"K",
+	     "lists":[
+			
+			{"name":"喀麦隆","name_en":"Cameroon","tel":"237"},
+			{"name":"卡塔尔","name_en":"Qatar","tel":"974"},
+			{"name":"科特迪瓦共和国","name_en":"RepublicofIvoryCoast","tel":"225"},
+			{"name":"科威特","name_en":"Kuwait","tel":"965"},
+			{"name":"肯尼亚","name_en":"Kenya","tel":"254"},
+			{"name":"库克群岛","name_en":"CookIs","tel":"682"},
+			{"name":"拉脱维亚","name_en":"Latvia","tel":"371"}
+						
+			
+		 ]
+ 
+	 },
+	 {
+	    "title":"L",
+	     "lists":[
+	     	{"name":"莱索托","name_en":"Lesotho","tel":"266"},
+			{"name":"老挝","name_en":"Laos","tel":"856"},
+			{"name":"黎巴嫩","name_en":"Lebanon","tel":"961"},
+			{"name":"列支敦士登","name_en":"Liechtenstein","tel":"423"},
+			{"name":"利比里亚","name_en":"Liberia","tel":"231"},
+			{"name":"利比亚","name_en":"Libya","tel":"218"},
+			{"name":"立陶宛","name_en":"Lithuania","tel":"370"},
+			{"name":"卢森堡","name_en":"Luxembourg","tel":"352"},
+			{"name":"罗马尼亚","name_en":"Romania","tel":"40"}
+			
+		 ]
+ 
+	 },
+	 {
+ 	    "title":"M",
+	     "lists":[
+			{"name":"马尔代夫","name_en":"Maldives","tel":"960"},
+			{"name":"马耳他","name_en":"Malta","tel":"356"},
+			{"name":"美国","name_en":"UnitedStatesofAmerica","tel":"1"},
+			{"name":"马达加斯加","name_en":"Madagascar","tel":"261"},
+			{"name":"马拉维","name_en":"Malawi","tel":"265"},
+			{"name":"马来西亚","name_en":"Malaysia","tel":"60"},
+			{"name":"马里","name_en":"Mali","tel":"223"},
+			{"name":"毛里求斯","name_en":"Mauritius","tel":"230"},
+			{"name":"蒙古","name_en":"Mongolia","tel":"976"},
+			{"name":"蒙特塞拉特岛","name_en":"MontserratIs","tel":"1664"},
+			{"name":"缅甸","name_en":"Burma","tel":"95"},
+			{"name":"摩尔多瓦","name_en":"Moldova,Republicof","tel":"373"},
+			{"name":"孟加拉国","name_en":"Bangladesh","tel":"880"},
+			{"name":"摩洛哥","name_en":"Morocco","tel":"212"},
+			{"name":"摩纳哥","name_en":"Monaco","tel":"377"},
+			{"name":"墨西哥","name_en":"Mexico","tel":"52"},
+			{"name":"莫桑比克","name_en":"Mozambique","tel":"258"}
+		 
+		 ]
+ 			
+	 },
+	 {
+	    "title":"N",
+	     "lists":[
+			
+			{"name":"纳米比亚","name_en":"Namibia","tel":"264"},
+			{"name":"南非","name_en":"SouthAfrica","tel":"27"},
+			{"name":"南斯拉夫","name_en":"Yugoslavia","tel":"381"},
+			{"name":"瑙鲁","name_en":"Nauru","tel":"674"},
+			{"name":"尼加拉瓜","name_en":"Nicaragua","tel":"505"},
+			{"name":"尼泊尔","name_en":"Nepal","tel":"977"},
+			{"name":"尼日尔","name_en":"Niger","tel":"977"},
+			{"name":"尼日利亚","name_en":"Nigeria","tel":"234"},
+			{"name":"挪威","name_en":"Norway","tel":"47"}
+		 
+		 ]
+	 },
+	 {
+	    "title":"O",
+	     "lists":[
+		
+			
+			
+         ]
+	 },
+	 {
+	    "title":"P",
+	     "lists":[
+			
+			{"name":"葡萄牙","name_en":"Portugal","tel":"351"}
+		 
+		 ]
+ 
+	 },
+	 {
+	    "title":"Q",
+	     "lists":[
+			
+			
+		 ]
+			
+	 },
+	 {
+	    "title":"R",
+	     "lists":[
+			
+			{"name":"日本","name_en":"Japan","tel":"81"},
+			{"name":"瑞典","name_en":"Sweden","tel":"46"},
+			{"name":"瑞士","name_en":"Switzerland","tel":"41"}		
+			
+		 ]
+	 },
+	 {
+	    "title":"S",
+	     "lists":[
+			{"name":"萨尔瓦多","name_en":"EISalvador","tel":"503"},
+			{"name":"塞浦路斯","name_en":"Cyprus","tel":"53"},
+			{"name":"塞拉利昂","name_en":"SierraLeone","tel":"232"},
+			{"name":"塞内加尔","name_en":"Senegal","tel":"221"},
+			{"name":"塞舌尔","name_en":"Seychelles","tel":"248"},
+			{"name":"沙特阿拉伯","name_en":"SaudiArabia","tel":"966"},
+			{"name":"圣多美和普林西比","name_en":"SaoTomeandPrincipe","tel":"239"},
+			{"name":"圣卢西亚","name_en":"St.Lucia","tel":"1758"},
+			{"name":"圣马力诺","name_en":"SanMarino","tel":"378"},
+			{"name":"斯里兰卡","name_en":"SriLanka","tel":"94"},
+			{"name":"斯洛文尼亚","name_en":"Slovenia","tel":"386"},
+			{"name":"斯洛伐克","name_en":"Slovakia","tel":"421"},
+			{"name":"斯威士兰","name_en":"Swaziland","tel":"268"},
+			{"name":"苏丹","name_en":"Sudan","tel":"249"},
+			{"name":"苏里南","name_en":"Suriname","tel":"597"},
+			{"name":"圣文森特岛","name_en":"SaintVincent","tel":"1784"},
+			{"name":"所罗门群岛","name_en":"SolomonIs","tel":"677"},
+			{"name":"索马里","name_en":"Somali","tel":"252"}
+		 
+		]
+            
+	 },
+	 {
+	    "title":"T",
+	     "lists":[
+		 
+			{"name":"塔吉克斯坦","name_en":"Tajikstan","tel":"992"},
+			{"name":"泰国","name_en":"Thailand","tel":"66"},
+			{"name":"坦桑尼亚","name_en":"Tanzania","tel":"255"},
+			{"name":"汤加","name_en":"Tonga","tel":"676"},
+			{"name":"台湾（中国）","name_en":"Taiwan","tel":"886"},
+			{"name":"特立尼达和多巴哥","name_en":"TrinidadandTobago","tel":"1809"},
+			{"name":"土库曼斯坦","name_en":"Turkmenistan","tel":"993"},
+			{"name":"突尼斯","name_en":"Tunisia","tel":"216"},
+			{"name":"土耳其","name_en":"Turkey","tel":"90"}
+			
+		]
+	 },
+     {
+	    "title":"U",
+	     "lists":[
+	
+			
+			]
+	 },
+	 {
+	    "title":"V",
+	     "lists":[
+			
+			
+		    ]
+            
+	 },	 {
+	    "title":"W",
+	     "lists":[
+		 
+			{"name":"危地马拉","name_en":"Guatemala","tel":"502"},
+			{"name":"委内瑞拉","name_en":"Venezuela","tel":"58"},
+			{"name":"文莱","name_en":"Brunei","tel":"673"},
+			{"name":"乌干达","name_en":"Uganda","tel":"256"},
+			{"name":"乌克兰","name_en":"Ukraine","tel":"380"},
+			{"name":"乌拉圭","name_en":"Uruguay","tel":"598"},
+			{"name":"乌兹别克斯坦","name_en":"Uzbekistan","tel":"233"}
+			
+		]
+            
+	 },
+	 {
+	    "title":"X",
+	     "lists":[
+		
+			{"name":"西班牙","name_en":"Spain","tel":"34"},
+			{"name":"希腊","name_en":"Greece","tel":"30"},
+			{"name":"香港(中国)","name_en":"Hongkong","tel":"852"},
+			{"name":"新加坡","name_en":"Singapore","tel":"65"},
+			{"name":"新西兰","name_en":"NewZealand","tel":"64"},
+			{"name":"匈牙利","name_en":"Hungary","tel":"36"},
+			{"name":"叙利亚","name_en":"Syria","tel":"963"}
+			
+		    ]
+            
+	 }, {
+	    "title":"Y",
+	     "lists":[
+		
+			{"name":"牙买加","name_en":"Jamaica","tel":"1876"},
+			{"name":"也门","name_en":"Yemen","tel":"967"},
+			{"name":"意大利","name_en":"Italy","tel":"39"},
+			{"name":"伊拉克","name_en":"Iraq","tel":"964"},
+			{"name":"伊朗","name_en":"Iran","tel":"98"},
+			{"name":"以色列","name_en":"Israel","tel":"972"},
+			{"name":"印度","name_en":"India","tel":"97"},
+			{"name":"印度尼西亚","name_en":"Indonesia","tel":"62"},
+			{"name":"英国","name_en":"UnitedKiongdom","tel":"44"},
+			{"name":"约旦","name_en":"Jordan","tel":"962"},
+			{"name":"越南","name_en":"Vietnam","tel":"84"}
+		]
+            
+	 },
+	 {
+	     "title":"Z",
+	     "lists":[
+			
+			{"name":"赞比亚","name_en":"Zambia","tel":"260"},
+			{"name":"乍得","name_en":"Chad","tel":"235"},
+			{"name":"扎伊尔","name_en":"Zaire","tel":"243"},
+			{"name":"直布罗陀","name_en":"Gibraltar","tel":"350"},
+			{"name":"智利","name_en":"Chile","tel":"56"},
+			{"name":"中非共和国","name_en":"CentralAfricanRepublic","tel":"236"},
+			{"name":"中国","name_en":"China","tel":"86"}
+			
+		]
+	 }
+    ]
+}
+ 
