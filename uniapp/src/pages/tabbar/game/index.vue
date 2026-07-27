@@ -44,7 +44,7 @@
           <SafeImage src="/static/art/category/sports.webp" mode="aspectFill" />
           <text>体育赛事</text>
         </view>
-        <view class="zone-shortcut" @tap="toggleLottery">
+        <view class="zone-shortcut" @tap="scrollToLottery">
           <SafeImage src="/static/art/category/lottery.webp" mode="aspectFill" />
           <text>彩票玩法</text>
         </view>
@@ -118,13 +118,12 @@
       <view class="library-button">打开目录</view>
     </view>
 
-    <view v-if="showLottery" id="lottery-panel" class="lottery-panel">
+    <view id="lottery-panel" class="lottery-panel">
       <view class="lottery-head">
         <view>
-          <text class="lottery-kicker">LOCAL DRAW</text>
-          <text class="lottery-title">本地彩票玩法</text>
+          <text class="lottery-title">彩票游戏</text>
+          <text class="lottery-subtitle">实时开奖 · 平台余额统一结算</text>
         </view>
-        <view class="lottery-close" @tap="showLottery = false">收起</view>
       </view>
 
       <scroll-view
@@ -146,7 +145,7 @@
 
       <view v-if="filteredGames.length" class="lottery-grid">
         <view
-          v-for="game in filteredGames.slice(0, 8)"
+          v-for="game in filteredGames"
           :key="String(game.id)"
           class="lottery-game"
           @tap="openLotteryGame(game)"
@@ -194,7 +193,6 @@ const selectedCategory = ref("");
 const selectedCode = ref("deepsea_hunter");
 const loading = ref(false);
 const launching = ref(false);
-const showLottery = ref(false);
 let loadedOnce = false;
 
 const normalizedCategories = computed<LotteryCategory[]>(() => home.value?.categories || []);
@@ -318,13 +316,8 @@ function openSports() {
   uni.switchTab({ url: "/pages/tabbar/sports/index" });
 }
 
-function toggleLottery() {
-  showLottery.value = !showLottery.value;
-  if (showLottery.value) {
-    setTimeout(() => {
-      uni.pageScrollTo({ selector: "#lottery-panel", duration: 280 });
-    }, 60);
-  }
+function scrollToLottery() {
+  uni.pageScrollTo({ selector: "#lottery-panel", duration: 280 });
 }
 
 function gameIcon(game: LotteryGame) {
@@ -825,8 +818,7 @@ onPullDownRefresh(() => {
   font-weight: 900;
 }
 
-.library-button,
-.lottery-close {
+.library-button {
   display: flex;
   height: 54rpx;
   flex: 0 0 auto;
@@ -857,10 +849,17 @@ onPullDownRefresh(() => {
 
 .lottery-title {
   display: block;
-  margin-top: 5rpx;
   color: #fff;
   font-size: 28rpx;
   font-weight: 900;
+}
+
+.lottery-subtitle {
+  display: block;
+  margin-top: 7rpx;
+  color: rgba(224, 233, 249, 0.58);
+  font-size: 18rpx;
+  line-height: 1.4;
 }
 
 .lottery-categories {

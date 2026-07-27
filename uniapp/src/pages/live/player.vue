@@ -2,10 +2,14 @@
   <view class="live-room">
     <video v-if="playSrc" id="liveVideo" class="live-video" :src="playSrc" :poster="cover" autoplay :muted="isMuted" object-fit="cover" :controls="false" :show-center-play-btn="false" @canplay="onLiveVideoCanPlay" @error="onLiveVideoError"/>
     <view v-else class="live-fallback">
-      <image class="fallback-cover" :src="cover || BRAND_ICON" mode="aspectFill" />
+      <image class="fallback-cover" src="/static/art/live/stream-away-v1.webp" mode="aspectFill" />
       <view class="fallback-mask" />
       <view class="fallback-content">
-        <text>{{ streamTip }}</text>
+        <text class="fallback-status">{{ resolvingStream ? "正在连接" : "直播暂停" }}</text>
+        <text class="fallback-title">{{ resolvingStream ? "正在连接直播" : "主播暂时离开" }}</text>
+        <text class="fallback-description">
+          {{ resolvingStream ? "正在为你接入直播信号" : "暂时没有收到直播信号，稍后再来看看" }}
+        </text>
         <button v-if="src && !resolvingStream" @tap="() => resolveRoomStream()">重试拉流</button>
       </view>
     </view>
@@ -671,13 +675,6 @@ const liveLotteryPlays = computed(() => arrayValue(liveLotteryDetail.value, "pla
 const liveSportsMarketList = computed(() => firstArray(liveSportsMarkets.value, ["markets", "items", "list"]));
 const liveLotteryOrderList = computed(() => firstArray(liveLotteryRecords.value, ["items", "list", "orders"]));
 const liveSportsOrderList = computed(() => firstArray(liveSportsRecords.value, ["items", "list", "orders"]));
-const streamTip = computed(() => {
-  if (resolvingStream.value) {
-    return "正在拉取直播流...";
-  }
-  return streamError.value || "直播地址暂不可用";
-});
-
 function addSystem(content: string, badge = "系统") {
   messages.value.push({ id: `system-${Date.now()}-${messages.value.length}`, name: "系统", content, badge, type: "system" });
   scrollChat();
@@ -2014,38 +2011,69 @@ onUnmounted(() => {
 }
 
 .fallback-mask {
-  background: rgba(0, 0, 0, 0.48);
+  background:
+    linear-gradient(180deg, rgba(4, 7, 14, 0.2) 0%, rgba(4, 7, 14, 0.05) 38%, rgba(4, 7, 14, 0.74) 100%),
+    linear-gradient(90deg, rgba(5, 8, 16, 0.2), transparent 58%);
 }
 
 .fallback-content {
   position: relative;
   z-index: 1;
   display: flex;
-  max-width: 520rpx;
+  width: 560rpx;
+  max-width: calc(100vw - 96rpx);
   flex-direction: column;
   align-items: center;
+  margin-top: -110rpx;
   text-align: center;
 }
 
-.fallback-content text {
+.fallback-status {
+  display: inline-flex;
+  height: 42rpx;
+  align-items: center;
+  padding: 0 18rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.28);
+  border-radius: 22rpx;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 19rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  background: rgba(7, 10, 17, 0.38);
+  backdrop-filter: blur(16rpx);
+}
+
+.fallback-title {
+  margin-top: 24rpx;
   color: #fff;
-  font-size: 28rpx;
-  font-weight: 900;
-  text-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.45);
+  font-size: 42rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  text-shadow: 0 3rpx 18rpx rgba(0, 0, 0, 0.46);
+}
+
+.fallback-description {
+  margin-top: 12rpx;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 23rpx;
+  line-height: 1.6;
+  text-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.5);
 }
 
 .fallback-content button {
   display: flex;
-  height: 62rpx;
+  height: 64rpx;
   align-items: center;
   justify-content: center;
-  margin-top: 22rpx;
-  padding: 0 34rpx;
-  border-radius: 31rpx;
+  margin-top: 28rpx;
+  padding: 0 36rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.32);
+  border-radius: 32rpx;
   color: #fff;
-  font-size: 24rpx;
-  font-weight: 900;
-  background: rgba(255, 88, 120, 0.88);
+  font-size: 23rpx;
+  font-weight: 700;
+  background: rgba(8, 11, 18, 0.52);
+  backdrop-filter: blur(18rpx);
 }
 
 .top-shade,
