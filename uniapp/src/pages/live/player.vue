@@ -75,7 +75,7 @@
     </view>
 
     <view class="enter-room-tip">
-      <image src="/static/live/icon_live_jin_guang.png" mode="widthFix" />
+      <image src="/static/live/icon_live_jin_guang.png" mode="scaleToFill" />
       <text>{{ enterTip }}</text>
     </view>
 
@@ -2343,20 +2343,32 @@ onUnmounted(() => {
   right: 20rpx;
   bottom: calc(478rpx + env(safe-area-inset-bottom));
   display: flex;
+  height: 92rpx;
   align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
 
 .enter-room-tip image {
-  width: 176rpx;
-  opacity: 0.8;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.86;
 }
 
 .enter-room-tip text {
-  margin-left: -36rpx;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 0 52rpx;
   color: #fff4a5;
   font-size: 25rpx;
   font-weight: 900;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gift-toast {
