@@ -2362,12 +2362,12 @@ onUnmounted(() => {
   position: relative;
   z-index: 1;
   width: 100%;
-  padding: 0 52rpx;
+  box-sizing: border-box;
+  padding: 0 10rpx;
   color: #fff4a5;
   font-size: 25rpx;
   font-weight: 900;
-  text-align: center;
-  transform: translateX(-24rpx);
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
