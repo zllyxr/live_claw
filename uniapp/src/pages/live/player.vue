@@ -2340,10 +2340,11 @@ onUnmounted(() => {
 .enter-room-tip {
   position: absolute;
   left: 20rpx;
-  right: 20rpx;
   bottom: calc(478rpx + env(safe-area-inset-bottom));
   display: flex;
-  height: 92rpx;
+  width: 500rpx;
+  max-width: calc(100vw - 40rpx);
+  height: 65rpx;
   align-items: center;
   justify-content: center;
   pointer-events: none;
