@@ -434,7 +434,7 @@ const visibleRooms = computed(() => (liveExpanded.value ? rooms.value : rooms.va
 const featuredMatches = computed(() => {
   const source = [...(sportsHome.value?.matches || []), ...(sportsHome.value?.upcoming || [])];
   const seen = new Set<string>();
-  return source
+  const ordered = source
     .filter((match) => {
       const key = matchKey(match);
       if (!key || seen.has(key)) {
@@ -443,8 +443,15 @@ const featuredMatches = computed(() => {
       seen.add(key);
       return true;
     })
-    .sort((a, b) => matchPriority(a) - matchPriority(b))
-    .slice(0, 3);
+    .sort((a, b) => matchPriority(a) - matchPriority(b));
+  const live = ordered.filter(isLiveMatch);
+  const bettable = ordered.filter(
+    (match) => !isLiveMatch(match) && String(match.bet_status || "") === "1"
+  );
+  const remaining = ordered.filter(
+    (match) => !isLiveMatch(match) && String(match.bet_status || "") !== "1"
+  );
+  return [...live.slice(0, 1), ...bettable, ...live.slice(1), ...remaining].slice(0, 3);
 });
 
 const featuredMatch = computed(() => featuredMatches.value[0]);
