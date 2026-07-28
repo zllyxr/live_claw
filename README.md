@@ -41,9 +41,13 @@ npm run build:h5
 cp .env.example .env
 cp docker/php/admin-production.env.example docker/php/admin-production.env
 # 修改两个环境文件中的密码、密钥、域名与外部地址
+git config core.hooksPath .githooks
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 生产环境必须使用随机强密码，并在反向代理/CDN 上开启 WebSocket。不要提交 `.env`、生产部署文档、数据库备份、支付证书或服务器私钥。
+
+服务器首次启用 `core.hooksPath` 后，每次 `git pull --ff-only` 都会自动修复
+H5 静态目录和文件的读取权限，避免 Apache 因资源文件为 `600` 而返回 `403`。
 
 仓库附带的初始化数据库已经脱敏，管理员密码不可用于登录。部署者应设置自己的 `DATABASE_AUTHCODE`，并在首次上线前生成新的管理员密码。

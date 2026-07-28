@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:app": "uni -p app",
-    "build:h5": "uni build -p h5",
+    "build:h5": "uni build -p h5 && sh scripts/normalize-h5-permissions.sh",
     "build:app-plus": "uni build -p app",
     "typecheck": "vue-tsc --noEmit",
     "build:wgt": "node scripts/build-wgt.mjs"
