@@ -414,7 +414,6 @@ onPullDownRefresh(() => {
 /* ---------- logged in ---------- */
 .profile-hero {
   position: relative;
-  overflow: hidden;
   margin-bottom: 96rpx;
   padding: calc(130rpx + var(--status-bar-height)) 28rpx 0;
   background: linear-gradient(150deg, #3b2a86 0%, #6a3fb5 48%, #b04a96 100%);
