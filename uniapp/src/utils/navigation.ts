@@ -2,6 +2,10 @@ import { API_HOST, DEFAULT_LANGUAGE } from "@/constants/config";
 import { getSession } from "@/utils/session";
 import { joinQuery } from "@/utils/url";
 
+export type GameZoneIntent = "fishing" | "lottery";
+
+const GAME_ZONE_INTENT_KEY = "claw_game_zone_intent";
+
 function appendAuthFragment(url: string, uid: string, token: string) {
   const params = new URLSearchParams();
   if (uid) {
@@ -24,6 +28,25 @@ export function openGameView(url: string) {
   uni.navigateTo({
     url: `/pages/gameview/index?url=${encodeURIComponent(url)}`
   });
+}
+
+export function openGameZone(zone: GameZoneIntent) {
+  try {
+    uni.setStorageSync(GAME_ZONE_INTENT_KEY, zone);
+  } catch {
+    // The game tab still opens even when storage is unavailable.
+  }
+  uni.switchTab({ url: "/pages/tabbar/game/index" });
+}
+
+export function consumeGameZoneIntent(): GameZoneIntent | "" {
+  try {
+    const value = String(uni.getStorageSync(GAME_ZONE_INTENT_KEY) || "");
+    uni.removeStorageSync(GAME_ZONE_INTENT_KEY);
+    return value === "lottery" || value === "fishing" ? value : "";
+  } catch {
+    return "";
+  }
 }
 
 export function normalizePageUrl(value?: string | null) {

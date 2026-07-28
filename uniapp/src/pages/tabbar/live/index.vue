@@ -1,116 +1,373 @@
 <template>
-  <view class="live-page">
-    <!-- 沉浸式头部：banner 背景 + 品牌 + 搜索 + 分类 -->
-    <view class="hero-head">
-      <image class="hero-bg" src="/static/art/banner/live-header.webp" mode="aspectFill" />
-      <view class="hero-veil" />
-
-      <view class="head-row">
-        <view class="brand-line">
-          <image class="brand-logo" src="/static/brand/icon-round.webp" mode="aspectFit" />
-          <text class="brand-word">星域直播</text>
-        </view>
-        <view class="head-actions">
-          <view class="ico-btn" @tap="openRank">
-            <image src="/static/icons/nav-rank.svg" mode="aspectFit" />
-          </view>
-          <view class="ico-btn" @tap="openMessages">
-            <image src="/static/icons/nav-bell.svg" mode="aspectFit" />
-          </view>
-        </view>
+  <view class="home-page">
+    <view class="home-header">
+      <view class="brand-lockup">
+        <image class="brand-logo" src="/static/brand/icon-round.webp" mode="aspectFit" />
+        <text class="brand-name">星域</text>
       </view>
 
-      <view class="search-bar" @tap="openSearch">
-        <image class="search-ico" src="/static/icons/nav-search.svg" mode="aspectFit" />
-        <text class="search-ph">搜索主播 / 房间号</text>
+      <view class="header-search" @tap="openSearch">
+        <image src="/static/native/home_hot_search_dark.png" mode="aspectFit" />
+        <text>搜索主播、赛事、游戏</text>
       </view>
 
-      <view class="quick-row">
-        <view class="quick-card" @tap="openFollow">
-          <image class="quick-ico" src="/static/icons/nav-follow.svg" mode="aspectFit" />
-          <view class="quick-copy">
-            <text class="quick-title">我的关注</text>
-            <text class="quick-sub">{{ followLiveText }}</text>
-          </view>
-        </view>
-        <view class="quick-card" @tap="openRank">
-          <image class="quick-ico" src="/static/icons/nav-rank.svg" mode="aspectFit" />
-          <view class="quick-copy">
-            <text class="quick-title">人气榜</text>
-            <text class="quick-sub">今日主播排名</text>
-          </view>
-        </view>
+      <view class="message-button" @tap="openMessages">
+        <image src="/static/icons/nav-bell.svg" mode="aspectFit" />
+      </view>
+
+      <view class="wallet-chip" @tap="openWallet">
+        <image src="/static/brand/icon-round.webp" mode="aspectFit" />
+        <text>{{ balanceText }}</text>
       </view>
     </view>
 
-    <!-- 分类 tab -->
-    <scroll-view scroll-x class="cat-strip" :show-scrollbar="false">
-      <view
-        v-for="cat in liveCats"
-        :key="cat.key"
-        class="cat-chip"
-        :class="{ on: activeCat === cat.key }"
-        @tap="switchCat(cat.key)"
-      >
-        {{ cat.name }}
-      </view>
-    </scroll-view>
-
-    <view v-if="rooms.length" class="live-grid">
-      <view v-for="room in rooms" :key="String(room.uid || room.stream)" class="live-card" @tap="openRoom(room)">
-        <view class="cover-box">
-          <SafeImage class="cover" :src="coverOf(room)" :fallback="coverFallback(room)" mode="aspectFill" />
-          <view class="live-badge">
-            <view class="live-pulse" />
-            <text>直播中</text>
+    <swiper
+      class="hero-swiper"
+      autoplay
+      circular
+      :interval="4800"
+      :duration="500"
+      @change="onHeroChange"
+    >
+      <swiper-item v-for="slide in heroSlides" :key="slide.image">
+        <view class="hero-card" @tap="slide.action">
+          <image class="hero-image" :src="slide.image" mode="aspectFill" />
+          <view class="hero-mask" />
+          <view class="hero-copy" :class="slide.copyClass">
+            <text class="hero-kicker">{{ slide.kicker }}</text>
+            <text class="hero-title">{{ slide.title }}</text>
+            <text class="hero-subtitle">{{ slide.subtitle }}</text>
+            <view class="hero-action">{{ slide.actionText }}</view>
           </view>
-          <view class="audience-chip">{{ displayCount(room.nums || room.hotvotes) }}人在看</view>
-          <view class="cover-mask">
-            <text class="room-title">{{ room.title || anchorName(room) || "星域直播间" }}</text>
-            <view class="anchor-row">
-              <SafeImage class="avatar" :src="avatarOf(room)" fallback="/static/icons/avatar-anchor.svg" round mode="aspectFill" />
-              <text class="anchor">{{ anchorName(room) || "主播" }}</text>
+        </view>
+      </swiper-item>
+    </swiper>
+    <view class="hero-dots">
+      <view
+        v-for="(_, index) in heroSlides"
+        :key="index"
+        class="hero-dot"
+        :class="{ active: heroIndex === index }"
+      />
+    </view>
+
+    <view class="quick-nav">
+      <view
+        v-for="entry in quickEntries"
+        :key="entry.key"
+        class="quick-entry"
+        @tap="entry.action"
+      >
+        <image class="quick-icon" :src="entry.icon" mode="aspectFit" />
+        <text class="quick-title">{{ entry.name }}</text>
+        <text class="quick-subtitle">{{ entry.subtitle }}</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-heading">
+        <view class="section-title-group">
+          <image src="/static/native/hot_live.png" mode="aspectFit" />
+          <text class="section-title">今日精选</text>
+        </view>
+        <text class="section-more" @tap="scrollToLive">更多推荐</text>
+      </view>
+
+      <scroll-view scroll-x class="featured-scroll" :show-scrollbar="false">
+        <view class="horizontal-content">
+          <view v-if="featuredRoom" class="featured-card media-card" @tap="openRoom(featuredRoom)">
+            <SafeImage
+              class="featured-media"
+              :src="coverOf(featuredRoom)"
+              :fallback="coverFallback(featuredRoom)"
+              mode="aspectFill"
+            />
+            <view class="featured-badge">LIVE</view>
+            <view class="featured-gradient">
+              <text class="featured-title">{{ anchorName(featuredRoom) || "热门主播" }}</text>
+              <text class="featured-copy">{{ featuredRoom.title || "精彩直播进行中" }}</text>
+            </view>
+          </view>
+
+          <view v-if="featuredMatch" class="featured-card match-feature" @tap="openMatch(featuredMatch)">
+            <view class="featured-card-head">
+              <text class="featured-label">热门赛事</text>
+              <text>{{ statusText(featuredMatch) }}</text>
+            </view>
+            <view class="featured-team-row">
+              <SafeImage
+                :src="teamLogo(featuredMatch, 'home')"
+                fallback="/static/icons/league-default.svg"
+                mode="aspectFit"
+              />
+              <text class="featured-score">{{ scoreText(featuredMatch) }}</text>
+              <SafeImage
+                :src="teamLogo(featuredMatch, 'away')"
+                fallback="/static/icons/league-default.svg"
+                mode="aspectFit"
+              />
+            </view>
+            <text class="featured-title dark">{{ teamName(featuredMatch, "home") }}</text>
+            <text class="featured-copy dark">对阵 {{ teamName(featuredMatch, "away") }}</text>
+          </view>
+
+          <view v-if="featuredLottery" class="featured-card lottery-feature-card" @tap="openLotteryGame(featuredLottery)">
+            <view class="featured-card-head">
+              <text class="featured-label lottery">开奖中</text>
+              <text>{{ issueNumber(featuredLottery) }}</text>
+            </view>
+            <SafeImage
+              class="featured-lottery-icon"
+              :src="gameIcon(featuredLottery)"
+              fallback="/static/art/category/lottery.webp"
+              mode="aspectFit"
+            />
+            <text class="featured-title dark">{{ lotteryName(featuredLottery) }}</text>
+            <text class="featured-countdown">{{ lotteryCountdown(featuredLottery) }}</text>
+          </view>
+
+          <view class="featured-card media-card" @tap="launchFish">
+            <image
+              class="featured-media"
+              src="/static/art/home/home-fishing-banner.webp"
+              mode="aspectFill"
+            />
+            <view class="featured-gradient">
+              <text class="featured-title">{{ fishGame?.name || "深海猎手" }}</text>
+              <text class="featured-copy">{{ fishGame?.players_text || "1-4人实时对战" }}</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="section">
+      <view class="section-heading">
+        <view class="section-title-group">
+          <image src="/static/art/home/home-entry-sports.webp" mode="aspectFit" />
+          <text class="section-title">体育赛事</text>
+        </view>
+        <text class="section-more" @tap="openSports">更多赛事</text>
+      </view>
+
+      <scroll-view v-if="featuredMatches.length" scroll-x class="sports-scroll" :show-scrollbar="false">
+        <view class="horizontal-content">
+          <view
+            v-for="match in featuredMatches"
+            :key="matchKey(match)"
+            class="sports-card"
+            @tap="openMatch(match)"
+          >
+            <view class="sports-card-head">
+              <text class="sports-league">{{ match.competition_type || match.league_name || "足球赛事" }}</text>
+              <text class="sports-status" :class="{ live: isLiveMatch(match) }">{{ statusText(match) }}</text>
+            </view>
+            <view class="sports-teams">
+              <view class="sports-team">
+                <SafeImage
+                  :src="teamLogo(match, 'home')"
+                  fallback="/static/icons/league-default.svg"
+                  mode="aspectFit"
+                />
+                <text>{{ teamName(match, "home") }}</text>
+              </view>
+              <view class="sports-score">
+                <text>{{ scoreText(match) }}</text>
+                <text>{{ match.kickoff_clock_text || match.kickoff_time_text || match.kickoff_text || "" }}</text>
+              </view>
+              <view class="sports-team">
+                <SafeImage
+                  :src="teamLogo(match, 'away')"
+                  fallback="/static/icons/league-default.svg"
+                  mode="aspectFit"
+                />
+                <text>{{ teamName(match, "away") }}</text>
+              </view>
+            </view>
+            <view v-if="oddsFor(match).length" class="odds-row">
+              <view v-for="option in oddsFor(match)" :key="String(option.id || option.option_code)" class="odds-chip">
+                <text>{{ option.option_name || "赔率" }}</text>
+                <text>{{ formatOdds(option.odds) }}</text>
+              </view>
+            </view>
+            <view v-else class="odds-empty">点击查看赛事详情</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view v-else class="section-state">{{ loading.sports ? "赛事同步中" : sportsError || "暂无可用赛事" }}</view>
+    </view>
+
+    <view class="section lottery-section">
+      <view class="section-heading">
+        <view class="section-title-group">
+          <image src="/static/art/home/home-entry-lottery.webp" mode="aspectFit" />
+          <text class="section-title">彩票中心</text>
+        </view>
+        <text class="section-more" @tap="openLotteryZone">更多玩法</text>
+      </view>
+
+      <view v-if="featuredLottery" class="lottery-panel">
+        <view class="lottery-primary" @tap="openLotteryGame(featuredLottery)">
+          <view class="lottery-primary-head">
+            <view>
+              <text class="lottery-primary-title">{{ lotteryName(featuredLottery) }}</text>
+              <text class="lottery-issue">第 {{ issueNumber(featuredLottery) }} 期</text>
+            </view>
+            <SafeImage
+              class="lottery-primary-icon"
+              :src="gameIcon(featuredLottery)"
+              fallback="/static/art/category/lottery.webp"
+              mode="aspectFit"
+            />
+          </view>
+          <text class="lottery-count-label">实时封盘倒计时</text>
+          <text class="lottery-count-value">{{ lotteryCountdown(featuredLottery) }}</text>
+          <view class="lottery-action">立即购彩</view>
+        </view>
+
+        <view class="lottery-secondary">
+          <view
+            v-for="game in secondaryLotteryGames"
+            :key="String(game.id || game.game_code)"
+            class="lottery-mini"
+            @tap="openLotteryGame(game)"
+          >
+            <SafeImage
+              :src="gameIcon(game)"
+              fallback="/static/art/category/lottery.webp"
+              mode="aspectFit"
+            />
+            <view>
+              <text>{{ lotteryName(game) }}</text>
+              <text>{{ issueNumber(game) }}期</text>
             </view>
           </view>
         </view>
       </view>
+      <view v-else class="section-state">{{ loading.lottery ? "彩票数据同步中" : lotteryError || "暂无彩票数据" }}</view>
     </view>
-    <view v-else-if="loading" class="live-grid">
-      <view v-for="i in 4" :key="i" class="skeleton-card">
-        <view class="skeleton-shimmer" />
+
+    <view class="section">
+      <view class="section-heading">
+        <view class="section-title-group">
+          <image src="/static/art/home/home-entry-fishing.webp" mode="aspectFit" />
+          <text class="section-title">捕鱼达人</text>
+        </view>
+        <text class="section-more" @tap="openFishingZone">更多游戏</text>
+      </view>
+
+      <view class="fishing-banner" @tap="launchFish">
+        <image src="/static/art/home/home-fishing-banner.webp" mode="aspectFill" />
+        <view class="fishing-copy">
+          <text class="fishing-kicker">多人实时 · 统一结算</text>
+          <text class="fishing-title">{{ fishGame?.name || "深海猎手" }}</text>
+          <text class="fishing-subtitle">{{ fishGame?.remark || "探索黄金海域，挑战深海巨兽" }}</text>
+          <view class="fishing-action">{{ launchingFish ? "正在进入" : "快速开始" }}</view>
+        </view>
       </view>
     </view>
-    <EmptyState v-else kind="live" title="暂无直播房间" description="下拉页面可重新刷新。" />
+
+    <view id="live-section" class="section live-section">
+      <view class="section-heading">
+        <view class="section-title-group">
+          <image src="/static/native/hot_live.png" mode="aspectFit" />
+          <text class="section-title">热门直播</text>
+        </view>
+        <text class="section-more" @tap="openFollow">我的关注</text>
+      </view>
+
+      <view v-if="visibleRooms.length" class="live-grid">
+        <view
+          v-for="room in visibleRooms"
+          :key="String(room.uid || room.stream)"
+          class="live-card"
+          @tap="openRoom(room)"
+        >
+          <view class="live-cover">
+            <SafeImage :src="coverOf(room)" :fallback="coverFallback(room)" mode="aspectFill" />
+            <view class="live-status">直播中</view>
+            <view class="live-count">{{ displayCount(room.nums || room.hotvotes) }}人</view>
+            <view class="live-copy">
+              <text>{{ room.title || "星域直播间" }}</text>
+              <text>{{ anchorName(room) || "主播" }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <EmptyState
+        v-else-if="!loading.live"
+        kind="live"
+        title="暂无直播房间"
+        :description="liveError || '下拉页面可重新刷新。'"
+      />
+      <view v-else class="section-state">直播房间同步中</view>
+
+      <view v-if="rooms.length && (!liveExpanded || !liveFinished)" class="load-more" @tap="showMoreLive">
+        {{ liveExpanded ? (loading.live ? "加载中" : "加载更多") : "查看更多直播" }}
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { onPullDownRefresh, onReachBottom, onShow } from "@dcloudio/uni-app";
+import { computed, reactive, ref } from "vue";
+import { onHide, onPullDownRefresh, onReachBottom, onShow, onUnload } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import SafeImage from "@/components/SafeImage.vue";
-import { getFollowLive, getHotLive } from "@/api/services";
-import type { LiveRoom } from "@/types/api";
-import { absolutizeUrl, firstText } from "@/utils/url";
+import {
+  enterMiniGame,
+  getHotLive,
+  getLotteryHome,
+  getMiniGames,
+  getSportsBetMarkets,
+  getSportsHome
+} from "@/api/services";
+import type {
+  LiveRoom,
+  LotteryGame,
+  LotteryHome,
+  MiniGameBundle,
+  MiniGameItem,
+  SportsHome,
+  SportsMarketOption,
+  SportsMatch
+} from "@/types/api";
 import { displayCount } from "@/utils/format";
+import {
+  buildSportsDetailUrl,
+  openGameView,
+  openGameZone,
+  openWebView
+} from "@/utils/navigation";
 import { isLoggedIn, requireLogin } from "@/utils/session";
+import { absolutizeUrl, firstText } from "@/utils/url";
 
 const rooms = ref<LiveRoom[]>([]);
-const page = ref(1);
-const loading = ref(false);
-const finished = ref(false);
-const followLivingCount = ref<number | undefined>();
-let loadedOnce = false;
+const sportsHome = ref<SportsHome>();
+const lotteryHome = ref<LotteryHome>();
+const miniGames = ref<MiniGameBundle>();
+const oddsByMatch = ref<Record<string, SportsMarketOption[]>>({});
 
-const followLiveText = computed(() => {
-  if (!isLoggedIn()) {
-    return "登录后查看关注";
-  }
-  if (followLivingCount.value === undefined) {
-    return "正在同步关注";
-  }
-  return `${followLivingCount.value}人正在直播`;
+const loading = reactive({
+  live: false,
+  sports: false,
+  lottery: false,
+  games: false
 });
+
+const liveError = ref("");
+const sportsError = ref("");
+const lotteryError = ref("");
+const gamesError = ref("");
+const livePage = ref(1);
+const liveFinished = ref(false);
+const liveExpanded = ref(false);
+const launchingFish = ref(false);
+const heroIndex = ref(0);
+const loggedIn = ref(isLoggedIn());
+const nowSeconds = ref(Math.floor(Date.now() / 1000));
+let loadedOnce = false;
+let clockTimer: ReturnType<typeof setInterval> | undefined;
 
 const COVERS = [
   "/static/art/cover/cover1.webp",
@@ -119,7 +376,102 @@ const COVERS = [
   "/static/art/cover/cover4.webp"
 ];
 
-/** 无封面时按房间标识稳定分配一张占位图（同一房间每次都是同一张） */
+const heroSlides = [
+  {
+    image: "/static/art/home/home-hero-live.webp",
+    kicker: "精彩赛事 · 热门直播",
+    title: "每一场精彩 都在星域",
+    subtitle: "实时赛事与人气主播一站直达",
+    actionText: "查看赛事",
+    copyClass: "hero-copy-center",
+    action: openSports
+  },
+  {
+    image: "/static/art/home/home-hero-games.webp",
+    kicker: "彩票游戏 · 深海捕鱼",
+    title: "多种玩法 随时开局",
+    subtitle: "平台余额统一结算，过程清晰透明",
+    actionText: "进入游戏",
+    copyClass: "",
+    action: openFishingZone
+  }
+];
+
+const quickEntries = [
+  {
+    key: "live",
+    name: "直播",
+    subtitle: "热门主播",
+    icon: "/static/art/home/home-entry-live.webp",
+    action: scrollToLive
+  },
+  {
+    key: "sports",
+    name: "体育",
+    subtitle: "实时赛事",
+    icon: "/static/art/home/home-entry-sports.webp",
+    action: openSports
+  },
+  {
+    key: "lottery",
+    name: "彩票",
+    subtitle: "多种彩票",
+    icon: "/static/art/home/home-entry-lottery.webp",
+    action: openLotteryZone
+  },
+  {
+    key: "fishing",
+    name: "捕鱼",
+    subtitle: "多人在线",
+    icon: "/static/art/home/home-entry-fishing.webp",
+    action: openFishingZone
+  }
+];
+
+const featuredRoom = computed(() => rooms.value[0]);
+const visibleRooms = computed(() => (liveExpanded.value ? rooms.value : rooms.value.slice(0, 6)));
+
+const featuredMatches = computed(() => {
+  const source = [...(sportsHome.value?.matches || []), ...(sportsHome.value?.upcoming || [])];
+  const seen = new Set<string>();
+  return source
+    .filter((match) => {
+      const key = matchKey(match);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => matchPriority(a) - matchPriority(b))
+    .slice(0, 3);
+});
+
+const featuredMatch = computed(() => featuredMatches.value[0]);
+const lotteryGames = computed(() => (lotteryHome.value?.games || []).slice(0, 4));
+const featuredLottery = computed(() => lotteryGames.value[0]);
+const secondaryLotteryGames = computed(() => lotteryGames.value.slice(1, 4));
+const fishGame = computed<MiniGameItem | undefined>(() => {
+  const games = miniGames.value?.games || [];
+  return games.find((game) => String(game.code || "") === "deepsea_hunter") || games[0];
+});
+
+const balanceText = computed(() => {
+  if (!loggedIn.value) {
+    return "登录";
+  }
+  const raw = String(lotteryHome.value?.coin || "0");
+  const value = Number(raw);
+  if (Number.isFinite(value) && Math.abs(value) >= 10000) {
+    return `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}万 星币`;
+  }
+  return `${raw} 星币`;
+});
+
+function onHeroChange(event: { detail?: { current?: number } }) {
+  heroIndex.value = Number(event.detail?.current || 0);
+}
+
 function coverFallback(room: LiveRoom) {
   const seed = String(room.uid || room.stream || "0");
   let hash = 0;
@@ -145,42 +497,205 @@ function streamSourceOf(room: LiveRoom) {
   return firstText(room.pull, room.flvpull, room.stream);
 }
 
-async function load(reset = false) {
-  if (loading.value || (finished.value && !reset)) {
+function matchKey(match: SportsMatch) {
+  return String(match.match_id || match.public_match_id || match.id || "");
+}
+
+function isLiveMatch(match: SportsMatch) {
+  const status = String(match.status_text || "").toLowerCase();
+  return (
+    status.includes("live") ||
+    status.includes("进行") ||
+    status.includes("first half") ||
+    status.includes("second half") ||
+    status.includes("上半") ||
+    status.includes("下半")
+  );
+}
+
+function isFinishedMatch(match: SportsMatch) {
+  const status = String(match.status_text || "").toLowerCase();
+  return status.includes("finished") || status.includes("结束") || status.includes("完场");
+}
+
+function matchPriority(match: SportsMatch) {
+  if (isLiveMatch(match)) return 0;
+  if (String(match.bet_status || "") === "1") return 1;
+  if (!isFinishedMatch(match)) return 2;
+  return 3;
+}
+
+function statusText(match: SportsMatch) {
+  const value = String(match.status_text || match.bet_status_text || "");
+  const lower = value.toLowerCase();
+  if (isLiveMatch(match)) return "进行中";
+  if (lower.includes("not started")) return "未开始";
+  if (lower.includes("finished")) return "已结束";
+  return value || "待开赛";
+}
+
+function teamName(match: SportsMatch, side: "home" | "away") {
+  const direct = side === "home" ? match.home_name : match.away_name;
+  const team = side === "home" ? match.home_team : match.away_team;
+  if (direct) return String(direct);
+  if (team && typeof team === "object") return String(team.name || "球队");
+  return String(team || "球队");
+}
+
+function teamLogo(match: SportsMatch, side: "home" | "away") {
+  const direct = side === "home" ? match.home_logo : match.away_logo;
+  const team = side === "home" ? match.home_team : match.away_team;
+  if (direct) return absolutizeUrl(String(direct));
+  if (team && typeof team === "object") return absolutizeUrl(String(team.logo || ""));
+  return "/static/icons/league-default.svg";
+}
+
+function scoreText(match: SportsMatch) {
+  const home = String(match.home_score ?? "-");
+  const away = String(match.away_score ?? "-");
+  return home === "-" && away === "-" ? "VS" : `${home} - ${away}`;
+}
+
+function oddsFor(match: SportsMatch) {
+  return oddsByMatch.value[matchKey(match)] || [];
+}
+
+function formatOdds(value?: string | number) {
+  const parsed = Number(value || 0);
+  return parsed > 0 ? parsed.toFixed(2) : "-";
+}
+
+function lotteryName(game: LotteryGame) {
+  return String(game.game_name || game.game_name_en || "彩票游戏");
+}
+
+function gameIcon(game: LotteryGame) {
+  return absolutizeUrl(game.icon_url || game.icon || "") || "/static/art/category/lottery.webp";
+}
+
+function issueOf(game: LotteryGame) {
+  return (game.current_issue || {}) as Record<string, unknown>;
+}
+
+function issueNumber(game: LotteryGame) {
+  return String(issueOf(game).issue_num || "--");
+}
+
+function lotteryCountdown(game: LotteryGame) {
+  const issue = issueOf(game);
+  const deadline = Number(issue.seal_time || issue.open_time || 0);
+  const fallback = Number(issue.seal_countdown || issue.open_countdown || 0);
+  const seconds = deadline > 0 ? Math.max(0, deadline - nowSeconds.value) : Math.max(0, fallback);
+  if (seconds <= 0) {
+    return "等待开奖";
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remain = seconds % 60;
+  return [hours, minutes, remain].map((item) => String(item).padStart(2, "0")).join(":");
+}
+
+async function loadRooms(reset = false) {
+  if (loading.live || (liveFinished.value && !reset)) {
     return;
   }
-  loading.value = true;
+  loading.live = true;
+  liveError.value = "";
   if (reset) {
-    page.value = 1;
-    finished.value = false;
+    livePage.value = 1;
+    liveFinished.value = false;
   }
   try {
-    const list = await getHotLive(page.value);
-    rooms.value = reset ? list : rooms.value.concat(list);
-    if (!list.length) {
-      finished.value = true;
+    const list = await getHotLive(livePage.value);
+    if (reset) {
+      rooms.value = list;
     } else {
-      page.value += 1;
+      const known = new Set(rooms.value.map((room) => String(room.uid || room.stream)));
+      rooms.value = rooms.value.concat(
+        list.filter((room) => !known.has(String(room.uid || room.stream)))
+      );
     }
-  } catch (error: any) {
-    uni.showToast({ title: error?.message || "直播加载失败", icon: "none" });
+    if (!list.length) {
+      liveFinished.value = true;
+    } else {
+      livePage.value += 1;
+    }
+  } catch {
+    liveError.value = "直播数据暂时不可用，请下拉重试";
   } finally {
-    loading.value = false;
-    uni.stopPullDownRefresh();
+    loading.live = false;
   }
 }
 
-async function loadFollowLivingCount() {
-  if (!isLoggedIn()) {
-    followLivingCount.value = undefined;
-    return;
-  }
+async function loadSportsOdds(matches: SportsMatch[]) {
+  const next: Record<string, SportsMarketOption[]> = {};
+  await Promise.all(
+    matches.map(async (match) => {
+      const key = matchKey(match);
+      if (!key || String(match.bet_status || "") !== "1") {
+        return;
+      }
+      try {
+        const detail = await getSportsBetMarkets(key);
+        const market =
+          detail?.markets?.find((item) => item.market_code === "MATCH_RESULT") ||
+          detail?.markets?.[0];
+        if (market?.options?.length) {
+          next[key] = market.options.slice(0, 3);
+        }
+      } catch {
+        // Odds are supplemental; the match card remains usable without them.
+      }
+    })
+  );
+  oddsByMatch.value = next;
+}
+
+async function loadSportsSection() {
+  loading.sports = true;
+  sportsError.value = "";
   try {
-    const data = await getFollowLive(1);
-    followLivingCount.value = Array.isArray(data?.list) ? data.list.length : 0;
+    sportsHome.value = await getSportsHome("today");
+    await loadSportsOdds(featuredMatches.value);
   } catch {
-    followLivingCount.value = 0;
+    sportsError.value = "赛事数据暂时不可用，请下拉重试";
+  } finally {
+    loading.sports = false;
   }
+}
+
+async function loadLotterySection() {
+  loading.lottery = true;
+  lotteryError.value = "";
+  try {
+    lotteryHome.value = await getLotteryHome();
+  } catch {
+    lotteryError.value = "彩票数据暂时不可用，请下拉重试";
+  } finally {
+    loading.lottery = false;
+  }
+}
+
+async function loadGameSection() {
+  loading.games = true;
+  gamesError.value = "";
+  try {
+    miniGames.value = await getMiniGames();
+  } catch {
+    gamesError.value = "游戏数据暂时不可用，请下拉重试";
+  } finally {
+    loading.games = false;
+  }
+}
+
+async function loadDashboard() {
+  await Promise.allSettled([
+    loadRooms(true),
+    loadSportsSection(),
+    loadLotterySection(),
+    loadGameSection()
+  ]);
+  uni.stopPullDownRefresh();
 }
 
 function openRoom(room: LiveRoom) {
@@ -197,25 +712,8 @@ function openRoom(room: LiveRoom) {
   });
 }
 
-const liveCats = [
-  { key: "hot", name: "热门" },
-  { key: "new", name: "新秀" },
-  { key: "nearby", name: "附近" },
-  { key: "game", name: "游戏" },
-  { key: "chat", name: "聊天" }
-];
-const activeCat = ref("hot");
-
-function switchCat(key: string) {
-  if (activeCat.value === key) {
-    return;
-  }
-  activeCat.value = key;
-  void load(true);
-}
-
-function openRank() {
-  uni.navigateTo({ url: "/pages/user/list?type=rank&name=" + encodeURIComponent("人气榜") });
+function openSearch() {
+  uni.navigateTo({ url: "/pages/search/index" });
 }
 
 function openMessages() {
@@ -224,8 +722,10 @@ function openMessages() {
   }
 }
 
-function openSearch() {
-  uni.navigateTo({ url: "/pages/search/index" });
+function openWallet() {
+  if (requireLogin()) {
+    uni.navigateTo({ url: "/pages/wallet/recharge" });
+  }
 }
 
 function openFollow() {
@@ -234,389 +734,1009 @@ function openFollow() {
   }
 }
 
+function openSports() {
+  uni.switchTab({ url: "/pages/tabbar/sports/index" });
+}
+
+function openLotteryZone() {
+  openGameZone("lottery");
+}
+
+function openFishingZone() {
+  openGameZone("fishing");
+}
+
+function scrollToLive() {
+  uni.pageScrollTo({ selector: "#live-section", duration: 360 });
+}
+
+function openMatch(match: SportsMatch) {
+  if (!requireLogin()) {
+    return;
+  }
+  openWebView(buildSportsDetailUrl(match), "赛事详情");
+}
+
+function openLotteryGame(game: LotteryGame) {
+  if (!requireLogin()) {
+    return;
+  }
+  const query = [
+    `game_id=${encodeURIComponent(String(game.id || ""))}`,
+    `game_code=${encodeURIComponent(String(game.game_code || ""))}`,
+    `title=${encodeURIComponent(lotteryName(game))}`
+  ].join("&");
+  uni.navigateTo({ url: `/pages/game/bet?${query}` });
+}
+
+async function launchFish() {
+  const game = fishGame.value;
+  if (!game || launchingFish.value) {
+    if (!game && gamesError.value) {
+      uni.showToast({ title: gamesError.value, icon: "none" });
+    }
+    return;
+  }
+  if (game.need_login === "1" && !requireLogin()) {
+    return;
+  }
+  launchingFish.value = true;
+  uni.showLoading({ title: "进入游戏", mask: true });
+  try {
+    const info = await enterMiniGame(String(game.code || "deepsea_hunter"));
+    const url = String(info?.launch_url || "");
+    if (!url) {
+      throw new Error("游戏地址无效");
+    }
+    openGameView(absolutizeUrl(url) || url);
+  } catch (error: any) {
+    uni.showToast({ title: error?.message || "进入游戏失败", icon: "none" });
+  } finally {
+    uni.hideLoading();
+    launchingFish.value = false;
+  }
+}
+
+function showMoreLive() {
+  if (!liveExpanded.value) {
+    liveExpanded.value = true;
+    return;
+  }
+  void loadRooms(false);
+}
+
+function startClock() {
+  if (clockTimer) {
+    clearInterval(clockTimer);
+  }
+  nowSeconds.value = Math.floor(Date.now() / 1000);
+  clockTimer = setInterval(() => {
+    nowSeconds.value = Math.floor(Date.now() / 1000);
+  }, 1000);
+}
+
+function stopClock() {
+  if (clockTimer) {
+    clearInterval(clockTimer);
+    clockTimer = undefined;
+  }
+}
+
 onShow(() => {
-  void loadFollowLivingCount();
+  loggedIn.value = isLoggedIn();
+  startClock();
   if (!loadedOnce) {
     loadedOnce = true;
-    void load(true);
+    void loadDashboard();
+  } else {
+    void loadLotterySection();
   }
 });
 
+onHide(stopClock);
+onUnload(stopClock);
+
 onPullDownRefresh(() => {
-  void loadFollowLivingCount();
-  void load(true);
+  loggedIn.value = isLoggedIn();
+  void loadDashboard();
 });
 
 onReachBottom(() => {
-  void load(false);
+  if (liveExpanded.value) {
+    void loadRooms(false);
+  }
 });
 </script>
 
 <style scoped>
-.live-page {
+.home-page {
   min-height: 100vh;
   overflow-x: hidden;
-  padding: calc(30rpx + var(--status-bar-height)) 28rpx calc(128rpx + env(safe-area-inset-bottom));
+  padding: calc(22rpx + var(--status-bar-height)) 24rpx calc(144rpx + env(safe-area-inset-bottom));
   color: var(--ink);
-  background:
-    radial-gradient(56% 240rpx at 12% 0%, rgba(255, 88, 120, 0.08), transparent 100%),
-    radial-gradient(46% 220rpx at 92% 2%, rgba(122, 92, 255, 0.07), transparent 100%),
-    var(--bg);
+  background: var(--bg);
 }
 
-/* ---------- 沉浸式头部 ---------- */
-.hero-head {
-  position: relative;
-  overflow: hidden;
-  margin: calc(-30rpx - var(--status-bar-height)) -28rpx 0;
-  padding: calc(28rpx + var(--status-bar-height)) 28rpx 26rpx;
-  border-radius: 0 0 36rpx 36rpx;
-  background: linear-gradient(135deg, #2a1b6e, #5a2ea6 55%, #a4409b);
-  box-shadow: 0 14rpx 40rpx rgba(48, 26, 112, 0.28);
-}
-
-.hero-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.hero-veil {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(100deg, rgba(24, 14, 62, 0.86) 0%, rgba(24, 14, 62, 0.42) 46%, rgba(24, 14, 62, 0.14) 72%),
-    linear-gradient(180deg, rgba(18, 10, 48, 0.28), rgba(18, 10, 48, 0));
-}
-
-.head-row {
-  position: relative;
-  z-index: 1;
+.home-header {
   display: flex;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
 }
 
-.brand-line {
+.brand-lockup {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 14rpx;
+  gap: 10rpx;
 }
 
 .brand-logo {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.14);
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 14rpx;
+  box-shadow: 0 8rpx 20rpx rgba(255, 77, 110, 0.18);
 }
 
-.brand-word {
-  color: #fff;
-  font-size: 34rpx;
-  font-weight: 800;
+.brand-name {
+  color: var(--ink);
+  font-size: 32rpx;
+  font-weight: 900;
   letter-spacing: 2rpx;
 }
 
-.head-actions {
+.header-search {
   display: flex;
-  gap: 16rpx;
-}
-
-.ico-btn {
-  display: flex;
-  width: 64rpx;
+  min-width: 0;
   height: 64rpx;
+  flex: 1;
   align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px);
-  transition: transform 0.15s ease;
-}
-
-.ico-btn:active {
-  transform: scale(0.9);
-}
-
-.ico-btn image {
-  width: 34rpx;
-  height: 34rpx;
-}
-
-/* 搜索栏 */
-.search-bar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  height: 78rpx;
-  margin-top: 26rpx;
-  padding: 0 26rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(10px);
-}
-
-.search-ico {
-  width: 30rpx;
-  height: 30rpx;
-  opacity: 0.9;
-}
-
-.search-ph {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 26rpx;
-}
-
-/* 快捷入口 */
-.quick-row {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-top: 22rpx;
-}
-
-.quick-card {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  padding: 18rpx 20rpx;
-  border: 2rpx solid rgba(255, 255, 255, 0.16);
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(10px);
-  transition: transform 0.15s ease;
-}
-
-.quick-card:active {
-  transform: scale(0.96);
-}
-
-.quick-ico {
-  width: 40rpx;
-  height: 40rpx;
-  flex: 0 0 auto;
-}
-
-.quick-copy {
-  min-width: 0;
-}
-
-.quick-title {
-  display: block;
-  color: #fff;
-  font-size: 25rpx;
-  font-weight: 800;
-}
-
-.quick-sub {
-  display: block;
-  margin-top: 4rpx;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 19rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------- 分类 tab ---------- */
-.cat-strip {
-  width: calc(100% + 56rpx);
-  margin: 24rpx -28rpx 22rpx;
-  padding: 0 28rpx;
-  white-space: nowrap;
-}
-
-.cat-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 64rpx;
-  margin-right: 14rpx;
-  padding: 0 30rpx;
-  border-radius: 999rpx;
-  color: var(--ink-2);
-  font-size: 26rpx;
-  font-weight: 600;
+  gap: 10rpx;
+  padding: 0 18rpx;
+  border: 2rpx solid var(--line);
+  border-radius: 32rpx;
   background: var(--surface);
-  box-shadow: var(--shadow-soft);
-  transition: all 0.18s ease;
 }
 
-.cat-chip.on {
-  color: #fff;
-  font-weight: 800;
-  background: var(--grad-brand);
-  box-shadow: 0 10rpx 22rpx rgba(255, 77, 110, 0.28);
+.header-search image {
+  width: 28rpx;
+  height: 28rpx;
+  flex: 0 0 28rpx;
 }
 
-.live-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20rpx;
-  width: 100%;
-}
-
-.live-card {
-  display: block;
-  width: 100%;
+.header-search text {
   min-width: 0;
-  overflow: hidden;
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-soft);
-  transition: transform 0.15s ease;
-}
-
-.live-card:active {
-  transform: scale(0.97);
-}
-
-.cover-box {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 3 / 4;
-  overflow: hidden;
-  border-radius: var(--radius);
-  background: linear-gradient(160deg, #eceef6, #f6f2fa);
-}
-
-.cover {
-  width: 100%;
-  height: 100%;
-}
-
-.live-badge {
-  position: absolute;
-  top: 14rpx;
-  left: 14rpx;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  height: 40rpx;
-  padding: 0 16rpx;
-  border-radius: 999rpx;
-  color: #fff;
-  font-size: 20rpx;
-  font-weight: 800;
-  background: linear-gradient(135deg, rgba(255, 77, 110, 0.95), rgba(255, 122, 77, 0.95));
-  backdrop-filter: blur(6px);
-}
-
-.live-pulse {
-  width: 10rpx;
-  height: 10rpx;
-  border-radius: 50%;
-  background: #fff;
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.72);
-  }
-}
-
-.audience-chip {
-  position: absolute;
-  top: 14rpx;
-  right: 14rpx;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  height: 40rpx;
-  padding: 0 14rpx;
-  border-radius: 999rpx;
-  color: rgba(255, 255, 255, 0.96);
-  font-size: 19rpx;
-  font-weight: 600;
-  background: rgba(15, 17, 26, 0.42);
-  backdrop-filter: blur(6px);
-}
-
-.cover-mask {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  padding: 72rpx 18rpx 16rpx;
-  background: linear-gradient(180deg, rgba(10, 12, 20, 0) 0%, rgba(10, 12, 20, 0.68) 100%);
-}
-
-.room-title {
-  display: block;
-  color: #fff;
-  font-size: 26rpx;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.anchor-row {
-  display: flex;
-  align-items: center;
-  margin-top: 12rpx;
-  min-width: 0;
-}
-
-.avatar {
-  width: 36rpx;
-  height: 36rpx;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 2rpx solid rgba(255, 255, 255, 0.85);
-  background: #2a2d3a;
-}
-
-.anchor {
-  min-width: 0;
-  margin-left: 10rpx;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ink-3);
   font-size: 21rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.skeleton-card {
+.message-button {
+  display: flex;
+  width: 58rpx;
+  height: 58rpx;
+  flex: 0 0 58rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 8rpx 18rpx rgba(255, 77, 110, 0.24);
+}
+
+.message-button image {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.wallet-chip {
+  display: flex;
+  min-width: 126rpx;
+  max-width: 188rpx;
+  height: 58rpx;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8rpx;
+  padding: 0 16rpx;
+  border-radius: 29rpx;
+  background: #fff2e8;
+}
+
+.wallet-chip image {
+  width: 32rpx;
+  height: 32rpx;
+  flex: 0 0 32rpx;
+  border-radius: 50%;
+}
+
+.wallet-chip text {
+  min-width: 0;
+  color: #b86518;
+  font-size: 21rpx;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-swiper {
+  width: 100%;
+  height: 284rpx;
+}
+
+.hero-card {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  height: 100%;
   overflow: hidden;
-  border-radius: var(--radius);
-  background: #ecedf3;
+  border-radius: 28rpx;
+  background: #10234c;
+  box-shadow: var(--shadow-card);
 }
 
-.skeleton-shimmer {
+.hero-image,
+.hero-mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.65) 50%, transparent 70%);
-  background-size: 220% 100%;
-  animation: shimmer 1.3s ease-in-out infinite;
+  width: 100%;
+  height: 100%;
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: 130% 0;
-  }
-  100% {
-    background-position: -90% 0;
-  }
+.hero-mask {
+  background: linear-gradient(90deg, rgba(8, 19, 49, 0.88), rgba(8, 19, 49, 0.34) 62%, rgba(8, 19, 49, 0.06));
 }
 
-.live-page :deep(.empty-state) {
-  margin-top: 60rpx;
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 64%;
+  height: 100%;
+  padding: 32rpx 28rpx;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.hero-copy-center {
+  width: 53%;
+  margin-left: 23%;
+}
+
+.hero-kicker {
+  color: #ffd66f;
+  font-size: 20rpx;
+  font-weight: 800;
+  letter-spacing: 1rpx;
+}
+
+.hero-title {
+  margin-top: 8rpx;
+  color: #fff;
+  font-size: 37rpx;
+  font-weight: 900;
+  line-height: 1.16;
+  text-shadow: 0 4rpx 14rpx rgba(0, 0, 0, 0.36);
+}
+
+.hero-subtitle {
+  margin-top: 8rpx;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 20rpx;
+  line-height: 1.35;
+}
+
+.hero-action {
+  display: flex;
+  height: 48rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 17rpx;
+  padding: 0 22rpx;
+  border-radius: 24rpx;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 800;
+  background: var(--grad-brand);
+  box-shadow: 0 8rpx 18rpx rgba(255, 77, 110, 0.26);
+}
+
+.hero-dots {
+  display: flex;
+  height: 30rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+}
+
+.hero-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 5rpx;
+  background: #d6d9e2;
+  transition: width 0.2s ease;
+}
+
+.hero-dot.active {
+  width: 30rpx;
+  background: var(--brand);
+}
+
+.quick-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  padding: 18rpx 8rpx 16rpx;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.quick-entry {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-direction: column;
+}
+
+.quick-entry + .quick-entry {
+  border-left: 2rpx solid var(--line);
+}
+
+.quick-icon {
+  width: 82rpx;
+  height: 82rpx;
+}
+
+.quick-title {
+  margin-top: 4rpx;
+  color: var(--ink);
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.quick-subtitle {
+  margin-top: 3rpx;
+  color: var(--ink-3);
+  font-size: 17rpx;
+  line-height: 1.2;
+}
+
+.section {
+  margin-top: 28rpx;
+}
+
+.section-heading {
+  display: flex;
+  height: 54rpx;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.section-title-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.section-title-group image {
+  width: 38rpx;
+  height: 38rpx;
+  flex: 0 0 38rpx;
+}
+
+.section-title {
+  color: var(--ink);
+  font-size: 30rpx;
+  font-weight: 900;
+  letter-spacing: 0.5rpx;
+}
+
+.section-more {
+  color: var(--ink-3);
+  font-size: 21rpx;
+}
+
+.featured-scroll,
+.sports-scroll {
+  width: calc(100% + 24rpx);
+  margin-right: -24rpx;
+}
+
+.horizontal-content {
+  display: inline-flex;
+  gap: 16rpx;
+  padding-right: 24rpx;
+  white-space: nowrap;
+}
+
+.featured-card {
+  position: relative;
+  width: 258rpx;
+  height: 310rpx;
+  flex: 0 0 258rpx;
+  overflow: hidden;
+  border-radius: 22rpx;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.media-card {
+  background: #162551;
+}
+
+.featured-media {
+  width: 100%;
+  height: 100%;
+}
+
+.featured-badge {
+  position: absolute;
+  top: 14rpx;
+  left: 14rpx;
+  display: flex;
+  height: 38rpx;
+  align-items: center;
+  padding: 0 14rpx;
+  border-radius: 19rpx;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 900;
+  background: var(--brand);
+}
+
+.featured-gradient {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 72rpx 16rpx 16rpx;
+  background: linear-gradient(180deg, transparent, rgba(9, 13, 27, 0.82));
+}
+
+.featured-title {
+  display: block;
+  max-width: 100%;
+  color: #fff;
+  font-size: 25rpx;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featured-copy {
+  display: block;
+  max-width: 100%;
+  margin-top: 5rpx;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 18rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featured-title.dark,
+.featured-copy.dark {
+  margin-right: 16rpx;
+  margin-left: 16rpx;
+  color: var(--ink);
+}
+
+.featured-copy.dark {
+  margin-top: 6rpx;
+  color: var(--ink-3);
+}
+
+.featured-card-head {
+  display: flex;
+  height: 52rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14rpx;
+  color: var(--ink-3);
+  font-size: 17rpx;
+}
+
+.featured-label {
+  color: #2489db;
+  font-weight: 800;
+}
+
+.featured-label.lottery {
+  color: var(--brand);
+}
+
+.featured-team-row {
+  display: flex;
+  height: 142rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  background: #f7f9fd;
+}
+
+.featured-team-row :deep(.safe-image) {
+  width: 62rpx;
+  height: 62rpx;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.featured-score {
+  color: var(--ink);
+  font-size: 31rpx;
+  font-weight: 900;
+}
+
+.featured-lottery-icon {
+  width: 126rpx;
+  height: 126rpx;
+  margin: 4rpx auto 0;
+}
+
+.featured-countdown {
+  display: block;
+  margin: 10rpx 16rpx 0;
+  color: var(--brand);
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.sports-card {
+  width: 552rpx;
+  min-height: 298rpx;
+  flex: 0 0 552rpx;
+  padding: 18rpx;
+  border-radius: 24rpx;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.sports-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sports-league {
+  max-width: 340rpx;
+  color: var(--ink-2);
+  font-size: 20rpx;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sports-status {
+  display: flex;
+  height: 36rpx;
+  align-items: center;
+  padding: 0 14rpx;
+  border-radius: 18rpx;
+  color: var(--ink-3);
+  font-size: 17rpx;
+  background: var(--bg);
+}
+
+.sports-status.live {
+  color: #fff;
+  background: var(--brand);
+}
+
+.sports-teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116rpx minmax(0, 1fr);
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.sports-team {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.sports-team :deep(.safe-image) {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.sports-team text {
+  width: 100%;
+  color: var(--ink-2);
+  font-size: 19rpx;
+  font-weight: 700;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sports-score {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+.sports-score text:first-child {
+  color: var(--ink);
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.sports-score text:last-child {
+  max-width: 116rpx;
+  margin-top: 4rpx;
+  color: var(--ink-3);
+  font-size: 16rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.odds-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8rpx;
+  margin-top: 18rpx;
+}
+
+.odds-chip {
+  display: flex;
+  height: 55rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 7rpx;
+  border-radius: 14rpx;
+  background: var(--bg);
+}
+
+.odds-chip text {
+  color: var(--ink-2);
+  font-size: 17rpx;
+}
+
+.odds-chip text:last-child {
+  color: #be7d16;
+  font-weight: 900;
+}
+
+.odds-empty {
+  display: flex;
+  height: 55rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18rpx;
+  border-radius: 14rpx;
+  color: var(--ink-3);
+  font-size: 18rpx;
+  background: var(--bg);
+}
+
+.section-state {
+  display: flex;
+  min-height: 132rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  color: var(--ink-3);
+  font-size: 22rpx;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.lottery-panel {
+  display: grid;
+  grid-template-columns: 1.18fr 0.82fr;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.lottery-primary {
+  min-width: 0;
+  padding: 22rpx;
+  border-right: 2rpx solid var(--line);
+}
+
+.lottery-primary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14rpx;
+}
+
+.lottery-primary-title {
+  display: block;
+  color: var(--ink);
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.lottery-issue {
+  display: block;
+  max-width: 240rpx;
+  margin-top: 7rpx;
+  color: var(--ink-3);
+  font-size: 17rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lottery-primary-icon {
+  width: 72rpx;
+  height: 72rpx;
+  flex: 0 0 72rpx;
+}
+
+.lottery-count-label {
+  display: block;
+  margin-top: 24rpx;
+  color: var(--ink-3);
+  font-size: 18rpx;
+}
+
+.lottery-count-value {
+  display: block;
+  margin-top: 5rpx;
+  color: var(--brand);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 34rpx;
+  font-weight: 900;
+  letter-spacing: 1rpx;
+}
+
+.lottery-action {
+  display: flex;
+  width: 170rpx;
+  height: 50rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18rpx;
+  border-radius: 25rpx;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 800;
+  background: var(--grad-brand);
+}
+
+.lottery-secondary {
+  display: flex;
+  flex-direction: column;
+}
+
+.lottery-mini {
+  display: flex;
+  min-height: 100rpx;
+  flex: 1;
+  align-items: center;
+  gap: 10rpx;
+  padding: 12rpx;
+}
+
+.lottery-mini + .lottery-mini {
+  border-top: 2rpx solid var(--line);
+}
+
+.lottery-mini :deep(.safe-image) {
+  width: 50rpx;
+  height: 50rpx;
+  flex: 0 0 50rpx;
+}
+
+.lottery-mini > view {
+  min-width: 0;
+}
+
+.lottery-mini text {
+  display: block;
+  max-width: 100%;
+  color: var(--ink-2);
+  font-size: 19rpx;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lottery-mini text:last-child {
+  margin-top: 4rpx;
+  color: var(--ink-3);
+  font-size: 15rpx;
+  font-weight: 500;
+}
+
+.fishing-banner {
+  position: relative;
+  height: 304rpx;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: #07376c;
+  box-shadow: 0 14rpx 34rpx rgba(9, 56, 109, 0.18);
+}
+
+.fishing-banner > image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fishing-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 47%;
+  height: 100%;
+  padding: 30rpx 0 26rpx 26rpx;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.fishing-kicker {
+  color: #74e6ff;
+  font-size: 18rpx;
+  font-weight: 800;
+}
+
+.fishing-title {
+  margin-top: 8rpx;
+  color: #fff;
+  font-size: 37rpx;
+  font-weight: 900;
+}
+
+.fishing-subtitle {
+  display: -webkit-box;
+  margin-top: 8rpx;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 18rpx;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.fishing-action {
+  display: flex;
+  height: 50rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18rpx;
+  padding: 0 22rpx;
+  border-radius: 25rpx;
+  color: #6d3e00;
+  font-size: 20rpx;
+  font-weight: 900;
+  background: #ffd06c;
+}
+
+.live-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+}
+
+.live-card {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 22rpx;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.live-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: 22rpx;
+}
+
+.live-cover :deep(.safe-image) {
+  width: 100%;
+  height: 100%;
+}
+
+.live-status,
+.live-count {
+  position: absolute;
+  top: 12rpx;
+  display: flex;
+  height: 36rpx;
+  align-items: center;
+  padding: 0 12rpx;
+  border-radius: 18rpx;
+  color: #fff;
+  font-size: 17rpx;
+  font-weight: 800;
+  backdrop-filter: blur(6px);
+}
+
+.live-status {
+  left: 12rpx;
+  background: rgba(255, 77, 110, 0.94);
+}
+
+.live-count {
+  right: 12rpx;
+  background: rgba(15, 17, 26, 0.44);
+}
+
+.live-copy {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 72rpx 14rpx 14rpx;
+  background: linear-gradient(180deg, transparent, rgba(10, 12, 20, 0.78));
+}
+
+.live-copy text {
+  display: block;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-copy text:last-child {
+  margin-top: 4rpx;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 17rpx;
+  font-weight: 500;
+}
+
+.load-more {
+  display: flex;
+  height: 70rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18rpx;
+  border-radius: 35rpx;
+  color: var(--brand);
+  font-size: 23rpx;
+  font-weight: 800;
+  background: var(--brand-soft);
+}
+
+@media screen and (max-width: 360px) {
+  .brand-name {
+    display: none;
+  }
+
+  .wallet-chip {
+    min-width: 108rpx;
+    max-width: 150rpx;
+  }
+
+  .quick-subtitle {
+    display: none;
+  }
+
+  .hero-copy {
+    width: 70%;
+  }
+
+  .hero-title {
+    font-size: 34rpx;
+  }
 }
 </style>

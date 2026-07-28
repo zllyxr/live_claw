@@ -56,6 +56,7 @@ import type {
   MiniGameLaunch,
   SportsBetRecordBundle,
   SportsHome,
+  SportsMarketBundle,
   UploadResult,
   RedPackItem,
   RedPackRobBundle,
@@ -345,7 +346,7 @@ export function getSportsMatchDetail(matchId: string | number) {
 }
 
 export function getSportsBetMarkets(matchId: string | number) {
-  return firstInfo<Record<string, unknown>>("SportsBet.matchMarkets", {
+  return firstInfo<SportsMarketBundle>("SportsBet.matchMarkets", {
     match_id: matchId
   });
 }

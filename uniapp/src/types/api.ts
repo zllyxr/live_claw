@@ -268,6 +268,37 @@ export interface SportsHome {
   [key: string]: unknown;
 }
 
+export interface SportsMarketOption {
+  id?: string | number;
+  odds?: string | number;
+  option_code?: string;
+  option_name?: string;
+  [key: string]: unknown;
+}
+
+export interface SportsMarket {
+  id?: string | number;
+  market_code?: string;
+  market_name?: string;
+  market_rule?: string;
+  options?: SportsMarketOption[];
+  [key: string]: unknown;
+}
+
+export interface SportsMarketBundle {
+  bet_enabled?: string | number;
+  bet_open?: string | number;
+  bet_status_text?: string;
+  close_countdown?: string | number;
+  coin?: string | number;
+  markets?: SportsMarket[];
+  match?: SportsMatch;
+  server_time?: string | number;
+  timezone?: string;
+  timezone_offset?: string | number;
+  [key: string]: unknown;
+}
+
 export interface SportsBetRecord {
   id?: string | number;
   orderid?: string | number;

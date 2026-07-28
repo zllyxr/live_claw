@@ -57,7 +57,7 @@
       <text class="catalog-action">查看全部</text>
     </view>
 
-    <view class="park-map">
+    <view id="game-park" class="park-map">
       <image
         class="park-art"
         src="/static/art/game-park/orbital-park.webp"
@@ -171,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import SafeImage from "@/components/SafeImage.vue";
@@ -184,7 +184,7 @@ import type {
   MiniGameItem
 } from "@/types/api";
 import { absolutizeUrl, localAssetUrl } from "@/utils/url";
-import { openGameView } from "@/utils/navigation";
+import { consumeGameZoneIntent, openGameView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
 
 const home = ref<LotteryHome>();
@@ -320,6 +320,24 @@ function scrollToLottery() {
   uni.pageScrollTo({ selector: "#lottery-panel", duration: 280 });
 }
 
+function consumeHomeZoneIntent() {
+  const zone = consumeGameZoneIntent();
+  if (!zone) {
+    return;
+  }
+  if (zone === "fishing") {
+    selectedCode.value = "deepsea_hunter";
+  }
+  void nextTick(() => {
+    setTimeout(() => {
+      uni.pageScrollTo({
+        selector: zone === "lottery" ? "#lottery-panel" : "#game-park",
+        duration: 320
+      });
+    }, 80);
+  });
+}
+
 function gameIcon(game: LotteryGame) {
   return absolutizeUrl(game.icon_url || game.icon || "") || "/static/brand/icon.webp";
 }
@@ -349,6 +367,7 @@ function openWithdraw() {
 }
 
 onShow(() => {
+  consumeHomeZoneIntent();
   if (!loadedOnce) {
     loadedOnce = true;
     void load();
