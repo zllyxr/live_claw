@@ -11,7 +11,7 @@
     --felt-a: #14512f; --felt-b: #0a3520;
     --gold: #ffd869; --gold-2: #e8a91a;
     --ink: #f3fff8; --fog: rgba(243,255,248,.66);
-    --card-w: 46px; --card-h: 66px;
+    --card-w: 49px; --card-h: 70px;
   }
   html, body { width: 100%; height: 100%; min-height: 100dvh; }
   body {
@@ -74,27 +74,32 @@
   .card.small { --card-w: 34px; --card-h: 50px; width: 34px; height: 50px; font-size: 12px; }
 
   /* 手牌 */
-  .hand-wrap { flex: 0 0 auto; padding: 0 10px calc(6px + env(safe-area-inset-bottom)); }
+  .hand-wrap {
+    flex: 0 0 auto; display: flex; flex-direction: column;
+    padding: 0 10px env(safe-area-inset-bottom);
+  }
   /* 手牌可能多到 20 张：允许横向滚动，并按张数自动收紧间距 */
   .hand {
+    order: 3;
     display: flex; justify-content: center; align-items: flex-end;
-    padding: 18px 6px 6px; min-height: calc(var(--card-h) + 26px);
+    padding: 18px 6px 0; min-height: calc(var(--card-h) + 26px);
     overflow-x: auto; overflow-y: visible; scrollbar-width: none;
   }
   .hand::-webkit-scrollbar { display: none; }
-  .hand.dense { justify-content: flex-start; }
-  .hand .card { margin-left: -20px; cursor: pointer; transition: transform .14s ease, box-shadow .14s; }
+  .hand.dense { justify-content: center; }
+  .hand .card { margin-left: -17px; cursor: pointer; transition: transform .14s ease, box-shadow .14s; }
   .hand .card:first-child { margin-left: 0; }
-  .hand.dense .card { margin-left: -26px; }
+  .hand.dense .card { margin-left: -23px; }
+  .hand.dense .card:first-child { margin-left: 0; }
   .hand .card.on { transform: translateY(-14px); box-shadow: 0 8px 18px rgba(0,0,0,.4), 0 0 0 2px var(--gold); z-index: 2; }
   @media (max-width: 400px) {
-    .hand .card { --card-w: 40px; --card-h: 58px; width: 40px; height: 58px; }
+    .hand .card { --card-w: 43px; --card-h: 62px; width: 43px; height: 62px; }
     .hand .card .rk { font-size: 15px; }
     .hand .card .st { font-size: 11px; }
   }
 
   /* 操作栏 */
-  .actions { display: flex; gap: 10px; justify-content: center; padding: 6px 0 2px; flex-wrap: wrap; }
+  .actions { order: 2; display: flex; gap: 10px; justify-content: center; padding: 6px 0 2px; flex-wrap: wrap; }
   button {
     font: inherit; border: 0; cursor: pointer; border-radius: 999px;
     padding: 11px 26px; font-size: 15px; font-weight: 800; letter-spacing: 1px;
@@ -104,7 +109,7 @@
   button[disabled] { filter: grayscale(.7) brightness(.8); cursor: not-allowed; }
   .btn-main { background: linear-gradient(135deg,var(--gold),var(--gold-2)); color: #3a2600; box-shadow: 0 6px 16px rgba(232,169,26,.34); }
   .btn-ghost { background: rgba(255,255,255,.13); color: var(--ink); border: 1px solid rgba(255,255,255,.24); }
-  .msg { text-align: center; font-size: 12px; color: var(--fog); min-height: 16px; padding-bottom: 2px; }
+  .msg { order: 1; text-align: center; font-size: 12px; color: var(--fog); min-height: 16px; padding-bottom: 2px; }
 
   /* 遮罩 */
   .veil {

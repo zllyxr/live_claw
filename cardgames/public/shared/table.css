@@ -3,7 +3,7 @@
   --jade-1: #0f533d; --jade-2: #062a21; --jade-3: #031713;
   --gold: #f8d877; --gold-deep: #c98a18; --ivory: #fffaf0;
   --ink: #f4fff9; --fog: rgba(244,255,249,.62);
-  --card-w: clamp(42px, 6.6vw, 70px); --card-h: calc(var(--card-w) * 1.42);
+  --card-w: clamp(45px, 7vw, 74px); --card-h: calc(var(--card-w) * 1.42);
 }
 html, body { width: 100%; height: 100%; min-height: 100dvh; overflow: hidden; }
 body {
@@ -57,16 +57,20 @@ body::before {
   border-radius: 10px; background: rgba(0,0,0,.22);
 }
 .showdown strong { margin-right: 4px; color: var(--gold); font-size: 10px; white-space: nowrap; }
-.hand-zone { padding: 0 12px calc(7px + env(safe-area-inset-bottom)); }
-.message { min-height: 17px; text-align: center; color: var(--fog); font-size: 12px; }
+.hand-zone {
+  display: flex; flex-direction: column;
+  padding: 0 12px env(safe-area-inset-bottom);
+}
+.message { order: 1; min-height: 17px; text-align: center; color: var(--fog); font-size: 12px; }
 .hand {
+  order: 3;
   min-height: calc(var(--card-h) + 16px); display: flex; justify-content: center;
-  align-items: flex-end; overflow-x: auto; padding: 14px 4px 3px; scrollbar-width: none;
+  align-items: flex-end; overflow-x: auto; padding: 14px 4px 0; scrollbar-width: none;
 }
 .hand::-webkit-scrollbar { display: none; }
 .card {
   position: relative; width: var(--card-w); height: var(--card-h); flex: 0 0 auto;
-  display: block; object-fit: contain; margin-left: calc(var(--card-w) * -.32);
+  display: block; object-fit: contain; margin-left: calc(var(--card-w) * -.26);
   border: 0; border-radius: 8px; background: transparent;
   box-shadow: 0 3px 8px rgba(0,0,0,.28); user-select: none;
   transition: transform .13s, box-shadow .13s;
@@ -82,7 +86,7 @@ body::before {
   background: rgba(2,24,17,.78); box-shadow: 0 7px 18px rgba(0,0,0,.32);
   font: 900 30px/1 Arial, sans-serif; backdrop-filter: blur(8px);
 }
-.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; padding-top: 4px; }
+.actions { order: 2; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; padding-top: 4px; }
 button {
   min-width: 76px; min-height: 38px; padding: 8px 17px; border: 0; border-radius: 999px;
   font: inherit; font-size: 13px; font-weight: 850; cursor: pointer;
