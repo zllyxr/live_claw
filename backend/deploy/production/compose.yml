@@ -124,7 +124,10 @@ services:
     command:
       - /bin/sh
       - -ec
-      - exec mysql --protocol=TCP -h mysql -u "$${MYSQL_USER}" "$${MYSQL_DATABASE}" < /seed/lottery_catalog.sql
+      - >-
+        exec mysql --protocol=TCP --default-character-set=utf8mb4
+        -h mysql -u "$${MYSQL_USER}" "$${MYSQL_DATABASE}"
+        < /seed/lottery_catalog.sql
     environment:
       MYSQL_DATABASE: ${V2_MYSQL_DATABASE:-claw_v2}
       MYSQL_USER: ${V2_MYSQL_USER:?set V2_MYSQL_USER}
