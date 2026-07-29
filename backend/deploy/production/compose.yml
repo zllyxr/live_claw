@@ -1,0 +1,378 @@
+name: claw-v2-production
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-service-environment: &service-environment
+  TZ: Asia/Shanghai
+  V2_ENV: production
+  V2_LISTEN_ADDR: :8080
+  V2_MYSQL_DSN: "${V2_MYSQL_USER:?set V2_MYSQL_USER}:${V2_MYSQL_PASSWORD:?set V2_MYSQL_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&multiStatements=true&loc=Asia%2FShanghai"
+  V2_REDIS_ADDR: redis:6379
+  V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
+  V2_REDIS_DB: "0"
+  V2_MINIO_ENDPOINT: minio:9000
+  V2_MINIO_PUBLIC_ENDPOINT: ${V2_MINIO_PUBLIC_ENDPOINT:?set V2_MINIO_PUBLIC_ENDPOINT}
+  V2_MINIO_REGION: ${V2_MINIO_REGION:-us-east-1}
+  V2_MINIO_ACCESS_KEY: ${V2_MINIO_ACCESS_KEY:?set V2_MINIO_ACCESS_KEY}
+  V2_MINIO_SECRET_KEY: ${V2_MINIO_SECRET_KEY:?set V2_MINIO_SECRET_KEY}
+  V2_MINIO_USE_TLS: "false"
+  V2_MINIO_PUBLIC_USE_TLS: ${V2_MINIO_PUBLIC_USE_TLS:-false}
+  V2_PUBLIC_URL: ${V2_PUBLIC_URL:?set V2_PUBLIC_URL}
+  V2_MEDIA_BASE_URL: /claw-public
+  V2_DATA_ENCRYPTION_KEY: ${V2_DATA_ENCRYPTION_KEY:?set V2_DATA_ENCRYPTION_KEY}
+  V2_LEGACY_AUTHCODE: ${V2_LEGACY_AUTHCODE:?set V2_LEGACY_AUTHCODE}
+  V2_SHUTDOWN_GRACE_SECONDS: "30"
+  V2_SPORTS_API_BASE_URL: ${V2_SPORTS_API_BASE_URL:-https://v3.football.api-sports.io}
+  V2_SPORTS_API_KEY: ${V2_SPORTS_API_KEY:-}
+  V2_SPORTS_LIVE_INTERVAL: ${V2_SPORTS_LIVE_INTERVAL:-5m}
+  V2_SPORTS_CATALOG_INTERVAL: ${V2_SPORTS_CATALOG_INTERVAL:-6h}
+  V2_SPORTS_ODDS_INTERVAL: ${V2_SPORTS_ODDS_INTERVAL:-3h}
+
+x-app-service: &app-service
+  build:
+    context: ../..
+  entrypoint: ["/usr/local/bin/service"]
+  environment: *service-environment
+  security_opt:
+    - no-new-privileges:true
+  logging: *default-logging
+  restart: unless-stopped
+  stop_grace_period: 30s
+
+services:
+  mysql:
+    image: mysql:8.0.40
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    environment:
+      MYSQL_DATABASE: ${V2_MYSQL_DATABASE:-claw_v2}
+      MYSQL_USER: ${V2_MYSQL_USER:?set V2_MYSQL_USER}
+      MYSQL_PASSWORD: ${V2_MYSQL_PASSWORD:?set V2_MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${V2_MYSQL_ROOT_PASSWORD:?set V2_MYSQL_ROOT_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.2-alpine
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --appendonly yes --appendfsync everysec --requirepass "$${REDIS_PASSWORD}"
+    environment:
+      REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${V2_MINIO_ACCESS_KEY:?set V2_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${V2_MINIO_SECRET_KEY:?set V2_MINIO_SECRET_KEY}
+    ports:
+      - "127.0.0.1:${V2_MINIO_CONSOLE_PORT:-29001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    restart: unless-stopped
+
+  migrate:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: migrate
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  catalog-seed:
+    image: mysql:8.0.40
+    command:
+      - /bin/sh
+      - -ec
+      - exec mysql --protocol=TCP -h mysql -u "$${MYSQL_USER}" "$${MYSQL_DATABASE}" < /seed/lottery_catalog.sql
+    environment:
+      MYSQL_DATABASE: ${V2_MYSQL_DATABASE:-claw_v2}
+      MYSQL_USER: ${V2_MYSQL_USER:?set V2_MYSQL_USER}
+      MYSQL_PWD: ${V2_MYSQL_PASSWORD:?set V2_MYSQL_PASSWORD}
+    volumes:
+      - ../../seed/lottery_catalog.sql:/seed/lottery_catalog.sql:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    restart: "no"
+
+  api:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: api
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  admin:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: admin
+    environment:
+      <<: *service-environment
+      # Current Go handlers derive the Secure cookie flag from V2_ENV.
+      # Keep the safe production default; see env.example before using plain HTTP.
+      V2_ENV: ${V2_ADMIN_RUNTIME_ENV:-production}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  im:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: im
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  scheduler:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: scheduler
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/status"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  game:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: game
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  support:
+    <<: *app-service
+    build:
+      context: ../..
+      args:
+        TARGET: support
+    environment:
+      <<: *service-environment
+      V2_ENV: ${V2_SUPPORT_RUNTIME_ENV:-production}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  admin-bootstrap:
+    <<: *app-service
+    profiles: ["bootstrap"]
+    build:
+      context: ../..
+      args:
+        TARGET: admin-bootstrap
+    environment:
+      <<: *service-environment
+      # Optional during normal deploy; the bootstrap binary validates them when
+      # the profile is explicitly run.
+      V2_ADMIN_USERNAME: ${V2_ADMIN_USERNAME:-}
+      V2_ADMIN_PASSWORD: ${V2_ADMIN_PASSWORD:-}
+      V2_ADMIN_DISPLAY_NAME: ${V2_ADMIN_DISPLAY_NAME:-系统管理员}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    restart: "no"
+
+  support-agent-bootstrap:
+    <<: *app-service
+    profiles: ["bootstrap"]
+    build:
+      context: ../..
+      args:
+        TARGET: support-agent-bootstrap
+    environment:
+      <<: *service-environment
+      V2_SUPPORT_AGENT_USERNAME: ${V2_SUPPORT_AGENT_USERNAME:-}
+      V2_SUPPORT_AGENT_PASSWORD: ${V2_SUPPORT_AGENT_PASSWORD:-}
+      V2_SUPPORT_AGENT_DISPLAY_NAME: ${V2_SUPPORT_AGENT_DISPLAY_NAME:-客服一号}
+      V2_SUPPORT_AGENT_ROLE: ${V2_SUPPORT_AGENT_ROLE:-support_supervisor}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    restart: "no"
+
+  user-bootstrap:
+    <<: *app-service
+    profiles: ["bootstrap"]
+    build:
+      context: ../..
+      args:
+        TARGET: user-bootstrap
+    environment:
+      <<: *service-environment
+      V2_APP_USER_USERNAME: ${V2_APP_USER_USERNAME:-}
+      V2_APP_USER_PASSWORD: ${V2_APP_USER_PASSWORD:-}
+      V2_APP_USER_NICKNAME: ${V2_APP_USER_NICKNAME:-}
+      V2_APP_USER_EMAIL: ${V2_APP_USER_EMAIL:-}
+      V2_APP_USER_COUNTRY_CODE: ${V2_APP_USER_COUNTRY_CODE:-86}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    restart: "no"
+
+  virtual-live-bootstrap:
+    <<: *app-service
+    profiles: ["bootstrap"]
+    build:
+      context: ../..
+      args:
+        TARGET: virtual-live-bootstrap
+    command:
+      - -avatars
+      - /avatars
+      - -target-users
+      - ${V2_VIRTUAL_LIVE_USERS:-300}
+      - -room-id
+      - ${V2_DOUYIN_ROOM_ID:-433645971956}
+      - -title
+      - ${V2_VIRTUAL_LIVE_TITLE:-晚晚日记·轻松直播间}
+      - -category
+      - ${V2_VIRTUAL_LIVE_CATEGORY:-聊天}
+    volumes:
+      - ../../../女生:/avatars:ro
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${V2_HTTP_BIND:-0.0.0.0}:${V2_HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - type: bind
+        source: ../../../uniapp/dist/build/h5
+        target: /usr/share/nginx/html/h5
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      api:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+      im:
+        condition: service_healthy
+      game:
+        condition: service_healthy
+      support:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null http://127.0.0.1/healthz &&
+          wget -q -O /dev/null http://127.0.0.1/h5/
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    name: claw-v2-production-mysql-data
+  redis_data:
+    name: claw-v2-production-redis-data
+  minio_data:
+    name: claw-v2-production-minio-data

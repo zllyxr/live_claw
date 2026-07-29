@@ -16,6 +16,7 @@ type Config struct {
 	RedisDB               int
 	MinIOEndpoint         string
 	MinIOPublicEndpoint   string
+	MinIORegion           string
 	MinIOAccessKey        string
 	MinIOSecretKey        string
 	MinIOUseTLS           bool
@@ -84,6 +85,7 @@ func Load() (Config, error) {
 		RedisDB:               redisDB,
 		MinIOEndpoint:         env("V2_MINIO_ENDPOINT", "minio:9000"),
 		MinIOPublicEndpoint:   env("V2_MINIO_PUBLIC_ENDPOINT", "127.0.0.1:29000"),
+		MinIORegion:           env("V2_MINIO_REGION", "us-east-1"),
 		MinIOAccessKey:        minioAccessKey,
 		MinIOSecretKey:        minioSecretKey,
 		MinIOUseTLS:           minioTLS,

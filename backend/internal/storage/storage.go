@@ -36,9 +36,14 @@ type ObjectInfo struct {
 }
 
 func New(cfg config.Config) (*Service, error) {
+	region := strings.TrimSpace(cfg.MinIORegion)
+	if region == "" {
+		region = "us-east-1"
+	}
 	client, err := minio.New(cfg.MinIOEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.MinIOAccessKey, cfg.MinIOSecretKey, ""),
 		Secure: cfg.MinIOUseTLS,
+		Region: region,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create minio client: %w", err)
@@ -46,6 +51,7 @@ func New(cfg config.Config) (*Service, error) {
 	publicSigner, err := minio.New(cfg.MinIOPublicEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.MinIOAccessKey, cfg.MinIOSecretKey, ""),
 		Secure: cfg.MinIOPublicUseTLS,
+		Region: region,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create public minio signer: %w", err)

@@ -6,7 +6,7 @@ RUN go mod download
 ARG TARGET=api
 COPY . .
 RUN case "$TARGET" in \
-      api|admin|im|scheduler|game|support|migrate|admin-bootstrap|support-agent-bootstrap) ;; \
+      api|admin|im|scheduler|game|support|migrate|admin-bootstrap|support-agent-bootstrap|user-bootstrap|virtual-live-bootstrap) ;; \
       *) echo "unsupported build target: $TARGET" >&2; exit 1 ;; \
     esac \
     && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
