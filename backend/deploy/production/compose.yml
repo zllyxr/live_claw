@@ -376,7 +376,8 @@ services:
         - CMD-SHELL
         - >-
           curl -fsSk -o /dev/null https://127.0.0.1/healthz &&
-          curl -fsSk -o /dev/null https://127.0.0.1/h5/
+          curl -fsSk -o /dev/null https://127.0.0.1/h5/ &&
+          curl -fsSk -o /dev/null https://127.0.0.1/static/lotter/TJSSC.png
       interval: 5s
       timeout: 5s
       retries: 20
