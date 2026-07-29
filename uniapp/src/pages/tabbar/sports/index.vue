@@ -61,7 +61,7 @@
             <text class="team-name">{{ teamName(match, "home") }}</text>
           </view>
           <view class="score-main">
-            <text class="score">{{ match.home_score ?? "-" }} : {{ match.away_score ?? "-" }}</text>
+            <text class="score" :class="{ upcoming: !matchHasStarted(match) }">{{ scoreText(match) }}</text>
             <text class="score-sub">{{ match.kickoff_text || match.kickoff_time_text || match.match_time || "" }}</text>
           </view>
           <view class="team-block">
@@ -107,7 +107,7 @@ import SafeImage from "@/components/SafeImage.vue";
 import { getSportsHome } from "@/api/services";
 import type { SportsHome, SportsMatch } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
-import { buildSportsDetailUrl, openWebView } from "@/utils/navigation";
+import { openSportsDetail } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
 
 const defaultTabs = [
@@ -217,19 +217,36 @@ function teamLogo(match: SportsMatch, side: "home" | "away") {
 }
 
 function predictionCards(match: SportsMatch) {
-  const rows = Array.isArray(match.prediction) ? match.prediction.slice(0, 4) : [];
-  if (rows.length) {
-    return rows.map((item) => ({
-      name: String(item.name || "建议"),
-      value: String(item.value || "-")
-    }));
+  const markets = Array.isArray(match.markets) ? match.markets : [];
+  const market = markets.find((item) => item.market_code === "MATCH_RESULT") || markets[0];
+  const options = Array.isArray(market?.options) ? market.options.slice(0, 3) : [];
+  const cards = options.map((option) => ({
+    name: String(option.option_name || option.option_code || "投注项"),
+    value: `赔率 ${String(option.odds || "-")}`
+  }));
+  const marketCount = Number(match.market_count || markets.length || 0);
+  if (marketCount > 0) {
+    cards.push({
+      name: market?.market_name || "赛事盘口",
+      value: marketCount > 1 ? `共 ${marketCount} 种` : "查看详情"
+    });
   }
-  return [
-    { name: "主胜", value: "45%" },
-    { name: "平局", value: "45%" },
-    { name: "客胜", value: "10%" },
-    { name: "建议", value: "查看详情" }
-  ];
+  return cards.length ? cards : [{ name: "暂无盘口", value: "查看详情" }];
+}
+
+function matchHasStarted(match: SportsMatch) {
+  const explicit = match.has_started;
+  if (explicit !== undefined) {
+    return explicit === 1 || explicit === "1";
+  }
+  return isLiveText(String(match.match_status || match.status_text || ""));
+}
+
+function scoreText(match: SportsMatch) {
+  if (!matchHasStarted(match)) {
+    return "VS";
+  }
+  return String(match.score_text || `${match.home_score ?? "-"} : ${match.away_score ?? "-"}`);
 }
 
 async function load() {
@@ -264,7 +281,7 @@ function openMatch(match: SportsMatch) {
   if (!requireLogin()) {
     return;
   }
-  openWebView(buildSportsDetailUrl(match), "赛事详情");
+  openSportsDetail(match);
 }
 
 function openHistory() {
@@ -647,6 +664,12 @@ onPullDownRefresh(() => {
   font-variant-numeric: tabular-nums;
 }
 
+.score.upcoming {
+  color: #b8bfca;
+  font-size: 48rpx;
+  letter-spacing: 4rpx;
+}
+
 .score-sub {
   display: block;
   margin-top: 14rpx;
@@ -659,7 +682,7 @@ onPullDownRefresh(() => {
 
 .prediction-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120rpx, 1fr));
   gap: 12rpx;
   margin-top: 28rpx;
   padding-top: 24rpx;

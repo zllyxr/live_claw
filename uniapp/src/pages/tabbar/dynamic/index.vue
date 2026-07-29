@@ -456,7 +456,7 @@ onReachBottom(() => {
 .tab-line {
   width: 0;
   height: 7rpx;
-  margin-top: 18rpx;
+  margin-top: 8rpx;
   border-radius: 7rpx;
   background: var(--grad-brand);
   transition: width 0.2s ease;
@@ -470,12 +470,13 @@ onReachBottom(() => {
   display: flex;
   align-items: center;
   gap: 24rpx;
+  margin-bottom: 4px;
 }
 
 .msg-btn {
   display: flex;
-  width: 64rpx;
-  height: 64rpx;
+  width: 45rpx;
+  height: 45rpx;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
@@ -499,7 +500,7 @@ onReachBottom(() => {
   justify-content: center;
   gap: 6rpx;
   min-width: 124rpx;
-  height: 64rpx;
+  height: 45rpx;
   border-radius: 999rpx;
   color: #fff;
   font-size: 25rpx;

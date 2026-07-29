@@ -8,9 +8,9 @@
     <view class="ambient ambient-b" />
 
     <view class="top-nav">
-      <button class="round-icon back-icon" aria-label="返回" @tap="goBack">
+      <view class="round-icon back-icon" aria-label="返回" @tap="goBack">
         <view class="arrow-left" />
-      </button>
+      </view>
 
       <view class="game-identity">
         <view class="game-emblem">
@@ -51,22 +51,14 @@
     <template v-else>
       <view class="content-wrap">
         <view class="draw-stage">
-          <canvas
-            id="lotteryCanvas"
-            canvas-id="lotteryCanvas"
-            class="lottery-canvas"
-            :disable-scroll="true"
-          />
+          <canvas id="lotteryCanvas" canvas-id="lotteryCanvas" class="lottery-canvas" :disable-scroll="true"/>
           <view class="stage-grid" />
           <view class="stage-sheen" />
-
           <view class="issue-badge">
             <view class="signal-waves"><i /><i /><i /></view>
             <text>{{ shortIssue(currentIssue.issue_num) }}</text>
           </view>
-
           <button class="rule-button" aria-label="玩法说明" @tap="showRules = true">?</button>
-
           <view class="countdown-dial" :class="{ urgent: sealCountdown <= 10 && !isSealed }">
             <view class="dial-ticks" />
             <view class="dial-core">
@@ -145,16 +137,10 @@
 
           <scroll-view scroll-x class="play-tabs" :show-scrollbar="false">
             <view class="play-tabs-inner">
-              <button
-                v-for="play in plays"
-                :key="String(play.id)"
-                class="play-tab"
-                :class="{ active: String(play.id) === activePlayId }"
-                @tap="selectPlay(play)"
-              >
+              <view v-for="play in plays" :key="String(play.id)" class="play-tab" :class="{ active: String(play.id) === activePlayId }" @tap="selectPlay(play)">
                 <view class="play-glyph">{{ playGlyph(play) }}</view>
                 <text>{{ playName(play) }}</text>
-              </button>
+              </view>
             </view>
           </scroll-view>
 
@@ -209,8 +195,6 @@
                 <text class="option-name">{{ optionName(option) }}</text>
                 <text class="option-odds">×{{ option.odds || "--" }}</text>
               </view>
-
-              <view v-if="isOptionSelected(option)" class="placed-chip"><i /></view>
             </button>
           </view>
 
@@ -240,30 +224,16 @@
             <button aria-label="减少筹码" @tap="changeAmount(-1)">−</button>
             <view class="amount-display">
               <text class="currency-mark">◇</text>
-              <input
-                v-model.number="amount"
-                type="number"
-                :min="minBet"
-                :max="maxBet"
-                @blur="normalizeAmount"
-              />
+              <input v-model.number="amount" type="number" :min="minBet" :max="maxBet" @blur="normalizeAmount"/>
             </view>
             <button aria-label="增加筹码" @tap="changeAmount(1)">＋</button>
           </view>
-
-          <button
-            class="place-bet"
-            :class="{ ready: canSubmit, locking: submitting }"
-            :disabled="!canSubmit"
-            @tap="placeBet"
-          >
-            <view class="bet-button-shine" />
-            <view class="bet-lever"><i /></view>
+          <view class="place-bet" :class="{ ready: canSubmit, locking: submitting }" :disabled="!canSubmit" @tap="placeBet">
             <view class="bet-copy">
               <text class="bet-label">{{ submitting ? "锁单中" : isSealed ? "已封盘" : "落筹" }}</text>
               <text class="bet-total">{{ selectedOptions.length ? compactMoney(totalBet) : "选择牌面" }}</text>
             </view>
-          </button>
+          </view>
         </view>
       </view>
     </template>
@@ -336,7 +306,7 @@ import {
   getLotteryIssueHistory,
   submitLotteryBet
 } from "@/api/services";
-import { absolutizeUrl } from "@/utils/url";
+import { displayUrl } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
 
 type AnyRecord = Record<string, any>;
@@ -394,7 +364,13 @@ const activePlay = computed<AnyRecord>(() => {
 });
 const activeOptions = computed<AnyRecord[]>(() => arrayOf(activePlay.value.options));
 const gameTitle = computed(() => textOf(game.value.game_name, game.value.game_name_en, routeTitle, "星河牌桌"));
-const gameIcon = computed(() => absolutizeUrl(textOf(game.value.icon_url, game.value.icon)));
+const gameIcon = computed(() => {
+  const code = textOf(game.value.game_code, gameCode).toUpperCase();
+  return displayUrl(
+    textOf(game.value.icon_url, game.value.icon),
+    `/static/lotter/${code}.png`
+  );
+});
 const coin = computed(() => numeric(detail.value.coin, 0));
 const minBet = computed(() => Math.max(1, numeric(game.value.min_bet, 10)));
 const maxBet = computed(() => Math.max(minBet.value, numeric(game.value.max_bet, 100000)));
@@ -421,7 +397,10 @@ const openCountdown = computed(() => {
   return openTime ? Math.max(0, Math.ceil(openTime - clockNow.value)) : 0;
 });
 const isSealed = computed(() => {
-  return !currentIssue.value.id || String(currentIssue.value.status || "0") !== "0" || sealCountdown.value <= 0;
+  if (!currentIssue.value.id || sealCountdown.value <= 0) return true;
+  const canBet = String(currentIssue.value.can_bet ?? "").trim().toLowerCase();
+  if (canBet) return !["1", "true"].includes(canBet);
+  return String(currentIssue.value.status ?? "") !== "1";
 });
 const stagePhase = computed(() => (drawing.value ? "drawing" : isSealed.value ? "sealed" : "betting"));
 const stagePhaseText = computed(() => {
@@ -1840,11 +1819,11 @@ onUnload(() => {
   height: 68rpx;
   align-items: center;
   gap: 10rpx;
-  padding: 0 22rpx 0 9rpx;
+  padding: 0 9rpx 0 9rpx;
   border: 1rpx solid rgba(255, 255, 255, 0.08);
   border-radius: 22rpx;
   color: rgba(225, 235, 255, 0.54);
-  font-size: 21rpx;
+  font-size: 18rpx;
   font-weight: 700;
   background: rgba(5, 12, 25, 0.24);
 }
@@ -1858,8 +1837,8 @@ onUnload(() => {
 
 .play-glyph {
   display: flex;
-  width: 48rpx;
-  height: 48rpx;
+  width: 38rpx;
+  height: 38rpx;
   align-items: center;
   justify-content: center;
   border-radius: 16rpx;
@@ -2163,28 +2142,6 @@ onUnload(() => {
 
 .grid-dense .option-name { display: none; }
 .grid-dense .option-odds { font-size: 15rpx; }
-
-.placed-chip {
-  position: absolute;
-  z-index: 5;
-  top: -8rpx;
-  right: -6rpx;
-  width: 38rpx;
-  height: 38rpx;
-  border: 5rpx dashed rgba(255, 255, 255, 0.72);
-  border-radius: 50%;
-  background: #f3bd48;
-  box-shadow: inset 0 0 0 4rpx #8e5418, 0 6rpx 12rpx rgba(0, 0, 0, 0.3);
-  animation: chipDrop 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.4) both;
-}
-
-.placed-chip i {
-  position: absolute;
-  inset: 8rpx;
-  border: 2rpx solid rgba(255, 247, 206, 0.75);
-  border-radius: 50%;
-}
-
 .bet-option.burst::after {
   position: absolute;
   z-index: 0;
@@ -2264,7 +2221,7 @@ onUnload(() => {
   position: relative;
   display: flex;
   width: 74rpx;
-  height: 58rpx;
+  height: 74rpx;
   flex: 0 0 74rpx;
   align-items: center;
   justify-content: center;

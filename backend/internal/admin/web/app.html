@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Claw 平台管理</title>
+  <link rel="stylesheet" href="/admin/static/layui/css/layui.css">
+  <link rel="stylesheet" href="/admin/static/app.css?v=20260729-2">
+</head>
+<body class="admin-body">
+  <aside class="sidebar">
+    <div class="brand"><span>C</span> Claw 管理后台</div>
+    <nav class="layui-nav layui-nav-tree">
+      <div class="menu-group">平台</div>
+      <a class="menu-item active" data-permission="dashboard.read" href="#dashboard">数据统计</a>
+      <a class="menu-item" data-permission="users.read" href="#users">用户管理</a>
+      <a class="menu-item" data-permission="wallet.read" href="#wallet">资金管理</a>
+      <a class="menu-item" data-permission="games.read" href="#games">游戏管理</a>
+      <a class="menu-item" data-permission="live.read" href="#live">抖音直播</a>
+      <a class="menu-item" data-permission="lottery.read" href="#lottery">彩票管理</a>
+      <a class="menu-item" data-permission="sports.read" href="#sports">体育管理</a>
+      <a class="menu-item" data-permission="bets.read" href="#bets">投注管理</a>
+      <div class="menu-group">协作与系统</div>
+      <a class="menu-item" data-permission="im.read" href="#im">IM 管理</a>
+      <a class="menu-item" data-permission="app.read" href="#app">App 管理</a>
+      <a class="menu-item" data-permission="rbac.read" href="#rbac">角色与权限</a>
+      <a class="menu-item" data-permission="system.read" href="#system">系统设置</a>
+    </nav>
+  </aside>
+  <section class="admin-shell">
+    <header class="topbar">
+      <div>
+        <strong id="top-title">数据统计</strong>
+        <span class="environment">本地 v2</span>
+      </div>
+      <div class="account">
+        <span>{{.DisplayName}}</span>
+        <button class="layui-btn layui-btn-primary layui-btn-sm" id="logout">退出</button>
+      </div>
+    </header>
+    <main class="workspace">
+      <div class="page-title">
+        <div>
+          <h1 id="page-heading">平台概览</h1>
+          <p id="page-description">关键业务数据与待处理事项</p>
+        </div>
+        <div id="page-actions">
+          <button class="layui-btn layui-btn-primary" id="refresh">刷新数据</button>
+        </div>
+      </div>
+      <div id="page-content" aria-live="polite"></div>
+    </main>
+  </section>
+  <script src="/admin/static/layui/layui.js"></script>
+  <script src="/admin/static/bootstrap.js?v=20260729-2"></script>
+</body>
+</html>

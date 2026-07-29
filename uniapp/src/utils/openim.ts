@@ -1,23 +1,4 @@
-import IMSDK, {
-  GroupJoinSource,
-  GroupMemberFilter,
-  GroupMemberRole,
-  GroupType,
-  GroupVerificationType,
-  IMEvents,
-  IMMethods,
-  LogLevel,
-  MessageType,
-  Platform,
-  SessionType,
-  type BlackUserItem,
-  type ConversationItem,
-  type GroupApplicationItem,
-  type GroupItem,
-  type GroupMemberItem,
-  type MessageItem
-} from "openim-uniapp-polyfill";
-import { API_HOST, CORE_IM_BASE } from "@/constants/config";
+import { API_HOST } from "@/constants/config";
 import type {
   ChatGroup,
   ChatGroupApplication,
@@ -25,323 +6,666 @@ import type {
   ChatMessage,
   Conversation
 } from "@/types/api";
-import { getSession } from "@/utils/session";
+import {
+  cacheIMBlocks,
+  cacheIMConversations,
+  cacheIMGroup,
+  cacheIMGroupApplications,
+  cacheIMGroupMembers,
+  cacheIMGroups,
+  cacheIMMessages,
+  markCachedIMMessageDeleted,
+  readCachedIMBlocks,
+  readCachedIMConversations,
+  readCachedIMGroup,
+  readCachedIMGroupApplications,
+  readCachedIMGroupMembers,
+  readCachedIMGroups,
+  readCachedIMMessages,
+  readDeletedIMMessageIDs,
+  removeCachedIMConversation,
+  removeCachedIMGroup,
+  removeCachedIMMessage,
+  setCachedIMBlock
+} from "@/utils/imDatabase";
+import { getSession, onSessionChange } from "@/utils/session";
 import { absolutizeUrl } from "@/utils/url";
 
-type OpenIMSession = {
-  userID: string;
-  token: string;
-  expireTimeSeconds: number;
-  apiAddr: string;
-  wsAddr: string;
+export type ChatKind = "single" | "group";
+export type IMConnectionState = "idle" | "connecting" | "ready" | "offline";
+
+type NativeMessage = {
+  id?: string;
+  conversation_id?: string;
+  sequence?: number;
+  client_message_id?: string;
+  sender_user_id?: string | number;
+  message_type?: number;
+  text_content?: string;
+  asset_id?: number;
+  metadata?: Record<string, unknown>;
+  sender_name?: string;
+  sender_avatar?: string;
+  created_at?: number;
 };
 
-type LiveSession = { session: OpenIMSession; groupID: string };
-type LiveMessageResponse = { payload: Record<string, unknown>; serverMsgID: string };
+type NativeConversation = {
+  id: string;
+  conversation_type: number;
+  title?: string;
+  message_seq?: number;
+  last_read_seq?: number;
+  unread_count?: number;
+  updated_at?: number;
+  peer_user_id?: string | number;
+  peer_nickname?: string;
+  peer_avatar?: string;
+  latest_message?: NativeMessage;
+};
 
-const system = uni.getSystemInfoSync() as unknown as Record<string, unknown>;
-const uniPlatform = String(system.uniPlatform || "web");
-const isNativeApp = uniPlatform === "app";
-const webSDK = IMSDK.nomalApi as Record<string, (...args: any[]) => Promise<any>>;
-let currentUserID = "";
-let sdkInitialized = false;
-let loginTask: Promise<OpenIMSession> | undefined;
+type NativeGroup = {
+  id: string;
+  group_no?: string;
+  title?: string;
+  owner_user_id?: string | number;
+  introduction?: string;
+  announcement?: string;
+  join_policy?: number;
+  all_muted?: boolean;
+  max_members?: number;
+  member_count?: number;
+  role?: number;
+  created_at?: number;
+};
 
-function platformID() {
-  if (isNativeApp) {
-    const os = String(system.osName || system.platform || "").toLowerCase();
-    return os.includes("ios") ? Platform.iOS : Platform.Android;
-  }
-  return Platform.Web;
+type NativeMember = {
+  user_id: string | number;
+  nickname?: string;
+  avatar?: string;
+  role?: number;
+  mute_until?: number;
+  joined_at?: number;
+};
+
+type NativeApplication = {
+  id: string;
+  conversation_id: string;
+  group_name?: string;
+  user_id: string | number;
+  nickname?: string;
+  avatar?: string;
+  request_message?: string;
+  status?: number;
+  created_at?: number;
+};
+
+type NativeBlock = {
+  user_id: string | number;
+  nickname?: string;
+  avatar?: string;
+  created_at?: number;
+};
+
+type NativeEnvelope<T> = {
+  code?: number;
+  message?: string;
+  data?: T;
+};
+
+type SocketEnvelope = {
+  type?: "ready" | "message" | "ack" | "error";
+  code?: number;
+  message?: string;
+  data?: NativeMessage;
+};
+
+type MessageListener = {
+  handler: (message: ChatMessage, raw: NativeMessage) => void;
+  targetID: string;
+  kind: ChatKind;
+  conversationID?: string;
+};
+
+const conversationIDs = new Map<string, string>();
+const sequenceByMessageID = new Map<string, number>();
+const latestSequenceByConversation = new Map<string, number>();
+const applicationIDs = new Map<string, string>();
+const messageListeners = new Set<MessageListener>();
+const connectionListeners = new Set<(state: IMConnectionState) => void>();
+
+let socket: UniApp.SocketTask | undefined;
+let socketUserID = "";
+let socketReady = false;
+let socketTask: Promise<void> | undefined;
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectAttempt = 0;
+let connectionState: IMConnectionState = "idle";
+let activeIMOwner: string | undefined;
+
+function baseURL() {
+  return `${API_HOST.replace(/\/$/, "")}/api/v2/im`;
 }
 
-function absoluteAddress(address: string, websocket = false) {
-  if (/^(https?|wss?):\/\//i.test(address)) {
-    return address;
-  }
-  const locationLike = (globalThis as unknown as { location?: Location }).location;
-  let origin = locationLike?.origin || API_HOST;
-  if (websocket) {
-    origin = origin.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:");
-  }
-  return `${origin.replace(/\/$/, "")}/${address.replace(/^\//, "")}`;
+function websocketURL() {
+  const origin = API_HOST.replace(/\/$/, "")
+    .replace(/^https:/i, "wss:")
+    .replace(/^http:/i, "ws:");
+  return `${origin}/ws/im`;
 }
 
-function parseValue(value: unknown): any {
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
+function pathID(value: string) {
+  return encodeURIComponent(value.trim());
 }
 
-function unwrap<T>(value: unknown): T {
-  const parsed = parseValue(value) as Record<string, unknown>;
-  if (parsed && typeof parsed === "object" && "data" in parsed) {
-    return parseValue(parsed.data) as T;
-  }
-  return parsed as T;
+function clipped(value: number, minimum: number, maximum: number) {
+  return Math.max(minimum, Math.min(maximum, Math.floor(value || 0)));
 }
 
-function requestSession<T>(
-  path: "session" | "prepare-users" | "live-session" | "live-message",
-  extra: Record<string, unknown> = {}
+function nativeRequest<T>(
+  path: string,
+  method: "GET" | "POST" = "GET",
+  data?: Record<string, unknown>
 ) {
+  const activeUserID = ensureIMAccountContext();
   const session = getSession();
+  if (
+    !session.uid ||
+    !session.token ||
+    session.uid === "-9999" ||
+    session.token === "-9999" ||
+    session.uid !== activeUserID
+  ) {
+    return Promise.reject(new Error("登录已失效"));
+  }
   return new Promise<T>((resolve, reject) => {
     uni.request({
-      url: `${CORE_IM_BASE}/${path}`,
-      method: "POST",
-      header: { "Content-Type": "application/json" },
-      data: { uid: Number(session.uid), token: session.token, platformID: platformID(), ...extra },
+      url: `${baseURL()}${path}`,
+      method,
+      data,
+      timeout: 15_000,
+      header: {
+        "Content-Type": "application/json",
+        "X-User-ID": session.uid,
+        Authorization: `Bearer ${session.token}`
+      },
       success: (response) => {
-        const body = parseValue(response.data) as Record<string, unknown>;
-        if (response.statusCode >= 200 && response.statusCode < 300 && Number(body.code || 0) === 0) {
+        if (String(getSession().uid || "") !== activeUserID) {
+          reject(new Error("帐号已切换，请重试"));
+          return;
+        }
+        const body = response.data as NativeEnvelope<T>;
+        const status = Number(response.statusCode || 0);
+        if (status >= 200 && status < 300 && Number(body?.code || 0) === 0) {
           resolve(body.data as T);
           return;
         }
-        reject(new Error(String(body.message || "IM 服务暂不可用")));
+        reject(new Error(String(body?.message || "IM 服务暂不可用")));
       },
-      fail: (error) => reject(new Error(error.errMsg || "IM 服务连接失败"))
+      fail: (error) => {
+        if (String(getSession().uid || "") !== activeUserID) {
+          reject(new Error("帐号已切换，请重试"));
+          return;
+        }
+        reject(new Error(error.errMsg || "IM 服务连接失败"));
+      }
     });
   });
 }
 
-async function nativeCall<T>(method: IMMethods, ...args: unknown[]) {
-  return unwrap<T>(await IMSDK.asyncApi(method, IMSDK.uuid(), ...args));
+function setConnectionState(state: IMConnectionState) {
+  if (connectionState === state) {
+    return;
+  }
+  connectionState = state;
+  connectionListeners.forEach((listener) => listener(state));
 }
 
-async function webCall<T>(method: IMMethods, ...args: unknown[]) {
-  const fn = webSDK[method];
-  if (typeof fn !== "function") {
-    throw new Error(`OpenIM SDK method unavailable: ${method}`);
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
   }
-  return unwrap<T>(await fn(...args));
 }
 
-async function payloadCall<T>(method: IMMethods, payload: unknown) {
-  return isNativeApp
-    ? nativeCall<T>(method, payload)
-    : webCall<T>(method, payload);
+function scheduleReconnect() {
+  if (!messageListeners.size || reconnectTimer) {
+    return;
+  }
+  const delay = Math.min(15_000, 800 * 2 ** Math.min(reconnectAttempt, 4));
+  reconnectAttempt += 1;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    void connectSocket().catch(() => scheduleReconnect());
+  }, delay);
 }
 
-function nativeDataDir() {
-  if (!isNativeApp) {
-    return Promise.resolve("");
+function resetSocket(close = false) {
+  clearReconnectTimer();
+  socketReady = false;
+  socketTask = undefined;
+  const activeSocket = socket;
+  socket = undefined;
+  if (close) {
+    activeSocket?.close({});
   }
-  const runtime = (globalThis as unknown as { plus?: any }).plus;
-  if (!runtime?.io) {
-    return Promise.resolve("");
-  }
-  return new Promise<string>((resolve, reject) => {
-    runtime.io.requestFileSystem(runtime.io.PRIVATE_DOC, (fileSystem: any) => {
-      fileSystem.root.getDirectory("openim", { create: true }, (entry: any) => resolve(entry.fullPath), reject);
-    }, reject);
-  });
 }
 
-async function loginWithSession(session: OpenIMSession) {
-  const apiAddr = absoluteAddress(session.apiAddr);
-  const wsAddr = absoluteAddress(session.wsAddr, true);
-  if (currentUserID === session.userID) {
-    return session;
+function ensureIMAccountContext() {
+  const currentUserID = String(getSession().uid || "");
+  if (activeIMOwner === undefined) {
+    activeIMOwner = currentUserID;
+    return currentUserID;
   }
-  if (currentUserID && currentUserID !== session.userID) {
-    await (isNativeApp ? nativeCall(IMMethods.Logout) : webCall(IMMethods.Logout));
-    currentUserID = "";
+  if (activeIMOwner === currentUserID) {
+    return currentUserID;
   }
-  if (isNativeApp) {
-    if (!sdkInitialized) {
-      const dataDir = await nativeDataDir();
-      await nativeCall(IMMethods.InitSDK, {
-        platformID: platformID(), apiAddr, wsAddr, dataDir, logLevel: LogLevel.Warn,
-        isLogStandardOutput: false, logFilePath: dataDir, isExternalExtensions: false
-      });
-      sdkInitialized = true;
+  activeIMOwner = currentUserID;
+  clearReconnectTimer();
+  resetSocket(true);
+  socketUserID = "";
+  reconnectAttempt = 0;
+  conversationIDs.clear();
+  sequenceByMessageID.clear();
+  latestSequenceByConversation.clear();
+  applicationIDs.clear();
+  messageListeners.clear();
+  setConnectionState("idle");
+  return currentUserID;
+}
+
+onSessionChange(() => {
+  ensureIMAccountContext();
+});
+
+function dispatchMessage(message: NativeMessage) {
+  const currentUserID = ensureIMAccountContext();
+  if (!currentUserID || currentUserID !== socketUserID) {
+    return;
+  }
+  const conversationID = String(message.conversation_id || "");
+  const messageID = String(message.id || "");
+  if (!conversationID || !messageID) {
+    return;
+  }
+  if (Number(message.sequence || 0) > 0) {
+    const sequence = Number(message.sequence);
+    sequenceByMessageID.set(messageID, sequence);
+    latestSequenceByConversation.set(
+      conversationID,
+      Math.max(latestSequenceByConversation.get(conversationID) || 0, sequence)
+    );
+  }
+  const mapped = mapOpenIMMessage(message);
+  void cacheIMMessages(conversationID, [mapped]);
+  messageListeners.forEach((listener) => {
+    if (listener.targetID && listener.conversationID !== conversationID) {
+      return;
     }
-    await nativeCall(IMMethods.Login, { userID: session.userID, token: session.token });
-  } else {
-    await webCall(IMMethods.Login, {
-      userID: session.userID,
-      token: session.token,
-      apiAddr,
-      wsAddr,
-      platformID: platformID(),
-      logLevel: LogLevel.Warn
-    });
-  }
-  currentUserID = session.userID;
-  return session;
-}
-
-export async function ensureOpenIM() {
-  const uid = getSession().uid;
-  if (uid && currentUserID === uid) {
-    return { userID: uid } as OpenIMSession;
-  }
-  if (!loginTask) {
-    loginTask = requestSession<OpenIMSession>("session")
-      .then(loginWithSession)
-      .catch((error) => {
-        currentUserID = "";
-        throw error;
-      })
-      .finally(() => {
-        loginTask = undefined;
-      });
-  }
-  return loginTask;
-}
-
-export async function connectOpenIMLive(liveID: string, stream: string, liveName = "") {
-  const response = await requestSession<LiveSession>("live-session", { liveID, stream, liveName });
-  await loginWithSession(response.session);
-  return response.groupID;
-}
-
-export function sendOpenIMLiveMessage(liveID: string, stream: string, payload: Record<string, unknown>) {
-  return requestSession<LiveMessageResponse>("live-message", { liveID, stream, payload });
-}
-
-export type ChatKind = "single" | "group";
-
-function chatSessionType(kind: ChatKind) {
-  return kind === "group" ? SessionType.Group : SessionType.Single;
-}
-
-function latestMessage(value: string) {
-  const message = parseValue(value) as MessageItem;
-  if (!message || typeof message !== "object") {
-    return "";
-  }
-  if (message.contentType === MessageType.TextMessage || message.contentType === MessageType.AtTextMessage) {
-    return message.textElem?.content || message.atTextElem?.text || "";
-  }
-  if (message.contentType === MessageType.PictureMessage) {
-    return "[图片]";
-  }
-  if (message.contentType === MessageType.VoiceMessage) {
-    return "[语音]";
-  }
-  if (message.contentType === MessageType.VideoMessage) {
-    return "[视频]";
-  }
-  if (message.contentType === MessageType.FileMessage) {
-    return `[文件] ${message.fileElem?.fileName || ""}`.trim();
-  }
-  if (message.contentType >= 1000) {
-    return "[群通知]";
-  }
-  return "[新消息]";
-}
-
-function mapConversation(item: ConversationItem): Conversation {
-  const kind: ChatKind = item.conversationType === SessionType.Group ? "group" : "single";
-  return {
-    ...item,
-    id: item.conversationID,
-    conversation_type: kind,
-    uid: item.userID,
-    touid: item.userID,
-    group_id: item.groupID,
-    group_name: kind === "group" ? item.showName : "",
-    peer_uid: item.userID,
-    peer_nickname: item.showName,
-    peer_avatar: item.faceURL,
-    unread_count: item.unreadCount,
-    last_msg: latestMessage(item.latestMsg),
-    addtime: String(item.latestMsgSendTime)
-  } as unknown as Conversation;
-}
-
-export async function openIMConversations() {
-  await ensureOpenIM();
-  const list = await payloadCall<ConversationItem[]>(IMMethods.GetConversationListSplit, { offset: 0, count: 100 });
-  return (Array.isArray(list) ? list : [])
-    .filter(
-      (item) =>
-        (item.conversationType === SessionType.Single || item.conversationType === SessionType.Group) &&
-        !String(item.groupID || "").startsWith("claw_live_")
-    )
-    .map(mapConversation);
-}
-
-async function oneConversation(targetID: string, kind: ChatKind) {
-  const conversation = await payloadCall<ConversationItem>(IMMethods.GetOneConversation, {
-    sourceID: targetID,
-    sessionType: chatSessionType(kind)
+    listener.handler(mapped, message);
   });
-  return conversation;
+}
+
+function connectSocket() {
+  const activeUserID = ensureIMAccountContext();
+  const session = getSession();
+  if (
+    !session.uid ||
+    !session.token ||
+    session.uid === "-9999" ||
+    session.token === "-9999" ||
+    session.uid !== activeUserID
+  ) {
+    return Promise.reject(new Error("登录已失效"));
+  }
+  if (socketReady && socket && socketUserID === session.uid) {
+    return Promise.resolve();
+  }
+  if (socketTask && socketUserID === session.uid) {
+    return socketTask;
+  }
+  resetSocket(true);
+  socketUserID = session.uid;
+  setConnectionState("connecting");
+  socketTask = new Promise<void>((resolve, reject) => {
+    const task = uni.connectSocket({
+      url: websocketURL(),
+      complete: () => undefined
+    });
+    socket = task;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled || socket !== task) {
+        return;
+      }
+      settled = true;
+      resetSocket(true);
+      setConnectionState("offline");
+      reject(new Error("IM 连接超时"));
+    }, 10_000);
+
+    task.onOpen(() => {
+      if (socket !== task || String(getSession().uid || "") !== activeUserID) {
+        task.close({});
+        return;
+      }
+      task.send({
+        data: JSON.stringify({
+          type: "auth",
+          uid: session.uid,
+          token: session.token
+        })
+      });
+    });
+
+    task.onMessage((event) => {
+      if (socket !== task || String(getSession().uid || "") !== activeUserID) {
+        return;
+      }
+      let envelope: SocketEnvelope;
+      try {
+        envelope = JSON.parse(String(event.data || "{}")) as SocketEnvelope;
+      } catch {
+        return;
+      }
+      if (envelope.type === "ready") {
+        socketReady = true;
+        reconnectAttempt = 0;
+        setConnectionState("ready");
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        }
+        return;
+      }
+      if (envelope.type === "message" && envelope.data) {
+        dispatchMessage(envelope.data);
+        return;
+      }
+      if (envelope.type === "error" && !settled) {
+        settled = true;
+        clearTimeout(timer);
+        setConnectionState("offline");
+        reject(new Error(envelope.message || "IM 认证失败"));
+      }
+    });
+
+    task.onError(() => {
+      if (socket !== task) {
+        return;
+      }
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error("IM 连接失败"));
+      }
+      resetSocket();
+      setConnectionState("offline");
+      scheduleReconnect();
+    });
+
+    task.onClose(() => {
+      if (socket !== task) {
+        return;
+      }
+      clearTimeout(timer);
+      if (!settled) {
+        settled = true;
+        reject(new Error("IM 连接已断开"));
+      }
+      resetSocket();
+      setConnectionState("offline");
+      scheduleReconnect();
+    });
+  });
+  return socketTask;
+}
+
+async function directConversation(peerUserID: string) {
+  const normalized = peerUserID.trim();
+  const key = `single:${normalized}`;
+  const cached = conversationIDs.get(key);
+  if (cached) {
+    return cached;
+  }
+  const localConversation = (await readCachedIMConversations()).find(
+    (item) =>
+      item.conversation_type === "single" &&
+      String(item.peer_uid || item.touid || item.uid || "") === normalized
+  );
+  const localConversationID = String(
+    localConversation?.conversationID || localConversation?.id || ""
+  );
+  if (localConversationID) {
+    conversationIDs.set(key, localConversationID);
+    return localConversationID;
+  }
+  const conversation = await nativeRequest<NativeConversation>("/direct", "POST", {
+    peer_user_id: normalized
+  });
+  const mapped = mapConversation(conversation);
+  const conversations = await readCachedIMConversations();
+  await cacheIMConversations(
+    conversations
+      .filter((item) => String(item.conversationID || item.id || "") !== conversation.id)
+      .concat(mapped)
+  );
+  return conversation.id;
 }
 
 async function oneConversationID(targetID: string, kind: ChatKind) {
-  return (await oneConversation(targetID, kind)).conversationID;
-}
-
-export async function prepareOpenIMUsers(userIDs: string[]) {
-  const unique = [...new Set(userIDs.map((userID) => Number(userID)).filter((userID) => Number.isInteger(userID) && userID > 0))];
-  if (!unique.length) {
-    return { prepared: 0 };
+  const normalized = targetID.trim();
+  if (!normalized) {
+    throw new Error(kind === "group" ? "群聊编号无效" : "用户编号无效");
   }
-  return requestSession<{ prepared: number }>("prepare-users", { userIDs: unique });
-}
-
-export async function pickOpenIMLocalFile() {
-  const path = await IMSDK.pickFile();
-  return String(path || "");
-}
-
-function notificationText(message: MessageItem) {
-  const raw = parseValue(message.notificationElem?.detail || "");
-  if (raw && typeof raw === "object") {
-    return String(
-      raw.defaultTips ||
-        raw.default_tips ||
-        raw.groupName ||
-        raw.group_name ||
-        raw.nickname ||
-        "群聊信息已更新"
-    );
+  if (kind === "group") {
+    conversationIDs.set(`group:${normalized}`, normalized);
+    return normalized;
   }
-  return typeof raw === "string" && raw ? raw : "群聊信息已更新";
+  return directConversation(normalized);
 }
 
-export function mapOpenIMMessage(message: MessageItem): ChatMessage {
-  const image = message.pictureElem?.sourcePicture?.url || message.pictureElem?.bigPicture?.url || "";
-  const isSystem = Number(message.contentType || 0) >= 1000;
+function latestText(message?: NativeMessage) {
+  if (!message?.id) {
+    return "还没有消息，来打个招呼吧";
+  }
+  switch (Number(message.message_type || 0)) {
+    case 1:
+      return message.text_content || "[文字消息]";
+    case 2:
+      return "[图片]";
+    case 3:
+      return "[语音]";
+    case 4:
+      return "[视频]";
+    case 5:
+      return `[文件] ${String(message.metadata?.file_name || "")}`.trim();
+    case 100:
+      return "[群通知]";
+    default:
+      return "[新消息]";
+  }
+}
+
+function mapGroup(item: NativeGroup): ChatGroup {
   return {
-    id: message.clientMsgID,
-    client_msg_id: message.clientMsgID,
-    server_msg_id: message.serverMsgID,
-    uid: message.sendID,
-    from_uid: message.sendID,
-    touid: message.recvID,
-    group_id: message.groupID,
-    content:
-      message.textElem?.content ||
-      message.atTextElem?.text ||
-      message.quoteElem?.text ||
-      (isSystem ? notificationText(message) : ""),
-    image,
-    voice: message.soundElem?.sourceUrl || "",
-    voice_duration: Number(message.soundElem?.duration || 0),
-    video: message.videoElem?.videoUrl || "",
-    video_cover: message.videoElem?.snapshotUrl || "",
-    file: message.fileElem?.sourceUrl || "",
-    file_name: message.fileElem?.fileName || "",
-    file_size: Number(message.fileElem?.fileSize || 0),
-    sender_name: message.senderNickname,
-    sender_avatar: message.senderFaceUrl,
-    avatar: message.senderFaceUrl,
-    avatar_thumb: message.senderFaceUrl,
-    content_type: message.contentType,
-    system: isSystem,
-    is_self: message.sendID === currentUserID,
-    addtime: String(message.sendTime || message.createTime)
-  } as ChatMessage;
+    groupID: item.id,
+    groupNo: item.group_no || "",
+    groupName: item.title || "",
+    notification: item.announcement || "",
+    introduction: item.introduction || "",
+    faceURL: "",
+    ownerUserID: String(item.owner_user_id || ""),
+    memberCount: Number(item.member_count || 0),
+    maxMemberCount: Number(item.max_members || 0),
+    status: item.all_muted ? 3 : 0,
+    allMuted: Boolean(item.all_muted),
+    groupType: 2,
+    needVerification: Number(item.join_policy || 1),
+    createTime: Number(item.created_at || 0),
+    roleLevel: Number(item.role || 0)
+  };
+}
+
+function mapGroupMember(groupID: string, member: NativeMember): ChatGroupMember {
+  return {
+    groupID,
+    userID: String(member.user_id),
+    nickname: member.nickname || "",
+    faceURL: member.avatar || "",
+    roleLevel: Number(member.role || 10),
+    muteEndTime: Number(member.mute_until || 0),
+    joinTime: Number(member.joined_at || 0)
+  };
+}
+
+function mapGroupApplication(application: NativeApplication): ChatGroupApplication {
+  applicationIDs.set(`${application.conversation_id}:${application.user_id}`, application.id);
+  return {
+    groupID: application.conversation_id,
+    groupName: application.group_name || "",
+    userID: String(application.user_id),
+    nickname: application.nickname || "",
+    userFaceURL: application.avatar || "",
+    reqMsg: application.request_message || "",
+    handleResult: Number(application.status || 0),
+    reqTime: Number(application.created_at || 0),
+    applicationID: application.id
+  };
+}
+
+function mapBlock(item: NativeBlock) {
+  return {
+    userID: String(item.user_id),
+    nickname: item.nickname || "",
+    faceURL: item.avatar || "",
+    createTime: Number(item.created_at || 0)
+  };
+}
+
+export function mapOpenIMMessage(message: NativeMessage): ChatMessage {
+  const metadata = message.metadata || {};
+  const sourceURL = String(metadata.source_url || "");
+  const messageType = Number(message.message_type || 0);
+  const currentUserID = getSession().uid;
+  return {
+    id: message.id,
+    client_msg_id: message.id,
+    request_id: message.client_message_id,
+    server_msg_id: message.id,
+    conversation_id: message.conversation_id,
+    uid: String(message.sender_user_id || ""),
+    from_uid: String(message.sender_user_id || ""),
+    content: message.text_content || "",
+    image: messageType === 2 ? sourceURL : "",
+    voice: messageType === 3 ? sourceURL : "",
+    voice_duration: Number(metadata.duration || 0),
+    video: messageType === 4 ? sourceURL : "",
+    video_cover: String(metadata.cover_url || ""),
+    file: messageType === 5 ? sourceURL : "",
+    file_name: String(metadata.file_name || ""),
+    file_size: Number(metadata.file_size || 0),
+    sender_name: message.sender_name || "",
+    sender_avatar: message.sender_avatar || "",
+    avatar: message.sender_avatar || "",
+    avatar_thumb: message.sender_avatar || "",
+    group_id: message.conversation_id,
+    content_type: messageType,
+    system: messageType === 100,
+    is_self: String(message.sender_user_id || "") === currentUserID,
+    addtime: String(message.created_at || 0),
+    sequence: Number(message.sequence || 0),
+    metadata
+  };
+}
+
+export async function ensureOpenIM() {
+  await connectSocket();
+  return { userID: getSession().uid };
+}
+
+export function closeOpenIM() {
+  clearReconnectTimer();
+  messageListeners.clear();
+  resetSocket(true);
+  socketUserID = "";
+  reconnectAttempt = 0;
+  setConnectionState("idle");
+}
+
+export function onIMConnectionState(listener: (state: IMConnectionState) => void) {
+  connectionListeners.add(listener);
+  listener(connectionState);
+  return () => connectionListeners.delete(listener);
+}
+
+function mapConversation(item: NativeConversation) {
+  const kind: ChatKind = item.conversation_type === 2 ? "group" : "single";
+  const targetID = kind === "group" ? item.id : String(item.peer_user_id || "");
+  conversationIDs.set(`${kind}:${targetID}`, item.id);
+  latestSequenceByConversation.set(item.id, Number(item.message_seq || 0));
+  return {
+    id: item.id,
+    conversationID: item.id,
+    conversation_type: kind,
+    uid: kind === "single" ? targetID : "",
+    touid: kind === "single" ? targetID : "",
+    groupID: kind === "group" ? item.id : "",
+    group_id: kind === "group" ? item.id : "",
+    group_name: kind === "group" ? item.title || "" : "",
+    user_nicename: kind === "single" ? item.peer_nickname || "" : item.title || "",
+    avatar: item.peer_avatar || "",
+    peer_uid: targetID,
+    peer_nickname: item.peer_nickname || item.title || "",
+    peer_avatar: item.peer_avatar || "",
+    title: item.title || item.peer_nickname || "",
+    unread: Number(item.unread_count || 0),
+    unread_count: Number(item.unread_count || 0),
+    last_msg: latestText(item.latest_message),
+    content: latestText(item.latest_message),
+    latest_message_type: Number(item.latest_message?.message_type || 0),
+    latest_sender_id: String(item.latest_message?.sender_user_id || ""),
+    message_seq: Number(item.message_seq || 0),
+    last_read_seq: Number(item.last_read_seq || 0),
+    updated_at: Number(item.updated_at || 0),
+    addtime: String(item.latest_message?.created_at || item.updated_at || 0)
+  } as Conversation;
+}
+
+function registerConversation(item: Conversation) {
+  const kind: ChatKind = item.conversation_type === "group" ? "group" : "single";
+  const targetID =
+    kind === "group"
+      ? String(item.groupID || item.group_id || item.conversationID || item.id || "")
+      : String(item.peer_uid || item.touid || item.uid || "");
+  const id = String(item.conversationID || item.id || "");
+  if (targetID && id) {
+    conversationIDs.set(`${kind}:${targetID}`, id);
+    latestSequenceByConversation.set(id, Number(item.message_seq || 0));
+  }
+  return item;
+}
+
+function cachedMessageID(message: ChatMessage) {
+  return String(message.server_msg_id || message.client_msg_id || message.id || "");
+}
+
+export async function openIMConversations() {
+  void connectSocket().catch(() => undefined);
+  try {
+    const response = await nativeRequest<{ items: NativeConversation[] }>("/conversations");
+    const items = (response.items || [])
+      .filter((item) => item.conversation_type === 1 || item.conversation_type === 2)
+      .map(mapConversation);
+    await cacheIMConversations(items);
+    return items;
+  } catch (error) {
+    const cached = (await readCachedIMConversations()).map(registerConversation);
+    if (cached.length) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function openIMHistory(
@@ -350,65 +674,86 @@ export async function openIMHistory(
   startClientMsgID = "",
   count = 30
 ) {
-  await ensureOpenIM();
-  if (kind === "single") {
-    await prepareOpenIMUsers([targetID]);
-  }
   const conversationID = await oneConversationID(targetID, kind);
-  const result = await payloadCall<{ messageList?: MessageItem[]; isEnd?: boolean }>(IMMethods.GetAdvancedHistoryMessageList, {
-    conversationID,
-    startClientMsgID,
-    count: Math.max(20, Math.min(100, count))
-  });
-  return {
-    messages: (result.messageList || []).map(mapOpenIMMessage),
-    isEnd: Boolean(result.isEnd) || !(result.messageList || []).length
-  };
+  const limit = clipped(count, 20, 100);
+  const beforeSequence = startClientMsgID
+    ? Number(sequenceByMessageID.get(startClientMsgID) || 0)
+    : 0;
+  try {
+    const response = await nativeRequest<{ items: NativeMessage[] }>(
+      `/conversations/${pathID(conversationID)}/messages` +
+        `?before_sequence=${beforeSequence}&limit=${limit}`
+    );
+    const items = response.items || [];
+    items.forEach((message) => {
+      const messageID = String(message.id || "");
+      const sequence = Number(message.sequence || 0);
+      if (messageID && sequence > 0) {
+        sequenceByMessageID.set(messageID, sequence);
+        latestSequenceByConversation.set(
+          conversationID,
+          Math.max(latestSequenceByConversation.get(conversationID) || 0, sequence)
+        );
+      }
+    });
+    const deleted = await readDeletedIMMessageIDs(conversationID);
+    const mapped = items
+      .filter((message) => !deleted.has(String(message.id || "")))
+      .map(mapOpenIMMessage);
+    await cacheIMMessages(conversationID, mapped);
+    return {
+      messages: mapped,
+      isEnd: items.length < limit
+    };
+  } catch (error) {
+    const cached = await readCachedIMMessages(conversationID, beforeSequence, limit);
+    if (cached.length) {
+      cached.forEach((message) => {
+        const id = cachedMessageID(message);
+        const sequence = Number(message.sequence || 0);
+        if (id && sequence) sequenceByMessageID.set(id, sequence);
+      });
+      return {
+        messages: cached,
+        isEnd: cached.length < limit
+      };
+    }
+    throw error;
+  }
 }
 
-async function sendCreatedMessage(
+async function sendMessage(
   targetID: string,
   kind: ChatKind,
-  message: MessageItem,
-  method = IMMethods.SendMessage
+  messageType: number,
+  textContent: string,
+  metadata: Record<string, unknown> = {}
 ) {
-  const result = await payloadCall<MessageItem>(method, {
-    recvID: kind === "single" ? targetID : "",
-    groupID: kind === "group" ? targetID : "",
-    message,
-    offlinePushInfo: {
-      title: kind === "group" ? "群聊消息" : "新消息",
-      desc: kind === "group" ? "群聊中有新消息" : "您收到一条新消息",
-      ex: ""
+  const conversationID = await oneConversationID(targetID, kind);
+  const message = await nativeRequest<NativeMessage>(
+    `/conversations/${pathID(conversationID)}/messages`,
+    "POST",
+    {
+      client_message_id: `uni_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      message_type: messageType,
+      text_content: textContent,
+      asset_id: 0,
+      metadata
     }
-  });
-  return mapOpenIMMessage(result);
+  );
+  dispatchMessage(message);
+  return mapOpenIMMessage(message);
 }
 
-export async function openIMSendText(targetID: string, content: string, kind: ChatKind = "single") {
-  await ensureOpenIM();
-  if (kind === "single") {
-    await prepareOpenIMUsers([targetID]);
-  }
-  const message = isNativeApp
-    ? await nativeCall<MessageItem>(IMMethods.CreateTextMessage, content)
-    : await webCall<MessageItem>(IMMethods.CreateTextMessage, content);
-  return sendCreatedMessage(targetID, kind, message);
+export function openIMSendText(targetID: string, content: string, kind: ChatKind = "single") {
+  return sendMessage(targetID, kind, 1, content.trim());
 }
 
-export async function openIMSendImage(targetID: string, sourceURL: string, kind: ChatKind = "single") {
-  await ensureOpenIM();
-  if (kind === "single") {
-    await prepareOpenIMUsers([targetID]);
-  }
-  const url = absolutizeUrl(sourceURL);
-  const picture = { uuid: IMSDK.uuid(), type: "image", size: 0, width: 0, height: 0, url };
-  const params = { sourcePicture: picture, bigPicture: picture, snapshotPicture: picture, sourcePath: url };
-  const message = await payloadCall<MessageItem>(IMMethods.CreateImageMessageByURL, params);
-  return sendCreatedMessage(targetID, kind, message, IMMethods.SendMessageNotOss);
+export function openIMSendImage(targetID: string, sourceURL: string, kind: ChatKind = "single") {
+  return sendMessage(targetID, kind, 2, "", { source_url: absolutizeUrl(sourceURL) });
 }
 
-export async function openIMSendVideo(
+export function openIMSendVideo(
   targetID: string,
   sourceURL: string,
   coverURL = "",
@@ -416,256 +761,442 @@ export async function openIMSendVideo(
   size = 0,
   kind: ChatKind = "single"
 ) {
-  await ensureOpenIM();
-  if (kind === "single") {
-    await prepareOpenIMUsers([targetID]);
-  }
-  const videoURL = absolutizeUrl(sourceURL);
-  const snapshotURL = absolutizeUrl(coverURL);
-  const message = await payloadCall<MessageItem>(IMMethods.CreateVideoMessageByURL, {
-    videoPath: videoURL,
-    duration,
-    videoType: "video/mp4",
-    snapshotPath: snapshotURL,
-    videoUUID: IMSDK.uuid(),
-    videoUrl: videoURL,
-    videoSize: size,
-    snapshotUUID: IMSDK.uuid(),
-    snapshotSize: 0,
-    snapshotUrl: snapshotURL,
-    snapshotWidth: 0,
-    snapshotHeight: 0
+  return sendMessage(targetID, kind, 4, "", {
+    source_url: absolutizeUrl(sourceURL),
+    cover_url: absolutizeUrl(coverURL),
+    duration: Math.max(0, Math.round(duration)),
+    file_size: Math.max(0, Math.round(size))
   });
-  return sendCreatedMessage(targetID, kind, message, IMMethods.SendMessageNotOss);
 }
 
-export async function openIMSendVoice(
+export function openIMSendVoice(
   targetID: string,
   sourceURL: string,
   duration = 0,
   size = 0,
   kind: ChatKind = "single"
 ) {
-  await ensureOpenIM();
-  if (kind === "single") {
-    await prepareOpenIMUsers([targetID]);
-  }
-  const voiceURL = absolutizeUrl(sourceURL);
-  const message = await payloadCall<MessageItem>(IMMethods.CreateSoundMessageByURL, {
-    uuid: IMSDK.uuid(),
-    soundPath: voiceURL,
-    sourceUrl: voiceURL,
-    dataSize: size,
-    duration
+  return sendMessage(targetID, kind, 3, "", {
+    source_url: absolutizeUrl(sourceURL),
+    duration: Math.max(1, Math.round(duration)),
+    file_size: Math.max(0, Math.round(size))
   });
-  return sendCreatedMessage(targetID, kind, message, IMMethods.SendMessageNotOss);
 }
 
-export async function openIMSendFile(
+export function openIMSendFile(
   targetID: string,
   sourceURL: string,
   fileName: string,
   fileSize = 0,
   kind: ChatKind = "single"
 ) {
-  await ensureOpenIM();
-  if (kind === "single") {
-    await prepareOpenIMUsers([targetID]);
-  }
-  const fileURL = absolutizeUrl(sourceURL);
-  const message = await payloadCall<MessageItem>(IMMethods.CreateFileMessageByURL, {
-    filePath: fileURL,
-    fileName,
-    uuid: IMSDK.uuid(),
-    sourceUrl: fileURL,
-    fileSize
+  return sendMessage(targetID, kind, 5, "", {
+    source_url: absolutizeUrl(sourceURL),
+    file_name: fileName.trim() || "聊天文件",
+    file_size: Math.max(0, Math.round(fileSize))
   });
-  return sendCreatedMessage(targetID, kind, message, IMMethods.SendMessageNotOss);
 }
 
-export async function openIMMarkRead(targetID: string, kind: ChatKind = "single") {
-  await ensureOpenIM();
+export async function openIMMarkRead(
+  targetID: string,
+  kind: ChatKind = "single",
+  sequence = 0
+) {
   const conversationID = await oneConversationID(targetID, kind);
-  return payloadCall<unknown>(IMMethods.MarkConversationMessageAsRead, conversationID);
+  const readSequence = Math.max(
+    0,
+    Math.round(sequence || latestSequenceByConversation.get(conversationID) || 0)
+  );
+  const result = await nativeRequest(`/conversations/${pathID(conversationID)}/read`, "POST", {
+    sequence: readSequence
+  });
+  const conversations = await readCachedIMConversations();
+  await cacheIMConversations(
+    conversations.map((item) =>
+      String(item.conversationID || item.id || "") === conversationID
+        ? { ...item, unread: 0, unread_count: 0, last_read_seq: readSequence }
+        : item
+    )
+  );
+  return result;
 }
 
 export async function openIMRemoveConversation(targetID: string, kind: ChatKind = "single") {
-  await ensureOpenIM();
   const conversationID = await oneConversationID(targetID, kind);
-  return payloadCall<unknown>(IMMethods.DeleteConversationAndDeleteAllMsg, conversationID);
+  const result = await nativeRequest(`/conversations/${pathID(conversationID)}/hide`, "POST", {});
+  await removeCachedIMConversation(conversationID);
+  conversationIDs.delete(`${kind}:${targetID.trim()}`);
+  return result;
 }
 
-export async function openIMRevokeMessage(targetID: string, clientMsgID: string, kind: ChatKind = "single") {
-  await ensureOpenIM();
+export async function openIMRevokeMessage(
+  targetID: string,
+  messageID: string,
+  kind: ChatKind = "single"
+) {
   const conversationID = await oneConversationID(targetID, kind);
-  return payloadCall<unknown>(IMMethods.RevokeMessage, { conversationID, clientMsgID });
+  const result = await nativeRequest(
+    `/conversations/${pathID(conversationID)}/messages/${pathID(messageID)}/revoke`,
+    "POST",
+    {}
+  );
+  await removeCachedIMMessage(conversationID, messageID);
+  return result;
 }
 
-export async function openIMDeleteLocalMessage(targetID: string, clientMsgID: string, kind: ChatKind = "single") {
-  await ensureOpenIM();
+export async function openIMDeleteLocalMessage(
+  targetID: string,
+  messageID: string,
+  kind: ChatKind = "single"
+) {
   const conversationID = await oneConversationID(targetID, kind);
-  return payloadCall<unknown>(IMMethods.DeleteMessageFromLocalStorage, { conversationID, clientMsgID });
+  await markCachedIMMessageDeleted(conversationID, messageID);
+  return { deleted: true };
 }
 
 export function onOpenIMMessage(
-  handler: (message: ChatMessage, raw: MessageItem) => void,
+  handler: (message: ChatMessage, raw: NativeMessage) => void,
   targetID = "",
   kind: ChatKind = "single"
 ) {
-  const listener = (event: Record<string, unknown>) => {
-    const raw = unwrap<MessageItem>(event);
-    if (!raw || raw.sessionType !== chatSessionType(kind)) {
-      return;
+  const listener: MessageListener = { handler, targetID: targetID.trim(), kind };
+  messageListeners.add(listener);
+  if (listener.targetID) {
+    void oneConversationID(listener.targetID, kind)
+      .then((conversationID) => {
+        listener.conversationID = conversationID;
+      })
+      .catch(() => undefined);
+  }
+  void connectSocket().catch(() => undefined);
+  return () => {
+    messageListeners.delete(listener);
+    if (!messageListeners.size) {
+      clearReconnectTimer();
     }
-    if (targetID) {
-      const matches =
-        kind === "group"
-          ? raw.groupID === targetID
-          : raw.sendID === targetID || raw.recvID === targetID;
-      if (!matches) {
-        return;
-      }
-    }
-    handler(mapOpenIMMessage(raw), raw);
   };
-  IMSDK.subscribe(IMEvents.OnRecvNewMessage, listener);
-  return () => IMSDK.unsubscribe(IMEvents.OnRecvNewMessage, listener as () => void);
-}
-
-function asChatGroup(item: GroupItem) {
-  return item as unknown as ChatGroup;
-}
-
-function asChatGroupMember(item: GroupMemberItem) {
-  return item as unknown as ChatGroupMember;
 }
 
 export async function openIMGroups(offset = 0, count = 100) {
-  await ensureOpenIM();
-  const groups = await payloadCall<GroupItem[]>(IMMethods.GetJoinedGroupListPage, { offset, count });
-  return (Array.isArray(groups) ? groups : [])
-    .filter((group) => !String(group.groupID || "").startsWith("claw_live_"))
-    .map(asChatGroup);
+  const requested = clipped(count, 1, 500);
+  const start = Math.max(0, Math.floor(offset || 0));
+  try {
+    const items: NativeGroup[] = [];
+    let cursor = start;
+    while (items.length < requested) {
+      const limit = Math.min(200, requested - items.length);
+      const response = await nativeRequest<{ items: NativeGroup[] }>(
+        `/groups?offset=${cursor}&limit=${limit}`
+      );
+      const page = response.items || [];
+      items.push(...page);
+      if (page.length < limit) {
+        break;
+      }
+      cursor += page.length;
+    }
+    const mapped = items.map(mapGroup);
+    if (start === 0) {
+      await cacheIMGroups(mapped);
+    } else {
+      const merged = new Map((await readCachedIMGroups()).map((item) => [item.groupID, item]));
+      mapped.forEach((item) => merged.set(item.groupID, item));
+      await cacheIMGroups([...merged.values()]);
+    }
+    return mapped;
+  } catch (error) {
+    const cached = (await readCachedIMGroups()).slice(start, start + requested);
+    if (cached.length) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function openIMCreateGroup(groupName: string, memberUserIDs: string[]) {
-  await ensureOpenIM();
-  await prepareOpenIMUsers(memberUserIDs);
-  const session = getSession();
-  const group = await payloadCall<GroupItem>(IMMethods.CreateGroup, {
-    ownerUserID: session.uid,
-    memberUserIDs: [...new Set(memberUserIDs.filter((userID) => userID !== session.uid))],
-    groupInfo: {
-      groupName: groupName.trim(),
-      groupType: GroupType.Group,
-      introduction: "",
-      notification: "",
-      faceURL: "",
-      needVerification: GroupVerificationType.AllNeed,
-      lookMemberInfo: 0,
-      applyMemberFriend: 0,
-      ex: JSON.stringify({ kind: "claw_chat" })
-    }
+  const memberIDs = [
+    ...new Set(
+      memberUserIDs
+        .map((id) => id.trim())
+        .filter((id) => id && id !== String(getSession().uid))
+    )
+  ];
+  const group = await nativeRequest<NativeConversation>("/groups", "POST", {
+    title: groupName.trim(),
+    max_members: 500,
+    member_ids: memberIDs
   });
-  return asChatGroup(group);
+  conversationIDs.set(`group:${group.id}`, group.id);
+  const mapped = mapGroup({
+    id: group.id,
+    title: group.title || groupName,
+    owner_user_id: getSession().uid,
+    member_count: memberIDs.length + 1,
+    max_members: 500,
+    role: 100
+  });
+  await cacheIMGroup(mapped);
+  return mapped;
 }
 
 export async function openIMGetGroup(groupID: string) {
-  await ensureOpenIM();
-  const groups = await payloadCall<GroupItem[]>(IMMethods.GetSpecifiedGroupsInfo, [groupID]);
-  const group = (groups || [])[0];
-  if (!group) {
-    throw new Error("群聊不存在或已解散");
+  try {
+    const group = mapGroup(await nativeRequest<NativeGroup>(`/groups/${pathID(groupID)}`));
+    await cacheIMGroup(group);
+    return group;
+  } catch (error) {
+    const cached = await readCachedIMGroup(groupID);
+    if (cached) {
+      return cached;
+    }
+    throw error;
   }
-  return asChatGroup(group);
 }
 
 export async function openIMGroupMembers(groupID: string, offset = 0, count = 100) {
-  await ensureOpenIM();
-  const members = await payloadCall<GroupMemberItem[]>(IMMethods.GetGroupMemberList, {
-    groupID,
-    filter: GroupMemberFilter.All,
-    offset,
-    count
-  });
-  return (Array.isArray(members) ? members : []).map(asChatGroupMember);
+  const requested = clipped(count, 1, 500);
+  const start = Math.max(0, Math.floor(offset || 0));
+  try {
+    const items: NativeMember[] = [];
+    let cursor = start;
+    while (items.length < requested) {
+      const limit = Math.min(200, requested - items.length);
+      const response = await nativeRequest<{ items: NativeMember[] }>(
+        `/groups/${pathID(groupID)}/members?offset=${cursor}&limit=${limit}`
+      );
+      const page = response.items || [];
+      items.push(...page);
+      if (page.length < limit) {
+        break;
+      }
+      cursor += page.length;
+    }
+    const mapped = items.map((member) => mapGroupMember(groupID, member));
+    if (start === 0) {
+      await cacheIMGroupMembers(groupID, mapped);
+    } else {
+      const merged = new Map(
+        (await readCachedIMGroupMembers(groupID)).map((item) => [item.userID, item])
+      );
+      mapped.forEach((item) => merged.set(item.userID, item));
+      await cacheIMGroupMembers(groupID, [...merged.values()]);
+    }
+    return mapped;
+  } catch (error) {
+    const cached = (await readCachedIMGroupMembers(groupID)).slice(start, start + requested);
+    if (cached.length) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function openIMInviteGroupMembers(groupID: string, userIDs: string[]) {
-  await ensureOpenIM();
-  await prepareOpenIMUsers(userIDs);
-  return payloadCall<unknown>(IMMethods.InviteUserToGroup, {
-    groupID,
-    reason: "邀请加入群聊",
-    userIDList: [...new Set(userIDs)]
-  });
+  const unique = [
+    ...new Set(
+      userIDs
+        .map((id) => id.trim())
+        .filter((id) => id && id !== String(getSession().uid))
+    )
+  ];
+  let invited = 0;
+  for (const userID of unique) {
+    try {
+      await nativeRequest(`/groups/${pathID(groupID)}/members`, "POST", {
+        user_id: userID
+      });
+      invited += 1;
+    } catch (error) {
+      if (!invited) {
+        throw error;
+      }
+      throw new Error(`已邀请 ${invited} 人，其余成员邀请失败，请稍后重试`);
+    }
+  }
+  return { invited };
 }
 
-export async function openIMJoinGroup(groupID: string, message = "申请加入群聊") {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.JoinGroup, {
-    groupID: groupID.trim(),
-    reqMsg: message,
-    joinSource: GroupJoinSource.Search,
-    ex: ""
-  });
+export function openIMJoinGroup(groupID: string, message = "申请加入群聊") {
+  return nativeRequest<{ id?: string; status: number; joined: boolean }>(
+    `/groups/${pathID(groupID)}/join`,
+    "POST",
+    { message: message.trim() }
+  );
 }
 
 export async function openIMSetGroupInfo(groupID: string, changes: Partial<ChatGroup>) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.SetGroupInfo, { groupID, ...changes });
-}
-
-export async function openIMSetGroupMemberRole(groupID: string, userID: string, roleLevel: number) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.SetGroupMemberInfo, {
-    groupID,
-    userID,
-    roleLevel: roleLevel === GroupMemberRole.Admin ? GroupMemberRole.Admin : GroupMemberRole.Normal
+  const current = await nativeRequest<NativeGroup>(`/groups/${pathID(groupID)}`);
+  const result = await nativeRequest(`/groups/${pathID(groupID)}`, "POST", {
+    title: changes.groupName ?? current.title ?? "",
+    introduction: changes.introduction ?? current.introduction ?? "",
+    announcement: changes.notification ?? current.announcement ?? "",
+    join_policy: changes.needVerification ?? current.join_policy ?? 1
   });
+  await cacheIMGroup(
+    mapGroup({
+      ...current,
+      title: changes.groupName ?? current.title,
+      introduction: changes.introduction ?? current.introduction,
+      announcement: changes.notification ?? current.announcement,
+      join_policy: changes.needVerification ?? current.join_policy
+    })
+  );
+  return result;
 }
 
-export async function openIMMuteGroupMember(groupID: string, userID: string, mutedSeconds: number) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.ChangeGroupMemberMute, { groupID, userID, mutedSeconds });
+export async function openIMSetGroupMemberRole(
+  groupID: string,
+  userID: string,
+  roleLevel: number
+) {
+  const result = await nativeRequest(
+    `/groups/${pathID(groupID)}/members/${pathID(userID)}/role`,
+    "POST",
+    { role: roleLevel === 60 ? 60 : 10 }
+  );
+  const members = await readCachedIMGroupMembers(groupID);
+  await cacheIMGroupMembers(
+    groupID,
+    members.map((member) =>
+      member.userID === userID ? { ...member, roleLevel: roleLevel === 60 ? 60 : 10 } : member
+    )
+  );
+  return result;
+}
+
+export async function openIMMuteGroupMember(
+  groupID: string,
+  userID: string,
+  mutedSeconds: number
+) {
+  const duration = Math.max(0, Math.round(mutedSeconds));
+  const result = await nativeRequest(
+    `/groups/${pathID(groupID)}/members/${pathID(userID)}/mute`,
+    "POST",
+    { duration_seconds: duration }
+  );
+  const members = await readCachedIMGroupMembers(groupID);
+  await cacheIMGroupMembers(
+    groupID,
+    members.map((member) =>
+      member.userID === userID
+        ? { ...member, muteEndTime: duration > 0 ? Math.floor(Date.now() / 1000) + duration : 0 }
+        : member
+    )
+  );
+  return result;
 }
 
 export async function openIMChangeGroupMute(groupID: string, isMute: boolean) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.ChangeGroupMute, { groupID, isMute });
+  const result = await nativeRequest(`/groups/${pathID(groupID)}/all-mute`, "POST", {
+    muted: isMute
+  });
+  const group = await readCachedIMGroup(groupID);
+  if (group) {
+    await cacheIMGroup({ ...group, allMuted: isMute, status: isMute ? 3 : 0 });
+  }
+  return result;
 }
 
 export async function openIMKickGroupMember(groupID: string, userID: string) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.KickGroupMember, {
+  const result = await nativeRequest(
+    `/groups/${pathID(groupID)}/members/${pathID(userID)}/remove`,
+    "POST",
+    {}
+  );
+  const members = await readCachedIMGroupMembers(groupID);
+  await cacheIMGroupMembers(
     groupID,
-    reason: "由群管理员移出群聊",
-    userIDList: [userID]
-  });
+    members.filter((member) => member.userID !== userID)
+  );
+  const group = await readCachedIMGroup(groupID);
+  if (group) {
+    await cacheIMGroup({ ...group, memberCount: Math.max(0, Number(group.memberCount || 0) - 1) });
+  }
+  return result;
 }
 
 export async function openIMTransferGroupOwner(groupID: string, newOwnerUserID: string) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.TransferGroupOwner, { groupID, newOwnerUserID });
+  const result = await nativeRequest(`/groups/${pathID(groupID)}/transfer`, "POST", {
+    user_id: newOwnerUserID
+  });
+  const currentUserID = String(getSession().uid || "");
+  const members = await readCachedIMGroupMembers(groupID);
+  await cacheIMGroupMembers(
+    groupID,
+    members.map((member) => {
+      if (member.userID === newOwnerUserID) return { ...member, roleLevel: 100 };
+      if (member.userID === currentUserID) return { ...member, roleLevel: 60 };
+      return member;
+    })
+  );
+  const group = await readCachedIMGroup(groupID);
+  if (group) {
+    await cacheIMGroup({ ...group, ownerUserID: newOwnerUserID, roleLevel: 60 });
+  }
+  return result;
 }
 
 export async function openIMQuitGroup(groupID: string) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.QuitGroup, groupID);
+  const result = await nativeRequest(`/groups/${pathID(groupID)}/leave`, "POST", {});
+  await Promise.all([removeCachedIMGroup(groupID), removeCachedIMConversation(groupID)]);
+  conversationIDs.delete(`group:${groupID}`);
+  return result;
 }
 
 export async function openIMDismissGroup(groupID: string) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(IMMethods.DismissGroup, groupID);
+  const result = await nativeRequest(`/groups/${pathID(groupID)}/dissolve`, "POST", {});
+  await Promise.all([removeCachedIMGroup(groupID), removeCachedIMConversation(groupID)]);
+  conversationIDs.delete(`group:${groupID}`);
+  return result;
 }
 
 export async function openIMGroupApplications(offset = 0, count = 100) {
-  await ensureOpenIM();
-  const applications = await payloadCall<GroupApplicationItem[]>(
-    IMMethods.GetGroupApplicationListAsRecipient,
-    { offset, count }
-  );
-  return (Array.isArray(applications) ? applications : []) as unknown as ChatGroupApplication[];
+  const requested = clipped(count, 1, 500);
+  const start = Math.max(0, Math.floor(offset || 0));
+  try {
+    const items: NativeApplication[] = [];
+    let cursor = start;
+    while (items.length < requested) {
+      const limit = Math.min(200, requested - items.length);
+      const response = await nativeRequest<{ items: NativeApplication[] }>(
+        `/group-applications?offset=${cursor}&limit=${limit}`
+      );
+      const page = response.items || [];
+      items.push(...page);
+      if (page.length < limit) {
+        break;
+      }
+      cursor += page.length;
+    }
+    const mapped = items.map(mapGroupApplication);
+    if (start === 0) {
+      await cacheIMGroupApplications(mapped);
+    } else {
+      const merged = new Map(
+        (await readCachedIMGroupApplications()).map((item) => [
+          String(item.applicationID || `${item.groupID}:${item.userID}`),
+          item
+        ])
+      );
+      mapped.forEach((item) =>
+        merged.set(String(item.applicationID || `${item.groupID}:${item.userID}`), item)
+      );
+      await cacheIMGroupApplications([...merged.values()]);
+    }
+    return mapped;
+  } catch (error) {
+    const cached = (await readCachedIMGroupApplications()).slice(start, start + requested);
+    cached.forEach((item) => {
+      if (item.applicationID) {
+        applicationIDs.set(`${item.groupID}:${item.userID}`, item.applicationID);
+      }
+    });
+    if (cached.length) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function openIMHandleGroupApplication(
@@ -674,50 +1205,100 @@ export async function openIMHandleGroupApplication(
   accept: boolean,
   handleMsg = ""
 ) {
-  await ensureOpenIM();
-  return payloadCall<unknown>(
-    accept ? IMMethods.AcceptGroupApplication : IMMethods.RefuseGroupApplication,
-    { groupID, fromUserID, handleMsg }
+  const applicationID = applicationIDs.get(`${groupID}:${fromUserID}`);
+  if (!applicationID) {
+    throw new Error("群申请已失效，请刷新后重试");
+  }
+  const result = await nativeRequest(`/group-applications/${pathID(applicationID)}`, "POST", {
+    accept,
+    message: handleMsg.trim()
+  });
+  const applications = await readCachedIMGroupApplications();
+  await cacheIMGroupApplications(
+    applications.map((item) =>
+      item.applicationID === applicationID ? { ...item, handleResult: accept ? 1 : 2 } : item
+    )
   );
+  return result;
 }
 
 export async function openIMBlackList(offset = 0, count = 100) {
-  await ensureOpenIM();
-  return payloadCall<BlackUserItem[]>(IMMethods.GetBlackList, { offset, count });
+  const limit = clipped(count, 1, 200);
+  const start = Math.max(0, Math.floor(offset || 0));
+  try {
+    const response = await nativeRequest<{ items: NativeBlock[] }>(
+      `/blocks?offset=${start}&limit=${limit}`
+    );
+    const mapped = (response.items || []).map(mapBlock);
+    if (start === 0) {
+      await cacheIMBlocks(mapped);
+    } else {
+      const merged = new Map((await readCachedIMBlocks()).map((item) => [item.userID, item]));
+      mapped.forEach((item) => merged.set(item.userID, item));
+      await cacheIMBlocks([...merged.values()]);
+    }
+    return mapped;
+  } catch (error) {
+    const cached = (await readCachedIMBlocks()).slice(start, start + limit);
+    if (cached.length) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function openIMSetBlack(userID: string, blocked: boolean) {
-  await ensureOpenIM();
-  await prepareOpenIMUsers([userID]);
-  return blocked
-    ? payloadCall<unknown>(IMMethods.AddBlack, { toUserID: userID, ex: "" })
-    : payloadCall<unknown>(IMMethods.RemoveBlack, userID);
+  const result = await nativeRequest(`/blocks/${pathID(userID)}`, "POST", { blocked });
+  await setCachedIMBlock(userID, blocked);
+  return result;
 }
 
-export async function createOpenIMCustomMessage(data: unknown) {
-  const params = { data: JSON.stringify(data), extension: "claw.live.v1", description: "Claw live event" };
-  return payloadCall<MessageItem>(IMMethods.CreateCustomMessage, params);
+export function createOpenIMCustomMessage(data: unknown) {
+  return Promise.resolve({ data });
 }
 
-export async function sendOpenIMGroupMessage(groupID: string, message: MessageItem) {
-  return payloadCall<MessageItem>(IMMethods.SendMessage, {
-    recvID: "", groupID, message, isOnlineOnly: true,
-    offlinePushInfo: { title: "直播消息", desc: "直播间有新消息", ex: "" }
+export function sendOpenIMGroupMessage(groupID: string, message: { data?: unknown }) {
+  return sendMessage(groupID, "group", 100, JSON.stringify(message.data ?? {}), {
+    kind: "custom"
   });
 }
 
 export function onOpenIMGroupMessage(groupID: string, handler: (data: unknown) => void) {
-  const listener = (event: Record<string, unknown>) => {
-    const raw = unwrap<MessageItem>(event);
-    if (raw?.groupID !== groupID || raw.contentType !== MessageType.CustomMessage) {
+  return onOpenIMMessage((message) => {
+    if (!message.system) {
       return;
     }
-    handler(parseValue(raw.customElem?.data));
+    try {
+      handler(JSON.parse(String(message.content || "{}")));
+    } catch {
+      handler(message.content);
+    }
+  }, groupID, "group");
+}
+
+export async function prepareOpenIMUsers(userIDs: string[]) {
+  return {
+    prepared: new Set(userIDs.map((id) => id.trim()).filter(Boolean)).size
   };
-  IMSDK.subscribe(IMEvents.OnRecvNewMessage, listener);
-  IMSDK.subscribe(IMEvents.OnRecvOnlineOnlyMessage, listener);
-  return () => {
-    IMSDK.unsubscribe(IMEvents.OnRecvNewMessage, listener as () => void);
-    IMSDK.unsubscribe(IMEvents.OnRecvOnlineOnlyMessage, listener as () => void);
-  };
+}
+
+export function pickOpenIMLocalFile() {
+  return Promise.resolve("");
+}
+
+export async function connectOpenIMLive(liveID: string, stream: string) {
+  const response = await nativeRequest<{ conversation_id: string }>("/live/join", "POST", {
+    live_user_id: liveID,
+    stream
+  });
+  void connectSocket().catch(() => undefined);
+  return response.conversation_id;
+}
+
+export async function sendOpenIMLiveMessage(
+  _liveID: string,
+  _stream: string,
+  payload: Record<string, unknown>
+) {
+  return { payload, serverMsgID: "" };
 }

@@ -64,7 +64,7 @@ import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import { bindInviteAttribution, bindInviteCode, checkInviteAgent, getBaseInfo, getInviteCode } from "@/api/services";
 import type { InviteAgentState, InviteBindResult, InviteCode, UserProfile } from "@/types/api";
-import { API_HOST } from "@/constants/config";
+import { PUBLIC_WEB_URL } from "@/constants/config";
 import { absolutizeUrl, firstText } from "@/utils/url";
 import { clearPendingInvite, normalizeInviteCode, pickInviteParams, savePendingInvite, truthyFlag, type PendingInviteParams } from "@/utils/invite";
 import { getSession, isLoggedIn, requireLogin } from "@/utils/session";
@@ -119,7 +119,7 @@ const stateDesc = computed(() => {
 });
 const inviteLink = computed(() => {
   if (ownInviteCode.value) {
-    return `${API_HOST}/appapi/agent/downapp?code=${encodeURIComponent(ownInviteCode.value)}`;
+    return `${PUBLIC_WEB_URL}?ref=${encodeURIComponent(ownInviteCode.value)}`;
   }
   const direct = firstText(invite.value?.href, invite.value?.url, invite.value?.link);
   return direct ? absolutizeUrl(direct) : "";

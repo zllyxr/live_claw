@@ -37,7 +37,7 @@
     <button class="primary-button submit" :disabled="submitting || Boolean(uploadingKey)" @tap="submit">
       {{ submitting ? "正在提交" : "提交认证" }}
     </button>
-    <button class="ghost-link" @tap="openLegacyAuth">打开旧版认证页</button>
+    <button class="ghost-link" @tap="openAuthStatus">查看认证状态</button>
   </view>
 </template>
 
@@ -47,7 +47,6 @@ import { submitAuth, uploadOne } from "@/api/services";
 import type { UploadResult } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
-import { buildAuthUrl, openWebView } from "@/utils/navigation";
 
 type ImageKey = "frontView" | "backView" | "handsetView";
 
@@ -155,8 +154,8 @@ async function submit() {
   }
 }
 
-function openLegacyAuth() {
-  openWebView(buildAuthUrl(), "认证");
+function openAuthStatus() {
+  uni.navigateTo({ url: "/pages/detail/index?type=auth" });
 }
 </script>
 

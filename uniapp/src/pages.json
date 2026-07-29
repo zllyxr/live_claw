@@ -234,6 +234,13 @@
       }
     },
     {
+      "path": "pages/sports/detail",
+      "style": {
+        "navigationBarTitleText": "赛事详情",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/user/home",
       "style": {
         "navigationBarTitleText": "用户主页",
@@ -278,7 +285,9 @@
     {
       "path": "pages/wallet/detail",
       "style": {
-        "navigationBarTitleText": "明细"
+        "navigationBarTitleText": "明细",
+        "enablePullDownRefresh": true,
+        "onReachBottomDistance": 80
       }
     },
     {
@@ -320,6 +329,12 @@
       "style": {
         "navigationBarTitleText": "在线客服",
         "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/service/chat",
+      "style": {
+        "navigationBarTitleText": "平台客服"
       }
     },
     {

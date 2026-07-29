@@ -69,7 +69,6 @@
       <image src="/static/live/icon_live_title_laba.png" mode="aspectFit" />
       <text>{{ titleTip }}</text>
     </view>
-
     <view v-if="trialCountdown > 0" class="trial-chip">
       <text>试看 {{ trialCountdown }}s</text>
     </view>
@@ -132,7 +131,9 @@
           @confirm="sendChat"
           @blur="onChatBlur"
         />
-        <button class="chat-send" :disabled="!draft" @tap="sendChat">发送</button>
+        <button class="chat-send" :disabled="!draft || sendingChat" @tap="sendChat">
+          {{ sendingChat ? "发送中" : "发送" }}
+        </button>
       </view>
       <template v-else>
         <view class="chat-entry" @tap="focusChat">
@@ -514,7 +515,12 @@ import type { LiveGift, LiveGiftBundle, LotteryGame, LotteryHome, SportsHome, Sp
 import { getSession, isLoggedIn, requireLogin } from "@/utils/session";
 import { displayUrl, staticAsset } from "@/utils/url";
 import { deepDecode, isPlayableLiveUrl, resolveLiveStream } from "@/utils/liveStream";
-import { LiveSocketClient, type LiveSocketChat, type LiveSocketGift } from "@/utils/liveSocket";
+import {
+  LiveSocketClient,
+  type LiveConnectionState,
+  type LiveSocketChat,
+  type LiveSocketGift
+} from "@/utils/liveSocket";
 
 type Panel = "" | "gift" | "users" | "manage" | "guard" | "rank" | "function";
 type FunctionKey = "users" | "manage" | "guard" | "rank" | "report" | "share" | "recharge";
@@ -531,7 +537,6 @@ const stream = ref("");
 const anchorName = ref("主播");
 const BRAND_ICON = staticAsset("/static/brand/icon.webp");
 const BRAND_ICON_ROUND = staticAsset("/static/brand/icon-round.webp");
-const GAME_PLACEHOLDER = staticAsset("/static/brand/icon.webp");
 const anchorAvatar = ref(BRAND_ICON_ROUND);
 const roomVotes = ref("0");
 const initialNums = ref("0");
@@ -548,6 +553,7 @@ const selectedGift = ref<LiveGift>();
 const selectedUser = ref<UserProfile>();
 const giftCount = ref(1);
 const sendingGift = ref(false);
+const sendingChat = ref(false);
 const draft = ref("");
 const chatActive = ref(false);
 const inputFocus = ref(false);
@@ -576,6 +582,7 @@ const messages = ref<LiveSocketChat[]>([]);
 const chatScrollTop = ref(0);
 const trialCountdown = ref(0);
 const socketConnected = ref(false);
+const socketState = ref<LiveConnectionState>("idle");
 const socketUserType = ref(30);
 const speakLimit = ref(0);
 const myGuardType = ref(0);
@@ -587,14 +594,25 @@ let liveSocketClient: LiveSocketClient | undefined;
 let directRefreshAttempts = 0;
 let directHlsRecoveryAttempts = 0;
 let directRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+let giftRequestSerial = 0;
 
-const giftCountOptions = [1, 10, 66, 188, 520, 1314];
+const giftCountOptions = [1, 10, 66, 188, 520, 999];
 const gifts = computed(() => [...(giftBundle.value?.giftlist || []), ...(giftBundle.value?.proplist || [])]);
 const onlineCount = computed(() => {
   const count = Math.max(users.value.length, Number(initialNums.value || 0));
   return count > 9999 ? "9999+" : String(count || 0);
 });
 const guardCount = computed(() => String(guards.value.length || 0));
+const socketStateLabel = computed(() => {
+  const labels: Record<LiveConnectionState, string> = {
+    idle: isLoggedIn() ? "聊天待连接" : "登录后可聊天",
+    connecting: "聊天连接中",
+    ready: "聊天已连接",
+    reconnecting: "聊天重连中",
+    offline: "聊天暂时离线"
+  };
+  return labels[socketState.value];
+});
 const audienceUsers = computed<UserProfile[]>(() => {
   if (users.value.length) {
     return users.value.slice(0, 8);
@@ -782,6 +800,7 @@ function disconnectLiveSocket() {
   liveSocketClient?.disconnect();
   liveSocketClient = undefined;
   socketConnected.value = false;
+  socketState.value = "idle";
 }
 
 function connectLiveSocket(info: unknown) {
@@ -799,8 +818,9 @@ function connectLiveSocket(info: unknown) {
     stream: stream.value,
     userType: socketUserType.value,
     guardType: myGuardType.value,
-    onConnect: (connected) => {
+    onConnect: (connected, state) => {
       socketConnected.value = connected;
+      socketState.value = state;
     },
     onChat: pushChat,
     onGift: handleSocketGift,
@@ -912,7 +932,8 @@ function liveLotteryGameName(game?: LotteryGame) {
 }
 
 function liveLotteryGameIcon(game?: LotteryGame) {
-  return displayUrl(String(game?.icon_url || game?.icon || ""), "/static/brand/icon.webp") || GAME_PLACEHOLDER;
+  const originalIcon = `/static/lotter/${String(game?.game_code || "").toUpperCase()}.png`;
+  return displayUrl(String(game?.icon_url || game?.icon || ""), originalIcon);
 }
 
 function liveLotteryIssueText() {
@@ -921,14 +942,22 @@ function liveLotteryIssueText() {
     return "暂无可投注期号";
   }
   const issueNo = textValue(issue, ["issue_num", "issue", "id"], "--");
-  const countdown = textValue(issue, ["bet_countdown", "countdown"], "0");
-  const closed = textValue(issue, ["can_bet"], "1") === "1" ? "" : " 已封盘";
+  const countdown = textValue(issue, ["bet_countdown", "seal_countdown", "countdown"], "0");
+  const closed = lotteryIssueCanBet(issue) ? "" : " 已封盘";
   return `期号：${issueNo}  倒计时：${countdown}${closed}`;
 }
 
 function liveLotteryIssueId() {
   const issue = asRecord(liveLotteryDetail.value?.current_issue);
-  return textValue(issue, ["can_bet"], "1") === "1" ? textValue(issue, ["id"], "") : "";
+  return lotteryIssueCanBet(issue) ? textValue(issue, ["id"], "") : "";
+}
+
+function lotteryIssueCanBet(issue: Record<string, unknown>) {
+  const explicit = textValue(issue, ["can_bet"], "").toLowerCase();
+  if (explicit) {
+    return explicit === "1" || explicit === "true";
+  }
+  return textValue(issue, ["status"], "") === "1" && Number(textValue(issue, ["seal_countdown"], "0")) > 0;
 }
 
 function playName(play: Record<string, unknown>) {
@@ -1322,6 +1351,9 @@ async function initRoom() {
 async function openPanel(next: Panel) {
   gameChooserOpen.value = false;
   liveGameKind.value = "";
+  if (next !== "manage") {
+    selectedUser.value = undefined;
+  }
   panel.value = next;
   try {
     if (next === "gift" && !giftBundle.value) {
@@ -1351,6 +1383,7 @@ async function openPanel(next: Panel) {
 
 function closePanel() {
   panel.value = "";
+  selectedUser.value = undefined;
 }
 
 function userId(item?: UserProfile) {
@@ -1417,8 +1450,8 @@ function onChatBlur() {
   }, 120);
 }
 
-function sendChat() {
-  if (!requireLogin()) {
+async function sendChat() {
+  if (!requireLogin() || sendingChat.value) {
     return;
   }
   const content = draft.value.trim();
@@ -1430,13 +1463,23 @@ function sendChat() {
     uni.showToast({ title: `等级达到 ${speakLimit.value} 才能发言`, icon: "none" });
     return;
   }
-  if (!liveSocketClient?.isConnected()) {
+  const client = liveSocketClient;
+  if (!client?.isConnected()) {
     uni.showToast({ title: "聊天服务器未连接，请稍后重试", icon: "none" });
     return;
   }
-  liveSocketClient.sendChat(content);
-  draft.value = "";
-  chatActive.value = false;
+  sendingChat.value = true;
+  try {
+    await client.sendChat(content);
+    if (draft.value.trim() === content) {
+      draft.value = "";
+    }
+    chatActive.value = false;
+  } catch {
+    chatActive.value = true;
+  } finally {
+    sendingChat.value = false;
+  }
 }
 
 async function followAnchor() {
@@ -1474,29 +1517,20 @@ async function sendGift() {
   }
   sendingGift.value = true;
   try {
+    giftRequestSerial += 1;
+    const clientRequestId =
+      `livegift_${String(getSession().uid || "guest")}_${Date.now()}_${giftRequestSerial}`;
     const result = await sendLiveGift({
       liveUid: liveUid.value,
       stream: stream.value,
-      toUids: selectedUser.value ? userId(selectedUser.value) : liveUid.value,
       giftId: selectedGift.value.id || "",
-      giftCount: giftCount.value || 1
+      giftCount: giftCount.value || 1,
+      clientRequestId
     });
     if (result?.coin !== undefined && giftBundle.value) {
       giftBundle.value = { ...giftBundle.value, coin: result.coin as string | number };
     }
-    const giftToken = textValue(result, ["gifttoken", "giftToken"], "");
-    const name = getSession().user?.user_nicename || getSession().user?.user_nickname || "我";
-    const giftName = String(selectedGift.value.giftname || selectedGift.value.name || "礼物");
-    const icon = giftIcon(selectedGift.value);
-    if (giftToken && liveSocketClient?.isConnected()) {
-      liveSocketClient.sendGift(selectedGift.value, giftToken, anchorName.value);
-    } else {
-      addSystem(`${name} 送出了 ${giftName} x${giftCount.value || 1}`, "礼物");
-      showGiftToast(name, giftName, giftCount.value || 1, icon);
-      if (giftToken) {
-        uni.showToast({ title: "礼物已送出，聊天广播未连接", icon: "none" });
-      }
-    }
+    uni.showToast({ title: "礼物已送出", icon: "none" });
   } catch (error: any) {
     uni.showToast({ title: error?.message || "送礼失败", icon: "none" });
   } finally {
@@ -1902,6 +1936,7 @@ async function leaveRoom() {
   const client = liveSocketClient;
   liveSocketClient = undefined;
   socketConnected.value = false;
+  socketState.value = "idle";
   const leaveTasks: Promise<unknown>[] = [];
   if (client) {
     leaveTasks.push(client.leave());
@@ -2315,6 +2350,51 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-connection-state {
+  position: absolute;
+  top: calc(218rpx + var(--status-bar-height));
+  left: 20rpx;
+  display: flex;
+  width: 176rpx;
+  height: 46rpx;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid rgba(255, 255, 255, 0.18);
+  border-radius: 23rpx;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(14, 16, 24, 0.56);
+  backdrop-filter: blur(8rpx);
+}
+
+.chat-connection-state text {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  font-size: 21rpx;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.chat-connection-state.state-ready {
+  color: #dfffea;
+  background: rgba(37, 166, 96, 0.68);
+}
+
+.chat-connection-state.state-connecting,
+.chat-connection-state.state-reconnecting {
+  color: #fff4ce;
+  background: rgba(201, 137, 28, 0.72);
+}
+
+.chat-connection-state.state-offline {
+  color: #ffe3e8;
+  background: rgba(199, 54, 78, 0.72);
 }
 
 .trial-chip {
@@ -2771,10 +2851,13 @@ onUnmounted(() => {
   height: 52rpx;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border-radius: 26rpx;
   color: #fff;
   font-size: 24rpx;
   font-weight: 900;
+  line-height: 1;
+  text-align: center;
   background: var(--brand);
 }
 
@@ -2822,6 +2905,9 @@ onUnmounted(() => {
 }
 
 .sheet-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 26rpx;
   color: rgba(255, 255, 255, 0.72);
   font-size: 20rpx;
@@ -2850,10 +2936,16 @@ onUnmounted(() => {
 }
 
 .gift-tabs text {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
   margin-right: 34rpx;
   color: rgba(255, 255, 255, 0.55);
   font-size: 26rpx;
   font-weight: 900;
+  line-height: 1;
+  text-align: center;
 }
 
 .gift-tabs .active {
@@ -2861,9 +2953,15 @@ onUnmounted(() => {
 }
 
 .gift-tip {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
   margin-left: auto;
   color: rgba(255, 255, 255, 0.55);
   font-size: 22rpx;
+  line-height: 1;
+  text-align: center;
 }
 
 .gift-body {

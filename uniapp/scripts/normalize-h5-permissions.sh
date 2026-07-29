@@ -14,9 +14,8 @@ normalize_tree() {
 }
 
 # Static files can arrive with owner-only permissions when copied from an
-# archive or generated on another machine. Apache serves the H5 build as a
-# non-owner user, so every directory must be traversable and every file
+# archive or generated on another machine. The web server runs as a non-owner
+# user, so every directory must be traversable and every file must remain
 # world-readable.
 normalize_tree "$uniapp_root/src/static"
 normalize_tree "$uniapp_root/dist/build/h5"
-

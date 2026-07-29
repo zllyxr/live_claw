@@ -229,6 +229,9 @@ export interface SportsMatch {
   away_logo?: string;
   home_score?: string | number;
   away_score?: string | number;
+  score_text?: string;
+  match_status?: string;
+  has_started?: string | number;
   competition_type?: string;
   league_name?: string;
   status_text?: string;
@@ -244,6 +247,8 @@ export interface SportsMatch {
   kickoff_time_text?: string;
   trend?: string;
   prediction?: Array<Record<string, unknown>>;
+  markets?: SportsMarket[];
+  market_count?: string | number;
   match_time?: string;
   [key: string]: unknown;
 }
@@ -423,6 +428,16 @@ export interface Conversation {
   content?: string;
   addtime?: string;
   unread?: string | number;
+  unread_count?: number;
+  title?: string;
+  peer_uid?: string;
+  peer_nickname?: string;
+  peer_avatar?: string;
+  latest_message_type?: number;
+  latest_sender_id?: string;
+  message_seq?: number;
+  last_read_seq?: number;
+  updated_at?: number;
   [key: string]: unknown;
 }
 
@@ -450,11 +465,16 @@ export interface ChatMessage {
   type?: string | number;
   addtime?: string;
   is_self?: boolean;
+  request_id?: string;
+  conversation_id?: string;
+  sequence?: number;
+  metadata?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
 export interface ChatGroup {
   groupID: string;
+  groupNo?: string;
   groupName: string;
   notification?: string;
   introduction?: string;
@@ -462,9 +482,12 @@ export interface ChatGroup {
   ownerUserID?: string;
   memberCount?: number;
   status?: number;
+  allMuted?: boolean;
   groupType?: number;
   needVerification?: number;
   createTime?: number;
+  maxMemberCount?: number;
+  roleLevel?: number;
   [key: string]: unknown;
 }
 
@@ -488,6 +511,7 @@ export interface ChatGroupApplication {
   reqMsg?: string;
   handleResult?: number;
   reqTime?: number;
+  applicationID?: string;
   [key: string]: unknown;
 }
 
@@ -541,13 +565,55 @@ export interface MiniGameCategory {
   games?: MiniGameItem[];
 }
 
+export interface FishingVenue {
+  game_id?: string | number;
+  game_code?: string;
+  game_name?: string;
+  entry_path?: string;
+  venue_id?: string | number;
+  venue_code?: string;
+  venue_name?: string;
+  multiplier?: string | number;
+  table_count?: string | number;
+  seats_per_table?: string | number;
+  min_balance?: string | number;
+  escrow_amount?: string | number;
+  bet_levels?: Array<string | number>;
+}
+
 export interface MiniGameBundle {
   total?: string;
   games?: MiniGameItem[];
   categories?: MiniGameCategory[];
+  fishing_venues?: FishingVenue[];
 }
 
 export interface MiniGameLaunch extends MiniGameItem {
   launch_url?: string;
   nickname?: string;
+}
+
+export interface HomeSection<T> {
+  status?: "ok" | "stale" | "degraded" | string;
+  items?: T[];
+  error?: string;
+  updated_at?: string | number;
+}
+
+export interface HomeFishingVenue extends FishingVenue {}
+
+export interface HomeDashboard {
+  server_time?: string | number;
+  user?: { id?: string | number; nickname?: string };
+  wallet?: { coin?: string | number; frozen?: string | number };
+  banners?: HomeSection<Record<string, unknown>>;
+  live?: HomeSection<LiveRoom>;
+  sports?: HomeSection<SportsMatch & {
+    status?: string;
+    kickoff_at?: string | number;
+    bet_close_at?: string | number;
+    options?: SportsMarketOption[];
+  }>;
+  lottery?: HomeSection<LotteryGame>;
+  fishing?: HomeSection<HomeFishingVenue>;
 }

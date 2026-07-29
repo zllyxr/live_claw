@@ -15,9 +15,15 @@ export const IS_LOCAL_PREVIEW = Boolean(
 );
 const configuredApiHost = String(env.VITE_API_HOST || "https://tmpai2.com").replace(/\/$/, "");
 export const API_HOST = browserOrigin || configuredApiHost;
+export const PUBLIC_WEB_URL = String(
+  env.VITE_PUBLIC_WEB_URL || (browserOrigin ? `${browserOrigin}/` : `${configuredApiHost}/h5/`)
+).replace(/\/?$/, "/");
 export const API_BASE = browserOrigin ? "/appapi/" : `${API_HOST}/appapi/`;
-export const CORE_API_BASE = browserOrigin ? "/core-api/appapi/" : `${API_HOST}/core-api/appapi/`;
-export const CORE_IM_BASE = browserOrigin ? "/core-api/v1/im" : `${API_HOST}/core-api/v1/im`;
+// All app compatibility services are exposed by the Go API gateway. Keeping a
+// single base URL prevents lottery, sports and mini-game calls from silently
+// falling back to the retired legacy backend.
+export const CORE_API_BASE = API_BASE;
+export const GAME_API_BASE = browserOrigin ? "/gameapi/" : `${API_HOST}/gameapi/`;
 export const DEFAULT_LANGUAGE = "zh-cn";
 export const NOT_LOGIN_UID = "-9999";
 export const NOT_LOGIN_TOKEN = "-9999";
@@ -34,6 +40,5 @@ export const STORAGE_KEYS = {
   uid: "claw_uid",
   token: "claw_token",
   user: "claw_user",
-  config: "claw_config",
-  openImSession: "claw_openim_session"
+  config: "claw_config"
 } as const;

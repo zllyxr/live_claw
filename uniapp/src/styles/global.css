@@ -37,12 +37,15 @@ image {
 }
 
 button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   padding: 0;
   border: 0;
   line-height: 1;
   font: inherit;
-  text-align: inherit;
+  text-align: center;
   white-space: nowrap;
   appearance: none;
   background: transparent;
@@ -53,12 +56,15 @@ button::after {
 }
 
 uni-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   padding: 0;
   border: 0;
   line-height: 1;
   font: inherit;
-  text-align: inherit;
+  text-align: center;
   white-space: nowrap;
   background: transparent;
 }

@@ -11,7 +11,7 @@
     <view class="service-card">
       <view class="service-main">
         <text class="service-label">平台客服</text>
-        <text class="service-url">{{ serviceUrl || (loading ? "正在获取客服链接" : "客服链接未配置") }}</text>
+        <text class="service-url">{{ serviceUrl || (loading ? "正在获取客服配置" : "平台原生客服") }}</text>
       </view>
       <button class="service-button" :disabled="loading" @tap="openCustomerService">
         {{ loading ? "加载中" : "联系在线客服" }}
@@ -56,6 +56,7 @@ import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh } from "@dcloudio/uni-app";
 import { getCachedConfig, getConfig } from "@/api/services";
 import { normalizePageUrl, openWebView } from "@/utils/navigation";
+import { requireLogin } from "@/utils/session";
 
 const config = ref<Record<string, unknown>>();
 const loading = ref(false);
@@ -89,14 +90,14 @@ async function refreshConfig(silent = false) {
 }
 
 async function openCustomerService() {
-  if (!serviceUrl.value) {
-    await refreshConfig(false);
-  }
-  if (!serviceUrl.value) {
-    uni.showToast({ title: "客服链接未配置", icon: "none" });
+  if (!requireLogin()) {
     return;
   }
-  openWebView(serviceUrl.value, "在线客服");
+  if (serviceUrl.value) {
+    openWebView(serviceUrl.value, "在线客服");
+    return;
+  }
+  uni.navigateTo({ url: "/pages/service/chat" });
 }
 
 function openMessages() {

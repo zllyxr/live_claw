@@ -414,7 +414,8 @@ onPullDownRefresh(() => {
 /* ---------- logged in ---------- */
 .profile-hero {
   position: relative;
-  margin-bottom: 96rpx;
+  margin-bottom: 36rpx;
+  height: 230px;
   padding: calc(130rpx + var(--status-bar-height)) 28rpx 0;
   background: linear-gradient(150deg, #3b2a86 0%, #6a3fb5 48%, #b04a96 100%);
 }
@@ -465,7 +466,7 @@ onPullDownRefresh(() => {
 .name {
   min-width: 0;
   color: #fff;
-  font-size: 38rpx;
+  font-size: 28rpx;
   font-weight: 800;
   line-height: 1.1;
   overflow: hidden;
@@ -474,23 +475,24 @@ onPullDownRefresh(() => {
 }
 
 .sex-badge {
-  display: flex;
   width: 38rpx;
   height: 38rpx;
-  flex: 0 0 auto;
-  align-items: center;
+  display: flex;
   justify-content: center;
+  align-items: center;
+  align-content: center;
+  text-align: center;
   border-radius: 50%;
   color: #fff;
   font-size: 22rpx;
-  line-height: 1;
   background: rgba(255, 130, 170, 0.9);
 }
 
 .level-medal {
   width: 46rpx;
   height: 46rpx;
-  flex: 0 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .sex-badge.male {
@@ -501,7 +503,7 @@ onPullDownRefresh(() => {
   display: block;
   margin-top: 14rpx;
   color: rgba(255, 255, 255, 0.65);
-  font-size: 24rpx;
+  font-size: 22rpx;
 }
 
 .profile-arrow {
@@ -517,11 +519,10 @@ onPullDownRefresh(() => {
   z-index: 2;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  height: 148rpx;
+  height: 100rpx;
   margin-bottom: -74rpx;
   align-items: center;
   border-radius: var(--radius);
-  background: var(--surface);
   box-shadow: var(--shadow-card);
 }
 
@@ -543,15 +544,15 @@ onPullDownRefresh(() => {
 
 .stat-item text:first-child {
   display: block;
-  color: var(--ink);
+  color: #fff;
   font-size: 34rpx;
   font-weight: 800;
 }
 
 .stat-item text:last-child {
   display: block;
+  color: #fff;
   margin-top: 10rpx;
-  color: var(--ink-3);
   font-size: 23rpx;
 }
 

@@ -4,8 +4,11 @@ import uniPlugin from "@dcloudio/vite-plugin-uni";
 
 const uni = typeof uniPlugin === "function" ? uniPlugin : (uniPlugin as any).default;
 const H5_BASE = "/h5/";
-const LOCAL_CORE_PROXY = process.env.VITE_CORE_PROXY_TARGET;
-const CORE_PROXY_TARGET = LOCAL_CORE_PROXY || "https://live.travelig.vip";
+const V2_PROXY_TARGET =
+  process.env.VITE_V2_PROXY_TARGET ||
+  process.env.VITE_API_PROXY_TARGET ||
+  process.env.VITE_CORE_PROXY_TARGET ||
+  "http://127.0.0.1:28080";
 
 export default defineConfig(({ command }) => ({
   base: command === "build" && process.env.UNI_PLATFORM === "h5" ? H5_BASE : "/",
@@ -34,21 +37,48 @@ export default defineConfig(({ command }) => ({
     host: "0.0.0.0",
     proxy: {
       "/appapi": {
-        target: "https://live.travelig.vip",
+        target: V2_PROXY_TARGET,
         changeOrigin: true,
         secure: false
       },
+      "/api/v2": {
+        target: V2_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false
+      },
+      "/claw-public": {
+        target: V2_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false
+      },
+      "/gameapi": {
+        target: V2_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false
+      },
+      "/minigame": {
+        target: V2_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false
+      },
+      "/ws": {
+        target: V2_PROXY_TARGET,
+        // Keep the browser-facing Host header so the IM server's strict
+        // same-origin WebSocket check also succeeds through the H5 dev proxy.
+        changeOrigin: false,
+        secure: false,
+        ws: true
+      },
       "/core-api": {
-        target: CORE_PROXY_TARGET,
+        target: V2_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
-        rewrite: LOCAL_CORE_PROXY ? (path) => path.replace(/^\/core-api/, "") : undefined
+        rewrite: (path) => path.replace(/^\/core-api/, "")
       }
     }
   },
   resolve: {
     alias: {
-      "@openim/protocol/lib/pb/sdkws/sdkws": fileURLToPath(new URL("./src/vendor/openim-sdkws.ts", import.meta.url)),
       "@": fileURLToPath(new URL("./src", import.meta.url))
     }
   }

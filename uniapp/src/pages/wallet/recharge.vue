@@ -32,8 +32,8 @@
     <EmptyState v-else :title="loading ? '正在加载充值档位' : '暂无充值档位'" description="下拉刷新可重新获取支付配置。" />
 
     <view class="section-head pay-head">
-      <text>支付方式</text>
-      <button @tap="openAgreement">充值协议</button>
+      <text class="section-head-start">支付方式</text>
+      <text class="section-head-end" @tap="openAgreement">充值协议</text>
     </view>
 
     <view v-if="payMethods.length" class="pay-list">
@@ -68,7 +68,7 @@ import { createCoinOrder, getWalletBalance } from "@/api/services";
 import type { WalletBalance, WalletPayMethod, WalletRule } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
-import { buildAppPageUrl, openWebView } from "@/utils/navigation";
+import { openWebView } from "@/utils/navigation";
 import { API_HOST } from "@/constants/config";
 
 const wallet = ref<WalletBalance>();
@@ -207,7 +207,7 @@ async function charge() {
 }
 
 function openAgreement() {
-  openWebView(buildAppPageUrl("portal/page/index", { id: 6 }), "充值协议");
+  uni.navigateTo({ url: "/pages/detail/index?type=recharge_agreement" });
 }
 
 function openChargeDetail() {
@@ -281,11 +281,14 @@ onPullDownRefresh(() => {
   justify-content: space-between;
   margin: 38rpx 2rpx 20rpx;
 }
+.section-head-end{
+  color: #0a8f66;
+  font-size: 24rpx;
 
-.section-head text {
-  color: var(--ink);
-  font-size: 31rpx;
-  font-weight: 900;
+}
+.section-head-start{
+  font-size: 26rpx;
+  font-weight: bold;
 }
 
 .section-head button {

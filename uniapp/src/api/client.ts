@@ -1,4 +1,4 @@
-import { API_BASE, CORE_API_BASE, DEFAULT_LANGUAGE } from "@/constants/config";
+import { API_BASE, CORE_API_BASE, DEFAULT_LANGUAGE, GAME_API_BASE } from "@/constants/config";
 import { clearSession, getSession } from "@/utils/session";
 import type { ApiEnvelope } from "@/types/api";
 
@@ -60,6 +60,9 @@ export interface ApiRequestOptions {
 const CORE_SERVICE_PREFIXES = ["LotteryGame.", "Sports.", "SportsBet.", "MiniGame.", "App."];
 
 function serviceEndpoint(service: string) {
+  if (service.startsWith("MiniGame.")) {
+    return GAME_API_BASE;
+  }
   return CORE_SERVICE_PREFIXES.some((prefix) => service.startsWith(prefix)) ? CORE_API_BASE : API_BASE;
 }
 

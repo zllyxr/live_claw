@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Claw 平台管理</title>
+  <link rel="stylesheet" href="/admin/static/layui/css/layui.css">
+  <link rel="stylesheet" href="/admin/static/app.css?v=20260729-2">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="login-brand">CLAW</div>
+    <h1>平台管理后台</h1>
+    <p>Go v2 · 统一资金账本与业务管理</p>
+    <form class="layui-form" id="login-form">
+      <div class="layui-form-item">
+        <div class="layui-input-wrap">
+          <input class="layui-input" name="username" autocomplete="username" placeholder="管理员账号" required>
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-wrap">
+          <input class="layui-input" type="password" name="password" autocomplete="current-password" placeholder="密码" required>
+        </div>
+      </div>
+      <button class="layui-btn layui-btn-fluid" type="submit">安全登录</button>
+      <div class="login-error" id="login-error" role="alert"></div>
+    </form>
+  </main>
+  <script src="/admin/static/layui/layui.js"></script>
+  <script src="/admin/static/login.js"></script>
+</body>
+</html>

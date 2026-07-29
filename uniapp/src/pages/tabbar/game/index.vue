@@ -2,14 +2,8 @@
   <view class="game-page">
     <view class="cosmic-head">
       <view class="brand-copy">
-        <image
-          class="brand-title-art"
-          src="/static/art/game-park/titles/game-center-title-v1.webp"
-          mode="widthFix"
-          alt="星域游戏中心，多人对战、资金结算、公平透明"
-        />
+        <image class="brand-title-art" src="/static/art/game-park/titles/game-center-title-v1.webp" mode="widthFix" />
       </view>
-
       <view class="wallet-panel">
         <view class="balance-row">
           <image class="coin-icon" src="/static/brand/icon-round.webp" mode="aspectFit" />
@@ -31,14 +25,6 @@
     </view>
 
     <view class="park-heading">
-      <view>
-        <image
-          class="park-title-art"
-          src="/static/art/game-park/titles/multiplayer-hall-title-v1.webp"
-          mode="widthFix"
-          alt="多人游戏大厅，LIVE GAME ARENA"
-        />
-      </view>
       <view class="zone-shortcuts">
         <view class="zone-shortcut" @tap="openSports">
           <SafeImage src="/static/art/category/sports.webp" mode="aspectFill" />
@@ -51,18 +37,8 @@
       </view>
     </view>
 
-    <view class="catalog-line" @tap="openMiniGameCatalog">
-      <text class="catalog-count">{{ miniGameCount }}</text>
-      <text class="catalog-copy">款资金游戏 · 实时对战结算</text>
-      <text class="catalog-action">查看全部</text>
-    </view>
-
     <view id="game-park" class="park-map">
-      <image
-        class="park-art"
-        src="/static/art/game-park/orbital-park.webp"
-        mode="aspectFill"
-      />
+      <image class="park-art" src="/static/art/game-park/orbital-park.webp" mode="aspectFill"/>
       <view
         v-for="attraction in parkAttractions"
         :key="attraction.code"
@@ -109,15 +85,6 @@
         </view>
       </view>
     </view>
-
-    <view class="library-entry" @tap="openMiniGameCatalog">
-      <view>
-        <text class="library-kicker">GAME LIBRARY</text>
-        <text class="library-title">浏览全部 {{ miniGameCount }} 款资金游戏</text>
-      </view>
-      <view class="library-button">打开目录</view>
-    </view>
-
     <view id="lottery-panel" class="lottery-panel">
       <view class="lottery-head">
         <view>
@@ -153,7 +120,7 @@
           <SafeImage
             class="lottery-icon"
             :src="gameIcon(game)"
-            fallback="/static/brand/icon.webp"
+            fallback="/static/art/category/lottery.webp"
             mode="aspectFill"
           />
           <text class="lottery-name">{{ game.game_name || game.game_name_en || "游戏" }}</text>
@@ -167,6 +134,14 @@
         description="下拉页面可刷新余额、分类和玩法。"
       />
     </view>
+
+    <FishingVenuePicker
+      :visible="venuePickerVisible"
+      :venues="fishingVenues"
+      :balance="home?.coin"
+      @close="venuePickerVisible = false"
+      @select="launchFishingVenue"
+    />
   </view>
 </template>
 
@@ -174,16 +149,18 @@
 import { computed, nextTick, ref } from "vue";
 import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
+import FishingVenuePicker from "@/components/FishingVenuePicker.vue";
 import SafeImage from "@/components/SafeImage.vue";
 import { enterMiniGame, getLotteryHome, getMiniGames } from "@/api/services";
 import type {
   LotteryCategory,
   LotteryGame,
   LotteryHome,
+  FishingVenue,
   MiniGameBundle,
   MiniGameItem
 } from "@/types/api";
-import { absolutizeUrl, localAssetUrl } from "@/utils/url";
+import { absolutizeUrl, displayUrl, localAssetUrl } from "@/utils/url";
 import { consumeGameZoneIntent, openGameView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
 
@@ -193,6 +170,7 @@ const selectedCategory = ref("");
 const selectedCode = ref("deepsea_hunter");
 const loading = ref(false);
 const launching = ref(false);
+const venuePickerVisible = ref(false);
 let loadedOnce = false;
 
 const normalizedCategories = computed<LotteryCategory[]>(() => home.value?.categories || []);
@@ -210,6 +188,8 @@ const selectedGame = computed<MiniGameItem | undefined>(() => {
   const games = miniGames.value?.games || [];
   return games.find((game) => String(game.code || "") === selectedCode.value) || games[0];
 });
+
+const fishingVenues = computed<FishingVenue[]>(() => miniGames.value?.fishing_venues || []);
 
 const attractionConfig = [
   { order: 1, code: "deepsea_hunter", name: "深海猎手", meta: "多人实时" },
@@ -291,10 +271,25 @@ async function launchSelected() {
   if (game.need_login === "1" && !requireLogin()) {
     return;
   }
+  if (String(game.code || "") === "deepsea_hunter") {
+    venuePickerVisible.value = true;
+    return;
+  }
+  await launchGame(game);
+}
+
+async function launchFishingVenue(venue: FishingVenue) {
+  const game = selectedGame.value;
+  if (!game || launching.value) return;
+  venuePickerVisible.value = false;
+  await launchGame(game, String(venue.venue_code || "novice"));
+}
+
+async function launchGame(game: MiniGameItem, room = "") {
   launching.value = true;
   uni.showLoading({ title: "进入游戏", mask: true });
   try {
-    const info = await enterMiniGame(String(game.code || ""));
+    const info = await enterMiniGame(String(game.code || ""), room);
     const url = String(info?.launch_url || "");
     if (!url) {
       throw new Error("游戏地址无效");
@@ -339,7 +334,8 @@ function consumeHomeZoneIntent() {
 }
 
 function gameIcon(game: LotteryGame) {
-  return absolutizeUrl(game.icon_url || game.icon || "") || "/static/brand/icon.webp";
+  const originalIcon = `/static/lotter/${String(game.game_code || "").toUpperCase()}.png`;
+  return displayUrl(game.icon_url || game.icon || "", originalIcon);
 }
 
 function openLotteryGame(game: LotteryGame) {
@@ -486,6 +482,7 @@ onPullDownRefresh(() => {
   justify-content: space-between;
   gap: 18rpx;
   margin-top: 29rpx;
+  margin-bottom: 9px;
 }
 
 .park-title-art {

@@ -45,6 +45,7 @@ import type {
   DynamicCommentBundle,
   DynamicItem,
   FollowLiveHome,
+  HomeDashboard,
   InviteAgentState,
   InviteBindResult,
   InviteCode,
@@ -277,6 +278,14 @@ export function getLotteryHome() {
   return firstInfo<LotteryHome>("LotteryGame.home");
 }
 
+export function getHomeDashboard() {
+  return firstInfo<HomeDashboard>("Home.dashboard");
+}
+
+export function getContentPage(key: "recharge_agreement") {
+  return firstInfo<{ title: string; content: string }>("System.getPage", { key }, { auth: false });
+}
+
 export function getLotteryGameDetail(gameId: string | number, gameCode = "") {
   return firstInfo<Record<string, unknown>>("LotteryGame.detail", {
     game_id: gameId,
@@ -377,6 +386,22 @@ export async function getSportsBetRecords(matchId = "", page = 1) {
 
 export function getWalletBalance() {
   return firstInfo<WalletBalance>("User.getBalance", { type: 0 });
+}
+
+export function getWalletLedger(page = 1) {
+  return firstInfo<Record<string, unknown>>("Wallet.ledger", { p: page });
+}
+
+export function getRechargeOrders(page = 1) {
+  return firstInfo<Record<string, unknown>>("Charge.orderList", { p: page });
+}
+
+export function getWithdrawalOrders(page = 1) {
+  return firstInfo<Record<string, unknown>>("User.cashOrderList", { p: page });
+}
+
+export function getVerificationStatus() {
+  return firstInfo<Record<string, unknown>>("Auth.getStatus");
 }
 
 function payServiceOf(payId?: string) {
@@ -825,6 +850,7 @@ export const dismissChatGroup = openIMDismissGroup;
 export const getChatGroupApplications = openIMGroupApplications;
 export const handleChatGroupApplication = openIMHandleGroupApplication;
 export const getChatBlackList = openIMBlackList;
+export const setChatBlack = openIMSetBlack;
 
 export async function getUploadInfo() {
   return firstInfo<{
@@ -842,36 +868,48 @@ function parseUploadResponse(data: unknown) {
   if (Number(inner?.code ?? 0) !== 0) {
     throw new Error(String(inner?.msg || "上传失败"));
   }
-  return info[0] as UploadResult;
+  const result = info[0] as UploadResult | undefined;
+  if (!result) {
+    throw new Error("上传服务器未返回文件信息");
+  }
+  return result;
 }
 
 function proxyApiUrlForPreview(url: string) {
-  if (!API_BASE.startsWith("/")) {
-    return url;
+  const raw = String(url || "").trim();
+  const appApiMatch = raw.match(
+    /^(?:https?:\/\/[^/]+)?\/appapi\/?(\?[^#]*)?$/i
+  );
+  if (appApiMatch) {
+    const base = API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`;
+    return `${base}${appApiMatch[1] || ""}`;
   }
-  if (url.startsWith(`${API_HOST}/appapi/`)) {
-    return url.replace(`${API_HOST}/appapi/`, API_BASE);
+  if (raw.startsWith("/")) {
+    return `${API_HOST.replace(/\/$/, "")}${raw}`;
   }
-  if (url.startsWith(`${API_HOST}/appapi`)) {
-    return url.replace(`${API_HOST}/appapi`, API_BASE.replace(/\/$/, ""));
-  }
-  return url;
+  return raw;
 }
 
 export async function uploadOne(filePath: string) {
   const uploadInfo = await getUploadInfo();
   const uploadUrl = proxyApiUrlForPreview(uploadInfo?.storageInfo?.upload_url || `${API_BASE}?service=Upload.uploadFile`);
   const field = uploadInfo?.storageInfo?.field || "file";
+  const session = getSession();
   return new Promise<UploadResult>((resolve, reject) => {
     uni.uploadFile({
       url: uploadUrl,
       filePath,
       name: field,
       formData: {
-        language: DEFAULT_LANGUAGE
+        language: DEFAULT_LANGUAGE,
+        uid: session.uid,
+        token: session.token
       },
       success: (res) => {
         try {
+          if (Number(res.statusCode || 0) < 200 || Number(res.statusCode || 0) >= 300) {
+            throw new Error(`上传服务器响应异常（${res.statusCode || 0}）`);
+          }
           resolve(parseUploadResponse(res.data));
         } catch (error) {
           reject(error);
@@ -1001,18 +1039,23 @@ export function getRedPackRobList(stream: string, redId: string | number) {
 export function sendLiveGift(args: {
   liveUid: string;
   stream: string;
-  toUids: string;
   giftId: string | number;
   giftCount?: string | number;
+  clientRequestId: string;
   ispack?: number;
   is_sticker?: number;
 }) {
+  const giftCount = Math.min(
+    999,
+    Math.max(1, Math.floor(Number(args.giftCount) || 1))
+  );
   return firstInfo<Record<string, unknown>>("Live.sendGift", {
     liveuid: args.liveUid,
     stream: args.stream,
-    touids: args.toUids,
+    touids: args.liveUid,
     giftid: args.giftId,
-    giftcount: args.giftCount || 1,
+    giftcount: giftCount,
+    client_request_id: args.clientRequestId,
     ispack: args.ispack || 0,
     is_sticker: args.is_sticker || 0
   });

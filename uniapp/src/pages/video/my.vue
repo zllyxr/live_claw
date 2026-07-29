@@ -2,7 +2,6 @@
   <view class="safe-page my-video-page">
     <view class="top-row">
       <text class="title-lg">我的视频</text>
-      <button class="pill-button" @tap="load(true)">刷新</button>
     </view>
 
     <view v-if="items.length" class="list">

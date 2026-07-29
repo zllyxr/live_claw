@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#17233d">
+  <title>客服座席工作台</title>
+  <link rel="stylesheet" href="/support-console/static/app.css">
+  <script src="/support-console/static/app.js" defer></script>
+</head>
+<body class="console-body">
+  <div class="console-app" id="console-app">
+    <header class="console-header">
+      <div class="header-brand">
+        <div class="brand-mark brand-mark-small" aria-hidden="true">C</div>
+        <div>
+          <strong>CLAW 客服座席</strong>
+          <p>Support Workspace</p>
+        </div>
+      </div>
+
+      <nav class="mobile-panel-tabs" aria-label="移动端工作区切换">
+        <button class="mobile-panel-button is-active" type="button" data-mobile-panel="queue">
+          会话
+        </button>
+        <button class="mobile-panel-button" type="button" data-mobile-panel="chat">
+          对话
+        </button>
+        <button class="mobile-panel-button" type="button" data-mobile-panel="profile">
+          资料
+        </button>
+      </nav>
+
+      <div class="header-account">
+        <div class="connection-pill" id="connection-pill" data-state="connecting">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span id="connection-text">正在连接</span>
+        </div>
+        <div class="agent-summary">
+          <div class="agent-avatar" id="agent-avatar" aria-hidden="true">客</div>
+          <div class="agent-copy">
+            <strong id="agent-name">客服座席</strong>
+            <p id="agent-username">加载中</p>
+          </div>
+        </div>
+        <button class="icon-button" id="logout-button" type="button" title="退出登录"
+                aria-label="退出登录">退出</button>
+      </div>
+    </header>
+
+    <main class="console-layout" id="console-layout" data-mobile-panel="queue">
+      <aside class="queue-panel" aria-label="客服会话队列">
+        <section class="queue-summary" aria-label="今日客服数据">
+          <div class="summary-card">
+            <div class="summary-label">待接入</div>
+            <strong id="summary-queue">—</strong>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">我的处理中</div>
+            <strong id="summary-mine">—</strong>
+          </div>
+          <div class="summary-card">
+            <div class="summary-label">今日解决</div>
+            <strong id="summary-resolved">—</strong>
+          </div>
+        </section>
+
+        <section class="scope-tabs" aria-label="会话范围">
+          <button class="scope-button is-active" type="button" data-scope="queue">
+            待接入
+            <span class="scope-count" id="scope-count-queue">0</span>
+          </button>
+          <button class="scope-button" type="button" data-scope="mine">
+            我的
+            <span class="scope-count" id="scope-count-mine">0</span>
+          </button>
+          <button class="scope-button" type="button" data-scope="history">历史</button>
+          <button class="scope-button" type="button" data-scope="all">全部</button>
+        </section>
+
+        <div class="queue-search">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input id="conversation-search" type="search" maxlength="120"
+                 autocomplete="off" placeholder="搜索用户、编号或主题">
+          <button class="search-clear" id="search-clear" type="button"
+                  aria-label="清空搜索">清除</button>
+        </div>
+
+        <div class="queue-heading">
+          <div>
+            <strong id="queue-title">待接入会话</strong>
+            <p id="queue-subtitle">优先展示等待时间较长的用户</p>
+          </div>
+          <button class="icon-button refresh-button" id="refresh-button" type="button"
+                  aria-label="刷新会话">刷新</button>
+        </div>
+
+        <div class="conversation-list" id="conversation-list" aria-live="polite">
+          <div class="list-state">正在加载会话…</div>
+        </div>
+      </aside>
+
+      <section class="chat-panel" aria-label="当前客服会话">
+        <div class="chat-empty" id="chat-empty">
+          <div class="empty-illustration" aria-hidden="true">
+            <span>对话</span>
+          </div>
+          <h1>选择一个会话开始处理</h1>
+          <p>从左侧待接入队列接单，或打开“我的”继续处理已有会话。</p>
+          <button class="secondary-button mobile-open-queue" type="button"
+                  data-mobile-panel="queue">查看会话队列</button>
+        </div>
+
+        <div class="chat-workspace is-hidden" id="chat-workspace">
+          <header class="chat-header">
+            <div class="chat-customer">
+              <button class="icon-button chat-back-button" type="button"
+                      data-mobile-panel="queue" aria-label="返回会话列表">返回</button>
+              <div class="customer-avatar" id="chat-avatar" aria-hidden="true">用</div>
+              <div class="chat-customer-copy">
+                <div class="customer-name-line">
+                  <strong id="chat-customer-name">用户</strong>
+                  <span class="status-tag" id="chat-status-tag">待处理</span>
+                  <span class="priority-tag" id="chat-priority-tag">普通</span>
+                </div>
+                <p id="chat-conversation-meta">会话信息加载中</p>
+              </div>
+            </div>
+            <div class="chat-actions">
+              <button class="primary-button compact-button" id="claim-button" type="button">
+                接入会话
+              </button>
+              <button class="secondary-button compact-button" id="transfer-button" type="button">
+                转接
+              </button>
+              <select class="priority-select" id="priority-select" aria-label="会话优先级">
+                <option value="1">普通优先级</option>
+                <option value="2">高优先级</option>
+                <option value="3">紧急优先级</option>
+              </select>
+              <button class="success-button compact-button" id="resolve-button" type="button">
+                解决会话
+              </button>
+              <button class="icon-button profile-open-button" type="button"
+                      data-mobile-panel="profile" aria-label="查看用户资料">资料</button>
+            </div>
+          </header>
+
+          <div class="assignment-banner" id="assignment-banner" role="status"></div>
+
+          <div class="message-list" id="message-list" aria-live="polite">
+            <div class="list-state">正在加载消息…</div>
+          </div>
+
+          <footer class="composer">
+            <div class="quick-reply-panel is-hidden" id="quick-reply-panel">
+              <div class="quick-reply-head">
+                <strong>快捷回复</strong>
+                <button class="icon-button" id="close-quick-replies" type="button"
+                        aria-label="关闭快捷回复">关闭</button>
+              </div>
+              <div class="quick-reply-list" id="quick-reply-list">
+                <div class="list-state">正在加载快捷回复…</div>
+              </div>
+            </div>
+            <div class="composer-tools">
+              <button class="tool-button" id="quick-reply-button" type="button">
+                快捷回复
+              </button>
+              <span class="composer-hint" id="composer-hint">Enter 发送，Shift + Enter 换行</span>
+            </div>
+            <form class="composer-form" id="composer-form">
+              <textarea id="message-input" maxlength="5000" rows="3"
+                        placeholder="请输入回复内容" aria-label="回复内容"></textarea>
+              <button class="primary-button send-button" id="send-button" type="submit">
+                发送
+              </button>
+            </form>
+          </footer>
+        </div>
+      </section>
+
+      <aside class="profile-panel" aria-label="用户资料">
+        <div class="profile-empty" id="profile-empty">
+          <div class="empty-mini" aria-hidden="true">资料</div>
+          <p>选择会话后查看用户资料与服务记录</p>
+        </div>
+
+        <div class="profile-content is-hidden" id="profile-content">
+          <div class="profile-mobile-head">
+            <strong>用户资料</strong>
+            <button class="icon-button" type="button" data-mobile-panel="chat">返回对话</button>
+          </div>
+
+          <section class="profile-identity">
+            <div class="profile-avatar" id="profile-avatar" aria-hidden="true">用</div>
+            <h2 id="profile-name">用户</h2>
+            <p id="profile-account">ID —</p>
+            <div class="profile-tags" id="profile-tags"></div>
+          </section>
+
+          <section class="profile-section">
+            <div class="section-heading">
+              <strong>基础资料</strong>
+            </div>
+            <dl class="detail-list">
+              <div>
+                <dt>用户 ID</dt>
+                <dd id="profile-user-id">—</dd>
+              </div>
+              <div>
+                <dt>注册时间</dt>
+                <dd id="profile-created-at">—</dd>
+              </div>
+              <div>
+                <dt>当前会话</dt>
+                <dd id="profile-conversation-id">—</dd>
+              </div>
+              <div>
+                <dt>会话分类</dt>
+                <dd id="profile-category">—</dd>
+              </div>
+              <div>
+                <dt>当前座席</dt>
+                <dd id="profile-assignee">—</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="profile-section">
+            <div class="section-heading">
+              <strong>服务备注</strong>
+              <span class="section-badge" id="notes-count">0</span>
+            </div>
+            <div class="notes-list" id="notes-list">
+              <div class="list-state compact-state">暂无服务备注</div>
+            </div>
+            <form class="note-form" id="note-form">
+              <textarea id="note-input" maxlength="1000" rows="3"
+                        placeholder="添加仅客服可见的服务备注"></textarea>
+              <button class="secondary-button" id="note-submit" type="submit">添加备注</button>
+            </form>
+          </section>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <dialog class="support-dialog" id="transfer-dialog" aria-labelledby="transfer-dialog-title">
+    <form method="dialog" class="dialog-card" id="transfer-form">
+      <header class="dialog-head">
+        <div>
+          <div class="eyebrow">TRANSFER</div>
+          <h2 id="transfer-dialog-title">转接会话</h2>
+        </div>
+        <button class="icon-button" value="cancel" type="submit">关闭</button>
+      </header>
+      <p class="dialog-description">选择目标座席，转接后该会话将从“我的会话”移出。</p>
+      <label class="field-label" for="transfer-agent">目标座席</label>
+      <select id="transfer-agent" required>
+        <option value="">请选择在线座席</option>
+      </select>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" type="submit">取消</button>
+        <button class="primary-button" id="confirm-transfer" value="default" type="submit">
+          确认转接
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="support-dialog" id="resolve-dialog" aria-labelledby="resolve-dialog-title">
+    <form method="dialog" class="dialog-card" id="resolve-form">
+      <header class="dialog-head">
+        <div>
+          <div class="eyebrow">RESOLVE</div>
+          <h2 id="resolve-dialog-title">确认解决会话</h2>
+        </div>
+      </header>
+      <p class="dialog-description">解决后会话将进入历史记录。用户再次咨询时会创建新的服务会话。</p>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" type="submit">暂不解决</button>
+        <button class="success-button" id="confirm-resolve" value="default" type="submit">
+          确认解决
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

@@ -22,7 +22,8 @@ const ART: Record<string, string> = {
   live: "/static/art/empty/live.webp",
   feed: "/static/art/empty/feed.webp",
   bet: "/static/art/empty/bet.webp",
-  search: "/static/art/empty/search.webp"
+  search: "/static/art/empty/search.webp",
+  message: "/static/art/empty/message.webp"
 };
 
 const props = defineProps<{
@@ -30,7 +31,7 @@ const props = defineProps<{
   description?: string;
   /** 自定义图片，优先级低于 kind */
   image?: string;
-  /** 空态类型：live / feed / bet / search */
+  /** 空态类型：live / feed / bet / search / message */
   kind?: string;
 }>();
 

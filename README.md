@@ -1,53 +1,50 @@
 # Live Claw
 
-Live Claw 是一个包含直播、即时聊天、体育、彩票和多人小游戏的完整平台项目。
+Live Claw 是一个包含直播、即时聊天、体育、彩票和多人游戏的平台。
+旧 PHP、Apache、Composer、OpenIM 以及 Node 游戏服务已从项目中移除。
 
 ## 项目组成
 
-- `uniapp`：UniApp 用户端，包含 H5 与 App 构建
-- `admin`：ThinkCMF/PHP 后台及业务接口
-- `services/core`：Go 核心服务，负责体育、彩票、OpenIM 会话和小游戏钱包
-- `game`：捕鱼游戏服务
-- `cardgames`：麻将、斗地主、炸金花、跑得快等牌类游戏服务
-- `game2`：其他小游戏资源
-- OpenIM、MySQL、Redis、MongoDB、Kafka、MinIO、SRS：由 Docker Compose 统一运行
+- `backend`：六个独立 Go 程序、Layui 管理后台、数据库迁移和本地 Nginx
+- `uniapp`：保持现有 UI 的 UniApp 用户端，包含 H5 与 App 构建
+- `release`：App 整包与热更新发布产物
+- `docs`：当前架构、接口对齐与素材说明
+
+后端运行时只使用 Nginx、Go、MySQL、Redis、MinIO 和 Layui。捕鱼网页及素材已嵌入
+Go 游戏服务，不需要额外的 Node 或 PHP 进程。
 
 ## 本地启动
 
 ```bash
-cp .env.example .env
-cp admin/.example.env admin/.env
-docker compose up -d --build
+cd backend
+docker compose -f deploy/local/compose.yml up -d --build
 ```
 
 默认入口：
 
-- H5：`http://127.0.0.1:18080/h5/`
-- 后台：`http://127.0.0.1:18080/admin`
-- 核心健康检查：`http://127.0.0.1:18081/healthz`
+- API/Nginx：`http://127.0.0.1:28080`
+- 后台：`http://127.0.0.1:28080/admin/`
+- 健康检查：`http://127.0.0.1:28080/healthz`
+- MySQL：`127.0.0.1:33070`
+- Redis：`127.0.0.1:6380`
+- MinIO：`http://127.0.0.1:29000`
 
 前端开发与构建：
 
 ```bash
 cd uniapp
-npm install
-npm run typecheck
-npm run build:h5
+pnpm install
+pnpm typecheck
+pnpm build:h5
 ```
 
-## 生产部署
+后端检查：
 
 ```bash
-cp .env.example .env
-cp docker/php/admin-production.env.example docker/php/admin-production.env
-# 修改两个环境文件中的密码、密钥、域名与外部地址
-git config core.hooksPath .githooks
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+cd backend
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
 ```
 
-生产环境必须使用随机强密码，并在反向代理/CDN 上开启 WebSocket。不要提交 `.env`、生产部署文档、数据库备份、支付证书或服务器私钥。
-
-服务器首次启用 `core.hooksPath` 后，每次 `git pull --ff-only` 都会自动修复
-H5 静态目录和文件的读取权限，避免 Apache 因资源文件为 `600` 而返回 `403`。
-
-仓库附带的初始化数据库已经脱敏，管理员密码不可用于登录。部署者应设置自己的 `DATABASE_AUTHCODE`，并在首次上线前生成新的管理员密码。
+本地环境密码只供开发使用。生产配置必须通过环境变量注入；代码发布仍遵循先提交
+Git、服务器只执行 `git pull --ff-only` 的流程。

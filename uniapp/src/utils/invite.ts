@@ -13,7 +13,11 @@ function cleanText(value: unknown) {
 }
 
 export function normalizeInviteCode(value: unknown) {
-  return cleanText(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const compact = cleanText(value).toLowerCase().replace(/[^0-9a-z]/g, "");
+  if (compact.length === 7) {
+    return `${compact.slice(0, 3)}-${compact.slice(3)}`;
+  }
+  return compact;
 }
 
 function normalizeClickId(value: unknown) {

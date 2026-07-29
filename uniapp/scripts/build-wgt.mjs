@@ -5,7 +5,8 @@
  * 用法:
  *   npm run build:wgt                  # 读 manifest.json 里的版本号打包
  *   npm run build:wgt -- --note "修复xxx"
- *   npm run build:wgt -- --min-app-code 211 --force
+ *   npm run build:wgt -- --min-app-code 211 --force --silent
+ *   npm run build:wgt -- --skip-build --output-dir /tmp/wgt-check
  *
  * 产物:
  *   ../release/wgt/<versionName>_<versionCode>.wgt
@@ -23,7 +24,6 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uniappRoot = resolve(here, "..");
-const outDir = resolve(uniappRoot, "../release/wgt");
 const buildDir = join(uniappRoot, "dist/build/app");
 
 function arg(name, fallback = undefined) {
@@ -46,6 +46,7 @@ function run(command, args, cwd) {
   execFileSync(command, args, { cwd, stdio: "inherit" });
 }
 
+const outDir = resolve(uniappRoot, String(arg("output-dir", "../release/wgt")));
 const manifest = readManifest();
 const versionName = String(manifest.versionName || "").trim();
 const versionCode = Number(manifest.versionCode || 0);
@@ -72,6 +73,22 @@ if (!existsSync(join(buildDir, "manifest.json"))) {
   process.exit(1);
 }
 
+const builtManifest = JSON.parse(readFileSync(join(buildDir, "manifest.json"), "utf8"));
+const builtVersionName = String(builtManifest?.version?.name || "").trim();
+const builtVersionCode = Number(builtManifest?.version?.code || 0);
+if (
+  String(builtManifest?.id || "") !== String(manifest.appid || "") ||
+  builtVersionName !== versionName ||
+  builtVersionCode !== versionCode
+) {
+  console.error("✗ App 构建产物与 src/manifest.json 不一致");
+  console.error(
+    `  源码 ${manifest.appid} ${versionName} (${versionCode})；` +
+      `产物 ${builtManifest?.id || "(无)"} ${builtVersionName || "(无)"} (${builtVersionCode || 0})`
+  );
+  process.exit(1);
+}
+
 // 2. 打成 wgt（zip，内容位于包根，不含顶层目录）
 mkdirSync(outDir, { recursive: true });
 const base = `${versionName}_${versionCode}`;
@@ -84,10 +101,18 @@ run("zip", ["-q", "-r", "-X", wgtPath, "."], buildDir);
 // 3. 写元信息
 const size = statSync(wgtPath).size;
 const sha256 = createHash("sha256").update(readFileSync(wgtPath)).digest("hex");
+const minAppCode = Number(arg("min-app-code", versionCode));
+if (!Number.isInteger(minAppCode) || minAppCode < 1) {
+  console.error("✗ min_app_code 必须是正整数");
+  process.exit(1);
+}
 const meta = {
   note: typeof arg("note") === "string" ? arg("note") : "",
-  min_app_code: Number(arg("min-app-code", 0)) || 0,
-  force: arg("force") !== undefined
+  min_app_code: minAppCode,
+  force: arg("force") !== undefined,
+  silent: arg("silent") !== undefined,
+  size,
+  sha256
 };
 writeFileSync(join(outDir, `${base}.json`), JSON.stringify(meta, null, 2) + "\n");
 
@@ -95,7 +120,6 @@ console.log("");
 console.log(`✔ ${wgtPath}`);
 console.log(`  大小   ${(size / 1024 / 1024).toFixed(2)} MB`);
 console.log(`  sha256 ${sha256}`);
-console.log(`  元信息 note=${meta.note || "(空)"} min_app_code=${meta.min_app_code} force=${meta.force}`);
+console.log(`  元信息 note=${meta.note || "(空)"} min_app_code=${meta.min_app_code} force=${meta.force} silent=${meta.silent}`);
 console.log("");
-console.log("服务端已挂载该目录，30 秒内自动生效。验证:");
-console.log(`  curl -s -X POST http://127.0.0.1:18080/core-api/appapi/ -d 'service=App.checkUpdate&version_code=${versionCode - 1}'`);
+console.log("下一步：在管理后台「App 管理」上传该 WGT，填写版本信息并发布。");

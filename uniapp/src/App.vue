@@ -2,15 +2,23 @@
 import { onLaunch, onShow, onHide } from "@dcloudio/uni-app";
 import { preloadSession } from "@/utils/session";
 import { checkHotUpdate } from "@/utils/hotupdate";
+import { closeIMDatabase, initIMDatabase } from "@/utils/imDatabase";
 
 onLaunch(() => {
   preloadSession();
+  void initIMDatabase();
   // App 端静默检查资源热更新，失败不影响启动
   void checkHotUpdate();
 });
 
-onShow(() => {});
-onHide(() => {});
+onShow(() => {
+  void initIMDatabase();
+  // 从后台、安装器或系统设置返回时继续检查强制更新；内部带并发与间隔保护。
+  void checkHotUpdate();
+});
+onHide(() => {
+  void closeIMDatabase();
+});
 </script>
 
 <style>

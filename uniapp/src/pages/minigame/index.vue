@@ -65,6 +65,13 @@
     </template>
 
     <EmptyState v-else kind="bet" title="暂无可玩游戏" description="游戏正在准备中，敬请期待。" />
+
+    <FishingVenuePicker
+      :visible="venuePickerVisible"
+      :venues="bundle?.fishing_venues"
+      @close="venuePickerVisible = false"
+      @select="launchFishingVenue"
+    />
   </view>
 </template>
 
@@ -72,9 +79,15 @@
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
+import FishingVenuePicker from "@/components/FishingVenuePicker.vue";
 import SafeImage from "@/components/SafeImage.vue";
 import { enterMiniGame, getMiniGames } from "@/api/services";
-import type { MiniGameBundle, MiniGameCategory, MiniGameItem } from "@/types/api";
+import type {
+  FishingVenue,
+  MiniGameBundle,
+  MiniGameCategory,
+  MiniGameItem
+} from "@/types/api";
 import { absolutizeUrl, localAssetUrl } from "@/utils/url";
 import { openGameView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
@@ -83,6 +96,8 @@ const bundle = ref<MiniGameBundle>();
 const activeCat = ref("");
 const loading = ref(false);
 const launching = ref(false);
+const venuePickerVisible = ref(false);
+const pendingFishingGame = ref<MiniGameItem>();
 
 const categories = computed<MiniGameCategory[]>(() => bundle.value?.categories || []);
 
@@ -152,10 +167,26 @@ async function launch(game: MiniGameItem) {
   if (game.need_login === "1" && !requireLogin()) {
     return;
   }
+  if (String(game.code || "") === "deepsea_hunter") {
+    pendingFishingGame.value = game;
+    venuePickerVisible.value = true;
+    return;
+  }
+  await launchGame(game);
+}
+
+async function launchFishingVenue(venue: FishingVenue) {
+  const game = pendingFishingGame.value;
+  if (!game || launching.value) return;
+  venuePickerVisible.value = false;
+  await launchGame(game, String(venue.venue_code || "novice"));
+}
+
+async function launchGame(game: MiniGameItem, room = "") {
   launching.value = true;
   uni.showLoading({ title: "进入游戏", mask: true });
   try {
-    const info = await enterMiniGame(String(game.code || ""));
+    const info = await enterMiniGame(String(game.code || ""), room);
     const url = String(info?.launch_url || "");
     if (!url) {
       throw new Error("游戏地址无效");

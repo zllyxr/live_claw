@@ -7,8 +7,8 @@
   "id": "__UNI__CLAWMVP",
   "name": "星域",
   "version": {
-    "name": "8.1.0",
-    "code": "210"
+    "name": "8.1.1",
+    "code": "211"
   },
   "description": "星域 uni-app Android MVP",
   "developer": {
@@ -18,10 +18,12 @@
   },
   "permissions": {
     "Camera": {},
+    "Record": {},
     "VideoPlayer": {},
     "Audio": {},
     "OAuth": {},
     "Share": {},
+    "SQLite": {},
     "UniNView": {
       "description": "UniNView原生渲染"
     }
@@ -62,17 +64,27 @@
           "<uses-permission android:name=\"android.permission.INTERNET\"/>",
           "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
           "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
           "<uses-permission android:name=\"android.permission.CAMERA\"/>",
           "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
           "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"/>",
           "<uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\"/>",
           "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
           "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"28\"/>",
-          "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
-          "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
           "<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>",
-          "<uses-permission android:name=\"android.permission.VIBRATE\"/>"
+          "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+          "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\"/>"
         ]
+      },
+      "apple": {
+        "privacyDescription": {
+          "NSMicrophoneUsageDescription": "用于发送语音消息和发布语音动态",
+          "NSCameraUsageDescription": "用于拍摄头像、动态图片和视频",
+          "NSPhotoLibraryUsageDescription": "用于选择头像、动态图片和视频",
+          "NSPhotoLibraryAddUsageDescription": "用于保存聊天和直播中的图片与视频"
+        }
       },
       "plugins": {
         "audio": {
@@ -121,9 +133,9 @@
       "list": [
         {
           "pagePath": "pages/tabbar/live/index",
-          "text": "直播",
-          "iconPath": "/static/tabbar/live.png",
-          "selectedIconPath": "/static/tabbar/live-active.png"
+          "text": "首页",
+          "iconPath": "/static/tabbar/home.png",
+          "selectedIconPath": "/static/tabbar/home-active.png"
         },
         {
           "pagePath": "pages/tabbar/game/index",

@@ -5,7 +5,7 @@
         <text class="title-xl">我的动态</text>
         <text class="sub">管理你发布过的内容</text>
       </view>
-      <button class="pill-button" @tap="goPublish">发布</button>
+      <view class="pill-button" @tap="goPublish">发布</view>
     </view>
 
     <view v-if="items.length" class="feed">

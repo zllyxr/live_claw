@@ -6,22 +6,18 @@
   "scripts": {
     "dev:app": "uni -p app",
     "build:h5": "uni build -p h5 && sh scripts/normalize-h5-permissions.sh",
-    "build:app-plus": "uni build -p app",
+    "build:app-plus": "npm run validate:native && uni build -p app",
     "typecheck": "vue-tsc --noEmit",
-    "build:wgt": "node scripts/build-wgt.mjs"
+    "validate:native": "node scripts/validate-native-capabilities.mjs",
+    "build:wgt": "npm run validate:native && node scripts/build-wgt.mjs"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5000720260410001",
     "@dcloudio/uni-app-plus": "3.0.0-5000720260410001",
     "@dcloudio/uni-components": "3.0.0-5000720260410001",
     "@dcloudio/uni-h5": "3.0.0-5000720260410001",
-    "@openim/client-sdk": "3.8.3-hotfix.0",
-    "@openim/protocol": "0.0.7-alpha.1",
-    "base64-arraybuffer": "1.0.2",
     "crypto-js": "^4.2.0",
     "hls.js": "^1.6.16",
-    "loglevel": "1.9.2",
-    "openim-uniapp-polyfill": "1.4.5",
     "spark-md5": "3.0.2",
     "vue": "^3.5.22"
   },

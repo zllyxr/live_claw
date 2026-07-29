@@ -417,9 +417,10 @@ async function uploadFiles(paths: string[], label: string) {
     statusText.value = `${label} ${index + 1}/${paths.length}`;
     progress.value = Math.round((index / Math.max(1, paths.length)) * 80);
     const key = uploadKey(await uploadOne(path));
-    if (key) {
-      uploaded.push(key);
+    if (!key) {
+      throw new Error("上传服务器未返回文件地址");
     }
+    uploaded.push(key);
   }
   progress.value = 86;
   return uploaded;

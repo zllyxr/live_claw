@@ -5,6 +5,11 @@ let memorySession: SessionState = {
   uid: NOT_LOGIN_UID,
   token: NOT_LOGIN_TOKEN
 };
+const sessionListeners = new Set<(session: SessionState) => void>();
+
+function notifySessionChange() {
+  sessionListeners.forEach((listener) => listener(memorySession));
+}
 
 function readString(key: string, fallback = "") {
   try {
@@ -63,6 +68,7 @@ export function saveSession(info: UserProfile) {
   writeStorage(STORAGE_KEYS.uid, memorySession.uid);
   writeStorage(STORAGE_KEYS.token, memorySession.token);
   writeStorage(STORAGE_KEYS.user, info);
+  notifySessionChange();
 }
 
 export function saveUser(user: UserProfile) {
@@ -82,10 +88,15 @@ export function clearSession() {
     uni.removeStorageSync(STORAGE_KEYS.uid);
     uni.removeStorageSync(STORAGE_KEYS.token);
     uni.removeStorageSync(STORAGE_KEYS.user);
-    uni.removeStorageSync(STORAGE_KEYS.openImSession);
   } catch {
     // Ignore storage cleanup failures.
   }
+  notifySessionChange();
+}
+
+export function onSessionChange(listener: (session: SessionState) => void) {
+  sessionListeners.add(listener);
+  return () => sessionListeners.delete(listener);
 }
 
 export function authParams() {

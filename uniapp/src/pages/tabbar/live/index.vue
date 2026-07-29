@@ -21,14 +21,7 @@
       </view>
     </view>
 
-    <swiper
-      class="hero-swiper"
-      autoplay
-      circular
-      :interval="4800"
-      :duration="500"
-      @change="onHeroChange"
-    >
+    <swiper class="hero-swiper" autoplay circular :interval="4800" :duration="500" @change="onHeroChange">
       <swiper-item v-for="slide in heroSlides" :key="slide.image">
         <view class="hero-card" @tap="slide.action">
           <image class="hero-image" :src="slide.image" mode="aspectFill" />
@@ -306,6 +299,14 @@
         {{ liveExpanded ? (loading.live ? "加载中" : "加载更多") : "查看更多直播" }}
       </view>
     </view>
+
+    <FishingVenuePicker
+      :visible="venuePickerVisible"
+      :venues="fishingVenues"
+      :balance="lotteryHome?.coin"
+      @close="venuePickerVisible = false"
+      @select="launchFishingVenue"
+    />
   </view>
 </template>
 
@@ -313,16 +314,17 @@
 import { computed, reactive, ref } from "vue";
 import { onHide, onPullDownRefresh, onReachBottom, onShow, onUnload } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
+import FishingVenuePicker from "@/components/FishingVenuePicker.vue";
 import SafeImage from "@/components/SafeImage.vue";
 import {
   enterMiniGame,
+  getHomeDashboard,
   getHotLive,
-  getLotteryHome,
-  getMiniGames,
-  getSportsBetMarkets,
-  getSportsHome
 } from "@/api/services";
 import type {
+  HomeDashboard,
+  HomeFishingVenue,
+  FishingVenue,
   LiveRoom,
   LotteryGame,
   LotteryHome,
@@ -334,13 +336,12 @@ import type {
 } from "@/types/api";
 import { displayCount } from "@/utils/format";
 import {
-  buildSportsDetailUrl,
   openGameView,
   openGameZone,
-  openWebView
+  openSportsDetail
 } from "@/utils/navigation";
 import { isLoggedIn, requireLogin } from "@/utils/session";
-import { absolutizeUrl, firstText } from "@/utils/url";
+import { absolutizeUrl, displayUrl, firstText } from "@/utils/url";
 
 const rooms = ref<LiveRoom[]>([]);
 const sportsHome = ref<SportsHome>();
@@ -363,6 +364,8 @@ const livePage = ref(1);
 const liveFinished = ref(false);
 const liveExpanded = ref(false);
 const launchingFish = ref(false);
+const venuePickerVisible = ref(false);
+const fishingVenues = ref<FishingVenue[]>([]);
 const heroIndex = ref(0);
 const loggedIn = ref(isLoggedIn());
 const nowSeconds = ref(Math.floor(Date.now() / 1000));
@@ -577,7 +580,8 @@ function lotteryName(game: LotteryGame) {
 }
 
 function gameIcon(game: LotteryGame) {
-  return absolutizeUrl(game.icon_url || game.icon || "") || "/static/art/category/lottery.webp";
+  const originalIcon = `/static/lotter/${String(game.game_code || "").toUpperCase()}.png`;
+  return displayUrl(game.icon_url || game.icon || "", originalIcon);
 }
 
 function issueOf(game: LotteryGame) {
@@ -636,73 +640,116 @@ async function loadRooms(reset = false) {
 
 async function loadSportsOdds(matches: SportsMatch[]) {
   const next: Record<string, SportsMarketOption[]> = {};
-  await Promise.all(
-    matches.map(async (match) => {
-      const key = matchKey(match);
-      if (!key || String(match.bet_status || "") !== "1") {
-        return;
-      }
-      try {
-        const detail = await getSportsBetMarkets(key);
-        const market =
-          detail?.markets?.find((item) => item.market_code === "MATCH_RESULT") ||
-          detail?.markets?.[0];
-        if (market?.options?.length) {
-          next[key] = market.options.slice(0, 3);
-        }
-      } catch {
-        // Odds are supplemental; the match card remains usable without them.
-      }
-    })
-  );
+  matches.forEach((match) => {
+    const key = matchKey(match);
+    const options = (match as SportsMatch & { options?: SportsMarketOption[] }).options || [];
+    if (key && options.length) {
+      next[key] = options.slice(0, 3);
+    }
+  });
   oddsByMatch.value = next;
 }
 
-async function loadSportsSection() {
-  loading.sports = true;
-  sportsError.value = "";
-  try {
-    sportsHome.value = await getSportsHome("today");
-    await loadSportsOdds(featuredMatches.value);
-  } catch {
-    sportsError.value = "赛事数据暂时不可用，请下拉重试";
-  } finally {
-    loading.sports = false;
-  }
+function sectionError(section: { status?: string } | undefined, message: string) {
+  return section?.status === "degraded" ? message : "";
 }
 
-async function loadLotterySection() {
-  loading.lottery = true;
-  lotteryError.value = "";
-  try {
-    lotteryHome.value = await getLotteryHome();
-  } catch {
-    lotteryError.value = "彩票数据暂时不可用，请下拉重试";
-  } finally {
-    loading.lottery = false;
-  }
+function normalizeAggregateSports(payload: HomeDashboard) {
+  const matches = (payload.sports?.items || []).map((item) => ({
+    ...item,
+    status_text: item.status || item.status_text || "",
+    kickoff_ts: item.kickoff_at || item.kickoff_ts || 0,
+    bet_close_ts: item.bet_close_at || item.bet_close_ts || 0
+  }));
+  sportsHome.value = {
+    server_time: payload.server_time,
+    matches,
+    upcoming: []
+  };
+  loadSportsOdds(matches);
 }
 
-async function loadGameSection() {
-  loading.games = true;
-  gamesError.value = "";
-  try {
-    miniGames.value = await getMiniGames();
-  } catch {
-    gamesError.value = "游戏数据暂时不可用，请下拉重试";
-  } finally {
-    loading.games = false;
+function normalizeAggregateLottery(payload: HomeDashboard) {
+  const games = (payload.lottery?.items || []).map((game) => {
+    const issue = (game.current_issue || {}) as Record<string, unknown>;
+    return {
+      ...game,
+      current_issue: {
+        ...issue,
+        issue_num: issue.issue_num || issue.issue_number || "",
+        seal_time: issue.seal_time || issue.close_at || 0,
+        open_time: issue.open_time || issue.draw_at || 0
+      }
+    };
+  });
+  lotteryHome.value = {
+    coin: String(payload.wallet?.coin || 0),
+    games
+  };
+}
+
+function aggregateFishingGame(venues: HomeFishingVenue[]): MiniGameItem | undefined {
+  const venue = venues[0];
+  if (!venue) {
+    return undefined;
   }
+  return {
+    id: String(venue.game_id || ""),
+    code: venue.game_code || "deepsea_hunter",
+    name: venue.game_name || "深海猎手",
+    category: "fishing",
+    entry_type: "internal",
+    players_text: `1-${venue.seats_per_table || 4}人`,
+    play_mode: "match",
+    need_login: "1",
+    use_wallet: "1",
+    orientation: "landscape",
+    remark: `${venues.length || 3}个倍率场，随机分配桌位`
+  };
+}
+
+function applyHomeDashboard(payload: HomeDashboard) {
+  rooms.value = payload.live?.items || [];
+  livePage.value = rooms.value.length ? 2 : 1;
+  liveFinished.value = rooms.value.length < 6;
+  normalizeAggregateSports(payload);
+  normalizeAggregateLottery(payload);
+  const game = aggregateFishingGame(payload.fishing?.items || []);
+  fishingVenues.value = payload.fishing?.items || [];
+  miniGames.value = {
+    total: game ? "1" : "0",
+    games: game ? [game] : [],
+    categories: []
+  };
+  liveError.value = sectionError(payload.live, "直播数据暂时不可用，请下拉重试");
+  sportsError.value = sectionError(payload.sports, "赛事数据暂时不可用，请下拉重试");
+  lotteryError.value = sectionError(payload.lottery, "彩票数据暂时不可用，请下拉重试");
+  gamesError.value = sectionError(payload.fishing, "游戏数据暂时不可用，请下拉重试");
 }
 
 async function loadDashboard() {
-  await Promise.allSettled([
-    loadRooms(true),
-    loadSportsSection(),
-    loadLotterySection(),
-    loadGameSection()
-  ]);
-  uni.stopPullDownRefresh();
+  loading.live = true;
+  loading.sports = true;
+  loading.lottery = true;
+  loading.games = true;
+  try {
+    const payload = await getHomeDashboard();
+    if (!payload) {
+      throw new Error("首页数据为空");
+    }
+    applyHomeDashboard(payload);
+  } catch {
+    liveError.value = "直播数据暂时不可用，请下拉重试";
+    sportsError.value = "赛事数据暂时不可用，请下拉重试";
+    lotteryError.value = "彩票数据暂时不可用，请下拉重试";
+    gamesError.value = "游戏数据暂时不可用，请下拉重试";
+  } finally {
+    loading.live = false;
+    loading.sports = false;
+    loading.lottery = false;
+    loading.games = false;
+    uni.stopPullDownRefresh();
+  }
 }
 
 function openRoom(room: LiveRoom) {
@@ -761,7 +808,7 @@ function openMatch(match: SportsMatch) {
   if (!requireLogin()) {
     return;
   }
-  openWebView(buildSportsDetailUrl(match), "赛事详情");
+  openSportsDetail(match);
 }
 
 function openLotteryGame(game: LotteryGame) {
@@ -787,10 +834,20 @@ async function launchFish() {
   if (game.need_login === "1" && !requireLogin()) {
     return;
   }
+  venuePickerVisible.value = true;
+}
+
+async function launchFishingVenue(venue: FishingVenue) {
+  const game = fishGame.value;
+  if (!game || launchingFish.value) return;
+  venuePickerVisible.value = false;
   launchingFish.value = true;
   uni.showLoading({ title: "进入游戏", mask: true });
   try {
-    const info = await enterMiniGame(String(game.code || "deepsea_hunter"));
+    const info = await enterMiniGame(
+      String(game.code || "deepsea_hunter"),
+      String(venue.venue_code || "novice")
+    );
     const url = String(info?.launch_url || "");
     if (!url) {
       throw new Error("游戏地址无效");
@@ -836,7 +893,7 @@ onShow(() => {
     loadedOnce = true;
     void loadDashboard();
   } else {
-    void loadLotterySection();
+    void loadDashboard();
   }
 });
 
@@ -1009,7 +1066,6 @@ onReachBottom(() => {
 
 .hero-copy-center {
   width: 53%;
-  margin-left: 23%;
 }
 
 .hero-kicker {

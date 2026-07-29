@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#020b14" />
+    <meta name="description" content="深海猎场——四座同桌、概率捕获的多人网页版街机捕鱼" />
+    <title>深海猎场 · 四座街机捕鱼</title>
+    <link rel="stylesheet" href="styles.css?v=20260726-animatedfish-rules1" />
+  </head>
+  <body>
+    <button class="game-back" type="button" onclick="returnToPlatform()" aria-label="返回">‹</button>
+    <button id="rulesButton" class="game-rules-button" type="button" aria-label="打开捕鱼玩法说明">规则</button>
+    <main class="arcade-shell">
+      <section id="gameFrame" class="game-frame" aria-label="四人街机捕鱼桌">
+        <canvas id="gameCanvas" width="1280" height="720" aria-label="共享深海捕鱼战场"></canvas>
+
+        <header class="machine-bar">
+          <div class="machine-title">
+            <span class="machine-emblem" aria-hidden="true">⚓</span>
+            <span><strong>深海猎场</strong><small>ABYSS HUNTERS</small></span>
+          </div>
+          <div class="room-tools">
+            <span id="connectionBadge" class="status-pill offline"><i></i><span>未连接</span></span>
+            <button id="roomButton" class="room-button" type="button" title="当前自动匹配牌桌" disabled>
+              牌桌 <strong id="roomLabel">----</strong><span aria-hidden="true">●</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="table-caption" aria-hidden="true">
+          <span></span><strong>命中后概率捕获</strong><span></span>
+        </div>
+
+        <div class="seat-hud seat-top-left" data-seat="2">
+          <span class="seat-number">03</span>
+          <span class="seat-copy"><small>上左座</small><strong class="seat-name">等待入座</strong></span>
+          <span class="seat-stat"><small>钱包</small><b class="seat-score">—</b></span>
+          <span class="seat-power">×<b>1</b></span>
+        </div>
+
+        <div class="seat-hud seat-top-right" data-seat="3">
+          <span class="seat-number">04</span>
+          <span class="seat-copy"><small>上右座</small><strong class="seat-name">等待入座</strong></span>
+          <span class="seat-stat"><small>钱包</small><b class="seat-score">—</b></span>
+          <span class="seat-power">×<b>1</b></span>
+        </div>
+
+        <div class="seat-hud seat-bottom-left" data-seat="0">
+          <span class="seat-number">01</span>
+          <span class="seat-copy"><small>下左座</small><strong class="seat-name">等待入座</strong></span>
+          <span class="seat-stat"><small>钱包</small><b class="seat-score">—</b></span>
+          <span class="seat-power">×<b>1</b></span>
+        </div>
+
+        <div class="seat-hud seat-bottom-right" data-seat="1">
+          <span class="seat-number">02</span>
+          <span class="seat-copy"><small>下右座</small><strong class="seat-name">等待入座</strong></span>
+          <span class="seat-stat"><small>钱包</small><b class="seat-score">—</b></span>
+          <span class="seat-power">×<b>1</b></span>
+        </div>
+
+        <div id="eventFeed" class="event-feed" aria-live="polite"></div>
+        <div id="crosshair" class="crosshair" aria-hidden="true"><span></span></div>
+
+        <div class="battle-status">
+          <span><i></i> 共享海域</span>
+          <strong><b id="playerCount">0</b> / 4 座</strong>
+        </div>
+
+        <div class="control-console" aria-label="当前炮台控制台">
+          <button id="lockButton" class="mode-button" type="button" aria-pressed="false"><i>◎</i><span>锁定</span></button>
+          <div class="power-control" aria-label="炮弹积分档位">
+            <button id="powerDown" type="button" aria-label="降低炮档">−</button>
+            <div><small>钱包炮值</small><strong>×<span id="powerValue">2</span></strong></div>
+            <button id="powerUp" type="button" aria-label="提高炮档">＋</button>
+          </div>
+          <button id="autoButton" class="mode-button" type="button" aria-pressed="false"><i>↻</i><span>自动</span></button>
+          <button id="fireButton" class="fire-button" type="button"><span>开炮</span><i aria-hidden="true"></i></button>
+        </div>
+
+        <div id="reconnectMask" class="reconnect-mask" hidden>
+          <div class="sonar"></div>
+          <strong>正在重连深海战场…</strong>
+          <small>你的炮台席位暂时保留</small>
+        </div>
+
+        <div class="turn-device" aria-hidden="true">横屏游戏体验更佳</div>
+      </section>
+
+      <p class="legal-note">平台钱包实时结算 · 每次开炮扣款，捕获奖励原路入账</p>
+    </main>
+
+    <section id="joinOverlay" class="join-overlay">
+      <div class="join-card">
+        <div class="join-visual" aria-hidden="true">
+          <div class="join-depth"></div>
+          <div class="join-sonar"><span></span></div>
+          <div class="join-hero-copy">
+            <span>4-SEAT LIVE TABLE</span>
+            <strong>深海猎场</strong>
+            <p>四座炮台，同游一片海</p>
+          </div>
+        </div>
+
+        <form id="joinForm" class="join-form">
+          <div class="form-kicker">多人街机捕鱼</div>
+          <h1>自动匹配炮台</h1>
+          <p>平台会自动分配 1000 张捕鱼桌中的空闲座位。击中鱼群后，将按鱼种倍率概率捕获并实时结算钱包。</p>
+
+          <label for="nameInput">玩家昵称</label>
+          <input id="nameInput" name="name" maxlength="12" autocomplete="nickname" placeholder="例如：深海船长" required />
+
+          <label for="roomInput">匹配桌号</label>
+          <div class="room-input-wrap">
+            <input id="roomInput" name="room" maxlength="6" inputmode="latin" autocomplete="off" aria-describedby="roomHelp" required />
+            <button id="randomRoom" type="button" title="生成新房间号">↻</button>
+          </div>
+          <small id="roomHelp" class="input-help">正式入口由平台自动分桌，无需手动创建房间</small>
+
+          <p id="joinError" class="form-error" role="alert" hidden></p>
+          <button id="joinButton" class="join-button" type="submit"><span>进入深海猎场</span><b aria-hidden="true">→</b></button>
+
+          <div class="trust-row">
+            <span><i>✓</i> 四座同屏</span>
+            <span><i>✓</i> 服务端判定</span>
+            <span><i>✓</i> 平台钱包</span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="rulesModal" class="game-rules-modal" role="dialog" aria-modal="true" aria-label="捕鱼玩法说明" hidden>
+      <article class="game-rules-card">
+        <header class="game-rules-head">
+          <div><small>GAME GUIDE</small><strong>捕鱼玩法说明</strong></div>
+          <button id="rulesClose" class="game-rules-close" type="button" aria-label="关闭规则">×</button>
+        </header>
+        <div class="game-rules-content">
+          <section class="game-rule-section">
+            <h3>基本玩法</h3>
+            <ul>
+              <li>四名玩家共享同一片实时海域；系统会从 1000 张捕鱼桌中自动匹配空闲炮台。</li>
+              <li>移动准星瞄准鱼群，点击海面或“开炮”发射渔网；命中后由服务器判定是否捕获。</li>
+            </ul>
+          </section>
+          <section class="game-rule-section">
+            <h3>炮台操作</h3>
+            <ul>
+              <li>炮值可选 1、2、5、10、20、50；每发炮弹消耗与当前炮值相同的星币。</li>
+              <li>“锁定”会持续追踪目标，“自动”会按当前炮值连续开炮；钱包不足时自动停止。</li>
+            </ul>
+          </section>
+          <section class="game-rule-section">
+            <h3>捕获与倍率</h3>
+            <ul>
+              <li>鱼种倍率依次为 2、3、5、8、12、20、30、40、60、80 倍。</li>
+              <li>打中不代表必定捕获；成功时奖励为当前炮值 × 鱼种倍率，并即时回到平台钱包。</li>
+            </ul>
+          </section>
+          <section class="game-rule-section">
+            <h3>动态鱼群</h3>
+            <ul>
+              <li>普通鱼、海龟、水母、蝠鲼和鲨鱼均使用素材包逐帧游动动画。</li>
+              <li>每条鱼的路线、速度与出现时间由服务器控制，所有同桌玩家看到同一批鱼。</li>
+            </ul>
+          </section>
+          <section class="game-rule-section wallet">
+            <h3>平台钱包与退出</h3>
+            <ul>
+              <li>捕鱼不使用独立游戏币：每次开炮直接扣除用户平台钱包资金，捕获奖励也直接入原钱包。</li>
+              <li>退出或断线不会撤销已经发生的扣款与奖励；保留期内返回原桌可恢复炮台席位。</li>
+            </ul>
+          </section>
+        </div>
+      </article>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="platform.js"></script>
+    <script src="game-socket.js?v=20260729-go1"></script>
+    <script src="rules.js?v=20260726-rules1"></script>
+    <script type="module" src="game.js?v=20260726-animatedfish-lowfps1"></script>
+  </body>
+</html>

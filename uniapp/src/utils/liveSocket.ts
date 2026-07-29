@@ -1,11 +1,14 @@
-import type { LiveGift, UserProfile } from "@/types/api";
+import type { UserProfile } from "@/types/api";
 import { getSession } from "@/utils/session";
 import { displayUrl } from "@/utils/url";
 import {
-  connectOpenIMLive,
-  onOpenIMGroupMessage,
-  sendOpenIMLiveMessage
-} from "@/utils/openim";
+  connectNativeLive,
+  disconnectNativeLive,
+  onNativeLiveConnection,
+  onNativeLiveMessage,
+  sendNativeLiveMessage,
+  type NativeLiveConnectionState
+} from "@/utils/nativeLiveIM";
 
 type SocketMethod =
   | "SendMsg"
@@ -23,9 +26,14 @@ type SocketMethod =
   | "warning";
 
 export type LiveChatType = "normal" | "system" | "gift" | "enter" | "light" | "redpack";
+export type LiveConnectionState = NativeLiveConnectionState;
 
 export interface LiveSocketChat {
   id: string;
+  messageID?: string;
+  eventID?: string;
+  sequence?: number;
+  createdAt?: number;
   uid?: string;
   name: string;
   content: string;
@@ -62,7 +70,7 @@ interface LiveSocketOptions {
   userType?: number;
   guardType?: number;
   isAnchor?: boolean;
-  onConnect?: (connected: boolean) => void;
+  onConnect?: (connected: boolean, state: LiveConnectionState) => void;
   onChat?: (message: LiveSocketChat) => void;
   onGift?: (gift: LiveSocketGift) => void;
   onEnter?: (enter: LiveSocketEnter) => void;
@@ -143,8 +151,14 @@ function createChatMessage(message: Record<string, unknown>, type: LiveChatType,
   const uid = asText(message.uid || message.id);
   const userType = asNumber(message.usertype, 30);
   const name = asText(message.uname || message.user_nickname || message.user_nicename || "星域用户");
+  const messageID = asText(message.message_id);
+  const eventID = asText(message.event_id);
   return {
-    id: `${type}-${uid || "system"}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: messageID || eventID || `${type}-${uid || "system"}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    messageID: messageID || undefined,
+    eventID: eventID || undefined,
+    sequence: asNumber(message.sequence, 0) || undefined,
+    createdAt: asNumber(message.created_at, 0) || undefined,
     uid,
     name: type === "system" ? "系统" : name,
     content: content ?? ctText(message),
@@ -180,8 +194,11 @@ export class LiveSocketClient {
   private options: LiveSocketOptions;
   private groupID = "";
   private stopMessages?: () => void;
-  private seenEventIDs = new Set<string>();
+  private stopConnection?: () => void;
+  private seenMessageIDs = new Set<string>();
   private leaveTask?: Promise<void>;
+  private stopped = true;
+  private presenceSent = false;
 
   constructor(options: LiveSocketOptions) {
     this.options = options;
@@ -189,25 +206,45 @@ export class LiveSocketClient {
 
   async connect() {
     this.disconnect();
+    this.stopped = false;
+    this.stopConnection = onNativeLiveConnection((snapshot) => {
+      if (this.stopped) {
+        return;
+      }
+      this.bindConversation(snapshot.conversationID);
+      this.connected = snapshot.state === "ready";
+      this.options.onConnect?.(this.connected, snapshot.state);
+      if (this.connected && !this.presenceSent) {
+        this.presenceSent = true;
+        void this.emitConn().catch(() => undefined);
+      }
+    });
     try {
-      this.groupID = await connectOpenIMLive(this.options.liveUid, this.options.stream, this.options.stream);
-      this.stopMessages = onOpenIMGroupMessage(this.groupID, (payload) => this.handleBroadcasting(payload));
-      this.connected = true;
-      this.options.onConnect?.(true);
-      this.emitConn();
+      const conversationID = await connectNativeLive(this.options.liveUid, this.options.stream);
+      if (!this.stopped) {
+        this.bindConversation(conversationID);
+      }
     } catch (error: any) {
+      if (this.stopped) {
+        return;
+      }
       this.connected = false;
-      this.options.onConnect?.(false);
-      this.options.onError?.(error?.message || "OpenIM 直播群组连接失败");
+      this.options.onError?.(error?.message || "直播群组连接失败");
     }
   }
 
   disconnect() {
+    this.stopped = true;
     this.stopMessages?.();
+    this.stopConnection?.();
+    disconnectNativeLive();
     this.stopMessages = undefined;
+    this.stopConnection = undefined;
     this.groupID = "";
     this.connected = false;
-    this.seenEventIDs.clear();
+    this.presenceSent = false;
+    this.seenMessageIDs.clear();
+    this.options.onConnect?.(false, "idle");
   }
 
   isConnected() {
@@ -239,9 +276,9 @@ export class LiveSocketClient {
     return this.leaveTask;
   }
 
-  sendChat(content: string) {
+  sendChat(content: string): Promise<void> {
     const user = getSession().user;
-    const message = {
+    const message: Record<string, unknown> = {
       _method_: "SendMsg" satisfies SocketMethod,
       action: "0",
       msgtype: "2",
@@ -255,36 +292,12 @@ export class LiveSocketClient {
       guard_type: String(this.options.guardType || 0),
       ct: content
     };
-    this.emitBroadcast(createPayload(message));
-  }
-
-  sendGift(gift: LiveGift, giftToken: string, liveName: string) {
-    const user = getSession().user;
-    const message = {
-      _method_: "SendGift" satisfies SocketMethod,
-      action: "0",
-      msgtype: "1",
-      level: asText(user?.level || "0"),
-      uname: userNiceName(user),
-      uid: getSession().uid,
-      uhead: userAvatar(user),
-      evensend: asText(gift.type || "0"),
-      liangname: userLiangName(user),
-      vip_type: String(userVipType(user)),
-      guard_type: String(this.options.guardType || 0),
-      ct: giftToken,
-      roomnum: this.options.liveUid,
-      livename: liveName,
-      paintedPath: [],
-      paintedWidth: "0",
-      paintedHeight: "0"
-    };
-    this.emitBroadcast(createPayload(message));
+    return this.emitBroadcast(createPayload(message));
   }
 
   sendKick(toUid: string, toName: string) {
     const user = getSession().user;
-    this.emitBroadcast(createPayload({
+    void this.emitBroadcast(createPayload({
       _method_: "KickUser" satisfies SocketMethod,
       action: "2",
       msgtype: "4",
@@ -295,12 +308,12 @@ export class LiveSocketClient {
       toname: toName,
       ct: `${toName}被踢出房间`,
       ct_en: `${toName} was kicked out of the room`
-    }));
+    })).catch(() => undefined);
   }
 
   sendShutUp(toUid: string, toName: string, type = 1) {
     const user = getSession().user;
-    this.emitBroadcast(createPayload({
+    void this.emitBroadcast(createPayload({
       _method_: "ShutUpUser" satisfies SocketMethod,
       action: "1",
       msgtype: "4",
@@ -311,12 +324,12 @@ export class LiveSocketClient {
       toname: toName,
       ct: `${toName}${type === 0 ? "被永久禁言" : "被本场禁言"}`,
       ct_en: `${toName}${type === 0 ? " is permanently banned" : " has been banned from this site"}`
-    }));
+    })).catch(() => undefined);
   }
 
   sendSetAdmin(action: number, toUid: string, toName: string) {
     const user = getSession().user;
-    this.emitBroadcast(createPayload({
+    void this.emitBroadcast(createPayload({
       _method_: "setAdmin" satisfies SocketMethod,
       action: String(action),
       msgtype: "1",
@@ -326,13 +339,13 @@ export class LiveSocketClient {
       toname: toName,
       ct: `${toName}${action === 1 ? "被设为管理员" : "被取消管理员"}`,
       ct_en: `${toName}${action === 1 ? " is set as administrator" : " was removed as administrator"}`
-    }));
+    })).catch(() => undefined);
   }
 
-  private emitConn() {
+  private emitConn(): Promise<void> {
     const session = getSession();
     const user = session.user;
-    this.emitBroadcast(createPayload({
+    return this.emitBroadcast(createPayload({
       _method_: "SendMsg" satisfies SocketMethod,
       action: "0",
       msgtype: "0",
@@ -351,16 +364,40 @@ export class LiveSocketClient {
     }));
   }
 
-  private async emitBroadcast(payload: Record<string, unknown>) {
+  private async emitBroadcast(payload: Record<string, unknown>): Promise<void> {
     if (!this.groupID || !this.connected) {
-      this.options.onError?.("聊天服务器未连接，请稍后重试");
-      return;
+      const error = new Error("聊天服务器未连接，请稍后重试");
+      this.options.onError?.(error.message);
+      throw error;
     }
     try {
-      const result = await sendOpenIMLiveMessage(this.options.liveUid, this.options.stream, payload);
+      const result = await sendNativeLiveMessage(payload);
       this.handlePayload(result.payload);
     } catch (error: any) {
-      this.options.onError?.(error?.message || "直播消息发送失败");
+      const normalized = error instanceof Error
+        ? error
+        : new Error(error?.message || "直播消息发送失败");
+      this.options.onError?.(normalized.message);
+      throw normalized;
+    }
+  }
+
+  private bindConversation(conversationID: string) {
+    const nextGroupID = String(conversationID || "");
+    if (nextGroupID === this.groupID) {
+      return;
+    }
+    if (this.groupID) {
+      this.seenMessageIDs.clear();
+      this.presenceSent = false;
+    }
+    this.stopMessages?.();
+    this.stopMessages = undefined;
+    this.groupID = nextGroupID;
+    if (nextGroupID) {
+      this.stopMessages = onNativeLiveMessage(nextGroupID, (payload) => {
+        this.handleBroadcasting(payload);
+      });
     }
   }
 
@@ -381,23 +418,31 @@ export class LiveSocketClient {
 
   private handlePayload(payload: unknown) {
     const root = parseRecord(payload);
-    const eventID = asText(root.event_id);
-    if (eventID) {
-      if (this.seenEventIDs.has(eventID)) {
-        return;
-      }
-      this.seenEventIDs.add(eventID);
-      if (this.seenEventIDs.size > 300) {
-        const oldest = this.seenEventIDs.values().next().value;
-        if (oldest) {
-          this.seenEventIDs.delete(oldest);
-        }
-      }
-    }
-    const message = firstMessage(root);
-    if (!message) {
+    const identities = [asText(root.event_id), asText(root.message_id)]
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (identities.some((identity) => this.seenMessageIDs.has(identity))) {
       return;
     }
+    identities.forEach((identity) => this.seenMessageIDs.add(identity));
+    while (this.seenMessageIDs.size > 600) {
+      const oldest = this.seenMessageIDs.values().next().value;
+      if (!oldest) {
+        break;
+      }
+      this.seenMessageIDs.delete(oldest);
+    }
+    const sourceMessage = firstMessage(root);
+    if (!sourceMessage) {
+      return;
+    }
+    const message: Record<string, unknown> = {
+      ...sourceMessage,
+      message_id: root.message_id,
+      event_id: root.event_id,
+      sequence: root.sequence,
+      created_at: root.created_at
+    };
     const method = asText(message._method_) as SocketMethod;
     if (method === "SystemNot" || method === "warning") {
       this.options.onChat?.(createChatMessage(message, "system"));

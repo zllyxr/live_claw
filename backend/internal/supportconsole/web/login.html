@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#17233d">
+  <title>客服座席工作台</title>
+  <link rel="stylesheet" href="/support-console/static/app.css">
+  <script src="/support-console/static/login.js" defer></script>
+</head>
+<body class="login-body">
+  <main class="login-shell">
+    <section class="login-intro" aria-label="客服座席工作台介绍">
+      <div class="brand-mark" aria-hidden="true">C</div>
+      <div class="login-brand">CLAW SUPPORT</div>
+      <h1>把每一次咨询，<br>都处理得清晰可靠。</h1>
+      <p>独立客服座席工作台，用于会话接入、用户协助、转接和服务记录。</p>
+      <div class="login-features">
+        <div class="login-feature">
+          <span class="feature-icon" aria-hidden="true">01</span>
+          <div>
+            <strong>专属座席权限</strong>
+            <p>与平台管理后台隔离，只显示客服工作所需信息。</p>
+          </div>
+        </div>
+        <div class="login-feature">
+          <span class="feature-icon" aria-hidden="true">02</span>
+          <div>
+            <strong>统一会话队列</strong>
+            <p>待接入、处理中和历史会话集中处理。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="login-panel" aria-labelledby="login-title">
+      <div class="login-card">
+        <div class="login-mobile-brand">
+          <div class="brand-mark" aria-hidden="true">C</div>
+          <div>CLAW SUPPORT</div>
+        </div>
+        <div class="eyebrow">SUPPORT CONSOLE</div>
+        <h2 id="login-title">登录座席工作台</h2>
+        <p class="login-hint">请使用已授权的客服座席账号登录</p>
+
+        <form id="login-form" novalidate>
+          <label class="field-label" for="username">座席账号</label>
+          <div class="input-shell">
+            <span class="input-icon" aria-hidden="true">人</span>
+            <input id="username" name="username" type="text" autocomplete="username"
+                   maxlength="80" placeholder="请输入座席账号" required autofocus>
+          </div>
+
+          <label class="field-label" for="password">登录密码</label>
+          <div class="input-shell">
+            <span class="input-icon" aria-hidden="true">锁</span>
+            <input id="password" name="password" type="password" autocomplete="current-password"
+                   maxlength="200" placeholder="请输入登录密码" required>
+            <button class="password-toggle" id="password-toggle" type="button"
+                    aria-label="显示密码" aria-pressed="false">显示</button>
+          </div>
+
+          <div class="login-error" id="login-error" role="alert" aria-live="polite"></div>
+          <button class="primary-button login-submit" id="login-submit" type="submit">
+            安全登录
+          </button>
+        </form>
+
+        <p class="security-note">工作台操作会记录到服务审计日志，请勿共享座席账号。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
