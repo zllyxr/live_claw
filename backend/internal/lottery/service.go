@@ -571,7 +571,7 @@ func staticLotteryIconURL(gameCode string) string {
 	if code == "" {
 		return ""
 	}
-	return "/static/lotter/" + url.PathEscape(code) + ".png"
+	return "/lottery-icons/" + url.PathEscape(code) + ".png"
 }
 
 func (s *Service) currentIssue(ctx context.Context, gameID int64) (map[string]any, error) {
