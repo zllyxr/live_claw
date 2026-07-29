@@ -336,8 +336,21 @@ services:
     image: nginx:1.27-alpine
     ports:
       - "${V2_HTTP_BIND:-0.0.0.0}:${V2_HTTP_PORT:-80}:80"
+      - "${V2_HTTPS_BIND:-0.0.0.0}:${V2_HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - type: bind
+        source: ${V2_TLS_CERT_FILE:?set V2_TLS_CERT_FILE}
+        target: /etc/nginx/tls/origin.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${V2_TLS_KEY_FILE:?set V2_TLS_KEY_FILE}
+        target: /etc/nginx/tls/origin.key
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ../../../uniapp/dist/build/h5
         target: /usr/share/nginx/html/h5
@@ -359,8 +372,8 @@ services:
       test:
         - CMD-SHELL
         - >-
-          wget -q -O /dev/null http://127.0.0.1/healthz &&
-          wget -q -O /dev/null http://127.0.0.1/h5/
+          curl -fsSk -o /dev/null https://127.0.0.1/healthz &&
+          curl -fsSk -o /dev/null https://127.0.0.1/h5/
       interval: 5s
       timeout: 5s
       retries: 20

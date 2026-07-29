@@ -48,8 +48,9 @@ GOWORK=off go vet ./...
 
 ## 单机生产部署
 
-生产目录固定为 `/opt/claw`，Compose 只公开 Nginx 的 HTTP 端口。MySQL、Redis 和
-MinIO API 仅在容器网络内访问；MinIO Console 只监听服务器的 `127.0.0.1:29001`。
+生产目录固定为 `/opt/claw`，Compose 只公开 Nginx 的 `80/443` 端口。MySQL、Redis
+和 MinIO API 仅在容器网络内访问；MinIO Console 只监听服务器的
+`127.0.0.1:29001`。
 
 首次部署：
 
@@ -58,17 +59,27 @@ cd /opt/claw
 test -f uniapp/dist/build/h5/index.html
 cp backend/deploy/production/env.example .env
 chmod 600 .env
-# 填写 .env 中所有必填空值后再继续
+# 把 Cloudflare Origin Certificate 和私钥分别保存到：
+# /opt/claw-secrets/tls/tmpai2.com-origin.crt
+# /opt/claw-secrets/tls/tmpai2.com-origin.key
+chmod 600 /opt/claw-secrets/tls/tmpai2.com-origin.crt \
+  /opt/claw-secrets/tls/tmpai2.com-origin.key
+# 填写 .env 中所有必填空值后再继续；证书和私钥不得放进 Git 仓库
 docker compose --env-file .env -f backend/deploy/production/compose.yml config --quiet
 docker compose --env-file .env -f backend/deploy/production/compose.yml up -d --build
 ```
 
 默认入口：
 
-- H5：`http://服务器地址/h5/`
-- API 健康检查：`http://服务器地址/healthz`
-- 管理后台：`http://服务器地址/admin/`
-- 客服桌席：`http://服务器地址/support-console`
+- H5：`https://tmpai2.com/h5/`
+- API 健康检查：`https://tmpai2.com/healthz`
+- 管理后台：`https://tmpai2.com/admin/`
+- 客服桌席：`https://tmpai2.com/support-console`
+
+Nginx 在源站终止 Cloudflare Origin TLS，HTTP 会永久跳转到 HTTPS。Cloudflare 中
+应开启代理并把 SSL/TLS 模式设为 `Full (strict)`；Origin Certificate 不是公共
+浏览器信任的证书，因此不应关闭 Cloudflare 代理后让用户直连源站。服务器防火墙
+应尽量只允许 Cloudflare 地址段访问源站 `80/443`，并仅向管理地址开放 SSH。
 
 管理员和客服账号只通过一次性 `bootstrap` profile 创建。先临时填写 `.env` 中对应
 账号和强密码，执行后立即清空这些账号密码变量：
@@ -92,17 +103,12 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml \
   --profile bootstrap run --rm virtual-live-bootstrap
 ```
 
-生产服务默认使用 Secure Cookie。直接使用公网 HTTP 时，后台和客服页面可以打开，
-但登录会被浏览器拒绝保留会话。仅在临时受限网络验收时，才可把
-`V2_ADMIN_RUNTIME_ENV` 和 `V2_SUPPORT_RUNTIME_ENV` 改为 `local`；API 仍保持
-`production`，配置 HTTPS 后必须立即改回。公网 HTTP 会明文传输账号和令牌，不应
-作为长期方案。
+生产服务默认使用 Secure Cookie，`V2_ADMIN_RUNTIME_ENV` 和
+`V2_SUPPORT_RUNTIME_ENV` 必须保持为 `production`。
 
 MinIO 预签名依赖公开地址，`V2_PUBLIC_URL`、`V2_MINIO_PUBLIC_ENDPOINT` 与
-`V2_MINIO_PUBLIC_USE_TLS` 必须和用户实际访问的协议、域名及端口一致。当前 Nginx
-配置监听 HTTP；启用 HTTPS 时应在可信 CDN/负载均衡器终止 TLS，或另行配置证书。
-原生 App 默认访问 `https://tmpai2.com`，正式 App 上线前必须保证该域名和证书指向
-新服务。
+`V2_MINIO_PUBLIC_USE_TLS` 必须和用户实际访问的协议、域名及端口一致；本配置固定
+为 `https://tmpai2.com`、`tmpai2.com` 和 `true`。原生 App 也默认访问该域名。
 
 MySQL、Redis 和 MinIO 使用固定名称的数据卷。正常更新只执行 `up -d --build`，
 不要执行 `docker compose down -v`。容器日志已限制为每个文件 `10 MB`、保留
