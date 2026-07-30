@@ -146,6 +146,18 @@
       '" data-action="' + esc(action) + '" data-id="' + esc(id) + '">' + esc(label) + "</button>";
   }
 
+  function userActionButtons(row) {
+    const buttons = [];
+    if (has("users.write")) {
+      buttons.push(button("状态", "user-status", row.id));
+      buttons.push(button("团队", "user-team", row.id));
+    }
+    if (has("wallet.review")) {
+      buttons.push(button("调账", "user-wallet-adjustment", row.id, "layui-btn-normal"));
+    }
+    return buttons.length ? '<div class="row-actions">' + buttons.join("") + "</div>" : "—";
+  }
+
   function setHeader(route) {
     const meta = pages[route] || pages.dashboard;
     topTitle.textContent = meta[0];
@@ -190,9 +202,7 @@
         1: ["正常", "ok"], 2: ["冻结", "warn"], 3: ["关闭", "bad"]
       }) },
       { label: "注册时间", render: (row) => formatTime(row.created_at) },
-      { label: "操作", render: (row) => has("users.write") ?
-        '<div class="row-actions">' + button("状态", "user-status", row.id) +
-        button("团队", "user-team", row.id) + "</div>" : "—" }
+      { label: "操作", render: userActionButtons }
     ], result[0].items);
     const teamTable = table([
       { label: "代码", render: (row) => "<strong>" + esc(row.code) + "</strong>" },
@@ -616,6 +626,196 @@
     });
   }
 
+  function walletAdjustmentRequestID() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 15) | 64;
+      bytes[8] = (bytes[8] & 63) | 128;
+      const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+      return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
+        hex.slice(16, 20), hex.slice(20)].join("-");
+    }
+    return "admin-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  function availableBalanceFromAdjustment(result) {
+    const values = [
+      result && result.available,
+      result && result.available_balance,
+      result && result.new_balance,
+      result && result.balance,
+      result && result.balance && result.balance.available,
+      result && result.wallet && result.wallet.available,
+      result && result.wallet && result.wallet.balance,
+      result && result.user && result.user.available
+    ];
+    return values.find((value) => value !== undefined && value !== null &&
+      value !== "" && typeof value !== "object");
+  }
+
+  function openUserWalletAdjustment(user) {
+    if (!layer || !user) return;
+    const suffix = String(Date.now());
+    const modalID = "wallet-adjustment-" + suffix;
+    const formID = "wallet-adjustment-form-" + suffix;
+    const amountID = "wallet-adjustment-amount-" + suffix;
+    const reasonID = "wallet-adjustment-reason-" + suffix;
+    let closed = false;
+    let confirming = false;
+    let submitting = false;
+    let confirmIndex = null;
+    let requestID = "";
+    let requestSignature = "";
+    const displayName = user.nickname || user.username || ("用户 " + user.id);
+    const currentBalance = formatNumber(user.available);
+    const html = '<div id="' + modalID + '" class="wallet-adjustment-modal">' +
+      '<section class="wallet-adjustment-user">' +
+      '<span class="wallet-adjustment-user-name">' + esc(displayName) + "</span>" +
+      '<span class="wallet-adjustment-user-meta">账号 ' + esc(user.username || "—") +
+      " · ID " + esc(user.id) + "</span>" +
+      '<span class="tag ok wallet-adjustment-balance">当前可用余额 ' +
+      esc(currentBalance) + " 星币</span></section>" +
+      '<form id="' + formID + '" class="wallet-adjustment-form">' +
+      '<fieldset class="wallet-adjustment-directions"><legend>调账类型</legend>' +
+      '<label class="wallet-direction-option credit">' +
+      '<input type="radio" name="direction" value="credit" checked>' +
+      '<span><strong>充值</strong><small>增加用户可用余额</small></span></label>' +
+      '<label class="wallet-direction-option debit">' +
+      '<input type="radio" name="direction" value="debit">' +
+      '<span><strong>扣款</strong><small>减少用户可用余额</small></span></label></fieldset>' +
+      '<label class="wallet-adjustment-field" for="' + amountID + '">' +
+      '<span>调整金额（正整数）</span><input id="' + amountID +
+      '" name="amount" type="number" inputmode="numeric" min="1" step="1" required ' +
+      'autocomplete="off" placeholder="请输入大于 0 的整数"></label>' +
+      '<label class="wallet-adjustment-field" for="' + reasonID + '">' +
+      '<span>调账原因（必填）</span><textarea id="' + reasonID +
+      '" name="reason" maxlength="500" required placeholder="请填写本次充值或扣款的原因"></textarea></label>' +
+      '<span class="wallet-adjustment-note">提交前会再次显示用户、方向、金额和原因，请认真核对。</span>' +
+      "</form></div>";
+
+    layer.open({
+      type: 1,
+      title: "用户调账",
+      skin: "wallet-adjustment-layer",
+      area: ["620px", "auto"],
+      content: html,
+      btn: ["核对并提交", "取消"],
+      success: function () {
+        const amountInput = document.getElementById(amountID);
+        if (amountInput) amountInput.focus();
+      },
+      yes: function (index, layerElement) {
+        if (closed || confirming || submitting) return;
+        const form = document.getElementById(formID);
+        if (!form) return;
+        const values = new FormData(form);
+        const direction = String(values.get("direction") || "");
+        const amountText = String(values.get("amount") || "").trim();
+        const reason = String(values.get("reason") || "").trim();
+        const amount = Number(amountText);
+        if (!["credit", "debit"].includes(direction)) {
+          notify("请选择充值或扣款", true);
+          return;
+        }
+        if (!/^[1-9]\d*$/.test(amountText) || !Number.isSafeInteger(amount)) {
+          notify("金额必须是大于 0 的正整数", true);
+          document.getElementById(amountID)?.focus();
+          return;
+        }
+        if (!reason) {
+          notify("请填写调账原因", true);
+          document.getElementById(reasonID)?.focus();
+          return;
+        }
+        if (reason.length > 500) {
+          notify("调账原因不能超过 500 个字", true);
+          document.getElementById(reasonID)?.focus();
+          return;
+        }
+        const isCredit = direction === "credit";
+        const directionText = isCredit ? "充值" : "扣款";
+        const signedAmount = (isCredit ? "+" : "−") + formatNumber(amount);
+        const confirmHTML = '<div class="wallet-adjustment-confirmation">' +
+          '<span class="tag ' + (isCredit ? "ok" : "bad") + '">' + directionText + "</span>" +
+          '<strong class="' + (isCredit ? "credit" : "debit") + '">' +
+          esc(signedAmount) + " 星币</strong>" +
+          '<span class="wallet-confirm-user">' + esc(displayName) + " · ID " + esc(user.id) + "</span>" +
+          '<span class="wallet-confirm-label">调账原因</span><p>' + esc(reason) + "</p>" +
+          '<span class="wallet-confirm-warning">确认后将立即影响用户可用余额，请再次核对。</span></div>';
+        confirming = true;
+        const parentLayer = layerElement && layerElement[0] ? layerElement[0] : null;
+        parentLayer?.classList.add("is-confirming");
+        confirmIndex = layer.confirm(confirmHTML, {
+          title: "二次确认",
+          skin: "wallet-adjustment-confirm-layer",
+          area: ["460px", "auto"],
+          btn: ["确认" + directionText, "返回修改"],
+          yes: async function (confirmationIndex, confirmationElement) {
+            if (submitting) return;
+            submitting = true;
+            const signature = [direction, amountText, reason].join("\n");
+            if (!requestID || requestSignature !== signature) {
+              requestID = walletAdjustmentRequestID();
+              requestSignature = signature;
+            }
+            const confirmationLayer = confirmationElement && confirmationElement[0] ?
+              confirmationElement[0] : null;
+            parentLayer?.classList.add("is-submitting");
+            confirmationLayer?.classList.add("is-submitting");
+            const confirmationButton = confirmationLayer?.querySelector(".layui-layer-btn0");
+            if (confirmationButton) confirmationButton.textContent = "正在提交…";
+            const loadingIndex = layer.load(2, { shade: [0.18, "#fff"] });
+            try {
+              const result = await api("/admin/api/users/" + encodeURIComponent(user.id) +
+                "/wallet-adjustments", {
+                method: "POST",
+                body: {
+                  direction,
+                  amount,
+                  reason,
+                  request_id: requestID
+                }
+              });
+              const latestBalance = availableBalanceFromAdjustment(result);
+              layer.close(confirmationIndex);
+              layer.close(index);
+              notify(directionText + "成功" + (latestBalance !== undefined ?
+                "，最新可用余额：" + formatNumber(latestBalance) + " 星币" : "，用户余额已更新"));
+              try {
+                await loadRoute();
+              } catch (refreshError) {
+                notify("调账已成功，但列表刷新失败，请点击“刷新数据”重试", true);
+              }
+            } catch (error) {
+              notify(error.message || "调账失败", true);
+            } finally {
+              submitting = false;
+              parentLayer?.classList.remove("is-submitting");
+              confirmationLayer?.classList.remove("is-submitting");
+              if (confirmationButton && document.body.contains(confirmationButton)) {
+                confirmationButton.textContent = "确认" + directionText;
+              }
+              layer.close(loadingIndex);
+            }
+          },
+          end: function () {
+            confirming = false;
+            confirmIndex = null;
+            parentLayer?.classList.remove("is-confirming");
+          }
+        });
+      },
+      end: function () {
+        closed = true;
+        if (confirmIndex !== null) layer.close(confirmIndex);
+      }
+    });
+  }
+
   function openLiveRoomForm(room) {
     if (!layer) return;
     const editing = Boolean(room);
@@ -856,6 +1056,9 @@
       ], (values) => api("/admin/api/users/" + id + "/team", {
         method: "POST", body: { team_id: Number(values.team_id), reason: values.reason }
       }));
+    }
+    if (action === "user-wallet-adjustment") {
+      return openUserWalletAdjustment(cached("users", id));
     }
     if (action === "team-create") {
       return openForm("新建团队", [

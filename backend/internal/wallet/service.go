@@ -248,6 +248,18 @@ func (s *Service) TransferTx(
 // Apply writes one idempotent available-balance change. Positive amounts credit
 // the user and negative amounts debit the user.
 func (s *Service) Apply(ctx context.Context, request ApplyRequest) (Entry, error) {
+	return s.withTx(ctx, func(tx *sql.Tx) (Entry, error) {
+		return s.ApplyTx(ctx, tx, request)
+	})
+}
+
+// ApplyTx writes one idempotent available-balance change using the caller's
+// transaction. It never commits or rolls back, allowing the wallet entry,
+// owning business record, and audit log to be persisted atomically.
+func (s *Service) ApplyTx(ctx context.Context, tx *sql.Tx, request ApplyRequest) (Entry, error) {
+	if tx == nil {
+		return Entry{}, errors.New("wallet apply transaction is required")
+	}
 	if err := validateBusiness(request.UserID, request.BusinessType, request.BusinessID); err != nil {
 		return Entry{}, err
 	}
@@ -257,37 +269,35 @@ func (s *Service) Apply(ctx context.Context, request ApplyRequest) (Entry, error
 	if request.Amount == math.MinInt64 {
 		return Entry{}, errors.New("wallet amount is out of range")
 	}
-	return s.withTx(ctx, func(tx *sql.Tx) (Entry, error) {
-		account, err := lockAccount(ctx, tx, request.UserID)
-		if err != nil {
-			return Entry{}, err
+	account, err := lockAccount(ctx, tx, request.UserID)
+	if err != nil {
+		return Entry{}, err
+	}
+	if existing, found, findErr := findEntry(ctx, tx, request.BusinessType, request.BusinessID, request.UserID); findErr != nil {
+		return Entry{}, findErr
+	} else if found {
+		if existing.DeltaAvailable != request.Amount || existing.DeltaFrozen != 0 {
+			return Entry{}, ErrIdempotencyReuse
 		}
-		if existing, found, findErr := findEntry(ctx, tx, request.BusinessType, request.BusinessID, request.UserID); findErr != nil {
-			return Entry{}, findErr
-		} else if found {
-			if existing.DeltaAvailable != request.Amount || existing.DeltaFrozen != 0 {
-				return Entry{}, ErrIdempotencyReuse
-			}
-			return existing, nil
-		}
-		if request.Amount < 0 && account.Available < -request.Amount {
-			return Entry{}, ErrInsufficientFunds
-		}
-		if request.Amount > 0 && account.Available > math.MaxInt64-request.Amount {
-			return Entry{}, errors.New("wallet balance would overflow")
-		}
-		account.Available += request.Amount
-		account.Version++
-		if _, err = tx.ExecContext(ctx, `
-			UPDATE wallet_accounts
-			SET available=?,version=? WHERE id=?`,
-			account.Available, account.Version, account.ID,
-		); err != nil {
-			return Entry{}, fmt.Errorf("update wallet account: %w", err)
-		}
-		return insertEntry(ctx, tx, account, request.Amount, 0, request.BusinessType, request.BusinessID,
-			request.Description, request.Metadata, request.GameCode, request.VenueCode, request.TableNo, request.RoundNo)
-	})
+		return existing, nil
+	}
+	if request.Amount < 0 && account.Available < -request.Amount {
+		return Entry{}, ErrInsufficientFunds
+	}
+	if request.Amount > 0 && account.Available > math.MaxInt64-request.Amount {
+		return Entry{}, errors.New("wallet balance would overflow")
+	}
+	account.Available += request.Amount
+	account.Version++
+	if _, err = tx.ExecContext(ctx, `
+		UPDATE wallet_accounts
+		SET available=?,version=? WHERE id=?`,
+		account.Available, account.Version, account.ID,
+	); err != nil {
+		return Entry{}, fmt.Errorf("update wallet account: %w", err)
+	}
+	return insertEntry(ctx, tx, account, request.Amount, 0, request.BusinessType, request.BusinessID,
+		request.Description, request.Metadata, request.GameCode, request.VenueCode, request.TableNo, request.RoundNo)
 }
 
 // PlaceHold atomically moves coins from available to frozen. Repeating the

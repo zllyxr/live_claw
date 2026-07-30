@@ -1,13 +1,16 @@
 package admin
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/idgen"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
@@ -66,6 +69,206 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
 		"page": page, "page_size": pageSize, "items": items,
+	})
+}
+
+type directWalletAdjustmentRequest struct {
+	Direction string `json:"direction"`
+	Amount    int64  `json:"amount"`
+	Reason    string `json:"reason"`
+	RequestID string `json:"request_id"`
+}
+
+func (request *directWalletAdjustmentRequest) normalize() (int64, error) {
+	request.Direction = strings.ToLower(strings.TrimSpace(request.Direction))
+	request.Reason = strings.TrimSpace(request.Reason)
+	request.RequestID = strings.TrimSpace(request.RequestID)
+	if request.Direction != "credit" && request.Direction != "debit" {
+		return 0, errors.New("invalid adjustment direction")
+	}
+	if request.Amount < 1 {
+		return 0, errors.New("adjustment amount must be positive")
+	}
+	if request.Reason == "" || len(request.Reason) > 500 {
+		return 0, errors.New("invalid adjustment reason")
+	}
+	if request.RequestID == "" || len(request.RequestID) > 100 {
+		return 0, errors.New("invalid adjustment request id")
+	}
+	if request.Direction == "debit" {
+		return -request.Amount, nil
+	}
+	return request.Amount, nil
+}
+
+func directWalletAdjustmentNo(adminID int64, requestID string) string {
+	sum := sha256.Sum256([]byte(strconv.FormatInt(adminID, 10) + ":" + requestID))
+	return "Q" + hex.EncodeToString(sum[:])[:25]
+}
+
+func (h *Handler) adjustUserWallet(w http.ResponseWriter, r *http.Request) {
+	userID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || userID < 1 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "用户编号无效")
+		return
+	}
+	var request directWalletAdjustmentRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	signedAmount, err := request.normalize()
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "调账参数无效")
+		return
+	}
+	adminUser, _ := adminFromRequest(r)
+	adjustmentNo := directWalletAdjustmentNo(adminUser.ID, request.RequestID)
+
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var lockedUserID int64
+	err = tx.QueryRowContext(r.Context(), "SELECT id FROM users WHERE id=? FOR UPDATE", userID).Scan(&lockedUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "用户不存在")
+		return
+	}
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账失败")
+		return
+	}
+
+	var adjustmentID, existingUserID, existingAmount, requestedBy int64
+	var existingReason string
+	var existingStatus int
+	idempotent := false
+	err = tx.QueryRowContext(r.Context(), `
+		SELECT id,user_id,amount,reason,status,requested_by
+		FROM wallet_adjustments
+		WHERE adjustment_no=?
+		FOR UPDATE`,
+		adjustmentNo,
+	).Scan(
+		&adjustmentID, &existingUserID, &existingAmount, &existingReason,
+		&existingStatus, &requestedBy,
+	)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		result, insertErr := tx.ExecContext(r.Context(), `
+			INSERT INTO wallet_adjustments
+				(adjustment_no,user_id,amount,reason,status,requested_by,reviewed_by,reviewed_at)
+			VALUES(?,?,?,?,3,?,?,CURRENT_TIMESTAMP(3))`,
+			adjustmentNo, userID, signedAmount, request.Reason, adminUser.ID, adminUser.ID,
+		)
+		if insertErr != nil {
+			var mysqlErr *mysqlDriver.MySQLError
+			if errors.As(insertErr, &mysqlErr) && mysqlErr.Number == 1062 {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "request_id 已用于其他调账")
+				return
+			}
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账失败")
+			return
+		}
+		adjustmentID, _ = result.LastInsertId()
+	case err != nil:
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账失败")
+		return
+	case existingUserID != userID || existingAmount != signedAmount ||
+		existingReason != request.Reason || requestedBy != adminUser.ID || existingStatus != 3:
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "request_id 已用于其他调账")
+		return
+	default:
+		idempotent = true
+	}
+
+	entry, err := h.wallet.ApplyTx(r.Context(), tx, wallet.ApplyRequest{
+		UserID:       userID,
+		Amount:       signedAmount,
+		BusinessType: "admin_adjustment",
+		BusinessID:   adjustmentNo,
+		Description:  request.Reason,
+		Metadata: map[string]any{
+			"adjustment_id": adjustmentID,
+			"admin_id":      adminUser.ID,
+			"direction":     request.Direction,
+			"request_id":    request.RequestID,
+		},
+	})
+	if errors.Is(err, wallet.ErrInsufficientFunds) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "可用余额不足，无法扣款")
+		return
+	}
+	if errors.Is(err, wallet.ErrAccountDisabled) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "用户钱包不可用")
+		return
+	}
+	if errors.Is(err, wallet.ErrIdempotencyReuse) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "request_id 已用于其他调账")
+		return
+	}
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账失败")
+		return
+	}
+	balanceAvailable, balanceFrozen := entry.Available, entry.Frozen
+	if idempotent {
+		err = tx.QueryRowContext(r.Context(), `
+			SELECT available,frozen
+			FROM wallet_accounts
+			WHERE user_id=? AND currency='COIN'`,
+			userID,
+		).Scan(&balanceAvailable, &balanceFrozen)
+		if err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取用户余额失败")
+			return
+		}
+	}
+
+	if !idempotent {
+		if err = auditAdmin(
+			r.Context(), tx, r, "wallet.adjustment.direct", "wallet_adjustment", adjustmentID,
+			map[string]any{
+				"user_id":   userID,
+				"currency":  "COIN",
+				"available": entry.Available - signedAmount,
+				"frozen":    entry.Frozen,
+			},
+			map[string]any{
+				"adjustment_no":   adjustmentNo,
+				"request_id":      request.RequestID,
+				"user_id":         userID,
+				"direction":       request.Direction,
+				"amount":          request.Amount,
+				"reason":          request.Reason,
+				"currency":        "COIN",
+				"available":       entry.Available,
+				"frozen":          entry.Frozen,
+				"ledger_entry_no": entry.EntryNo,
+			},
+		); err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录资金审计失败")
+			return
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"adjustment": map[string]any{
+			"id": adjustmentID, "adjustment_no": adjustmentNo, "request_id": request.RequestID,
+			"user_id": userID, "direction": request.Direction, "amount": request.Amount,
+			"reason": request.Reason, "status": "applied",
+		},
+		"balance": map[string]any{
+			"currency": "COIN", "available": balanceAvailable, "frozen": balanceFrozen,
+		},
+		"ledger_entry_no": entry.EntryNo,
+		"idempotent":      idempotent,
 	})
 }
 

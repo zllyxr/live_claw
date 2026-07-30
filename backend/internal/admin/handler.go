@@ -101,6 +101,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/users", h.requireAPI("users.read", false, h.listUsers))
 	mux.HandleFunc("POST /admin/api/users/{id}/status", h.requireAPI("users.write", true, h.setUserStatus))
 	mux.HandleFunc("POST /admin/api/users/{id}/team", h.requireAPI("users.write", true, h.assignUserTeam))
+	mux.HandleFunc("POST /admin/api/users/{id}/wallet-adjustments", h.requireAPI("wallet.review", true, h.adjustUserWallet))
 	mux.HandleFunc("GET /admin/api/teams", h.requireAPI("users.read", false, h.listTeams))
 	mux.HandleFunc("POST /admin/api/teams", h.requireAPI("users.write", true, h.createTeam))
 	mux.HandleFunc("POST /admin/api/teams/{id}", h.requireAPI("users.write", true, h.updateTeam))
