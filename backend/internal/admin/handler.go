@@ -97,11 +97,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/app/uploads/prepare", h.requireAPI("app.write", true, h.prepareAppUpload))
 	mux.HandleFunc("POST /admin/api/app/uploads/finalize", h.requireAPI("app.write", true, h.finalizeAppUpload))
 	mux.HandleFunc("POST /admin/api/app/releases", h.requireAPI("app.write", true, h.createAppRelease))
+	mux.HandleFunc("PATCH /admin/api/app/releases/{id}", h.requireAPI("app.write", true, h.updateAppRelease))
 	mux.HandleFunc("POST /admin/api/app/releases/{id}/publish", h.requireAPI("app.write", true, h.publishAppRelease))
+	mux.HandleFunc("POST /admin/api/app/releases/{id}/pause", h.requireAPI("app.write", true, h.pauseAppRelease))
+	mux.HandleFunc("POST /admin/api/app/releases/{id}/resume", h.requireAPI("app.write", true, h.resumeAppRelease))
+	mux.HandleFunc("POST /admin/api/app/releases/{id}/archive", h.requireAPI("app.write", true, h.archiveAppRelease))
 	mux.HandleFunc("GET /admin/api/users", h.requireAPI("users.read", false, h.listUsers))
+	mux.HandleFunc("POST /admin/api/users/{id}", h.requireAPI("users.write", true, h.updateUserProfile))
+	mux.HandleFunc("POST /admin/api/users/{id}/password", h.requireAPI("users.write", true, h.resetUserPassword))
 	mux.HandleFunc("POST /admin/api/users/{id}/status", h.requireAPI("users.write", true, h.setUserStatus))
 	mux.HandleFunc("POST /admin/api/users/{id}/team", h.requireAPI("users.write", true, h.assignUserTeam))
-	mux.HandleFunc("POST /admin/api/users/{id}/wallet-adjustments", h.requireAPI("wallet.review", true, h.adjustUserWallet))
+	mux.HandleFunc("POST /admin/api/users/{id}/wallet-adjustments", h.requireAPI("wallet.adjust", true, h.adjustUserWallet))
 	mux.HandleFunc("GET /admin/api/teams", h.requireAPI("users.read", false, h.listTeams))
 	mux.HandleFunc("POST /admin/api/teams", h.requireAPI("users.write", true, h.createTeam))
 	mux.HandleFunc("POST /admin/api/teams/{id}", h.requireAPI("users.write", true, h.updateTeam))
@@ -133,6 +139,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/lottery/options", h.requireAPI("lottery.write", true, h.createLotteryOption))
 	mux.HandleFunc("POST /admin/api/lottery/options/{id}", h.requireAPI("lottery.write", true, h.updateLotteryOption))
 	mux.HandleFunc("POST /admin/api/lottery/issues", h.requireAPI("lottery.write", true, h.createLotteryIssue))
+	mux.HandleFunc("GET /admin/api/lottery/issues", h.requireAPI("lottery.read", false, h.listLotteryIssues))
 	mux.HandleFunc("POST /admin/api/lottery/issues/{id}/close", h.requireAPI("lottery.write", true, h.closeLotteryIssue))
 	mux.HandleFunc("POST /admin/api/lottery/issues/{id}/draw", h.requireAPI("lottery.write", true, h.drawLotteryIssue))
 	mux.HandleFunc("GET /admin/api/lottery/orders", h.requireAPI("lottery.read", false, h.listLotteryOrders))
@@ -143,8 +150,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/sports/matches/{id}/settle", h.requireAPI("sports.write", true, h.markSportsSettlementReady))
 	mux.HandleFunc("GET /admin/api/sports/matches/{id}/markets", h.requireAPI("sports.read", false, h.listSportsMarkets))
 	mux.HandleFunc("POST /admin/api/sports/markets", h.requireAPI("sports.write", true, h.createSportsMarket))
+	mux.HandleFunc("POST /admin/api/sports/markets/{id}", h.requireAPI("sports.write", true, h.updateSportsMarket))
 	mux.HandleFunc("POST /admin/api/sports/options/{id}", h.requireAPI("sports.write", true, h.updateSportsOption))
 	mux.HandleFunc("GET /admin/api/bets/dashboard", h.requireAPI("bets.read", false, h.bettingDashboard))
+	mux.HandleFunc("GET /admin/api/bets/lottery", h.requireAPI("bets.read", false, h.listBetLotteryOrders))
+	mux.HandleFunc("GET /admin/api/bets/sports", h.requireAPI("bets.read", false, h.listBetSportsOrders))
+	mux.HandleFunc("GET /admin/api/bets/game", h.requireAPI("bets.read", false, h.listBetGameOrders))
 	mux.HandleFunc("GET /admin/api/im/conversations", h.requireAPI("im.read", false, h.listIMConversations))
 	mux.HandleFunc("GET /admin/api/im/conversations/{id}/members", h.requireAPI("im.read", false, h.listIMMembers))
 	mux.HandleFunc("GET /admin/api/im/conversations/{id}/messages", h.requireAPI("im.read", false, h.listIMMessages))
@@ -159,6 +170,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/rbac/roles/{id}", h.requireAPI("rbac.write", true, h.updateRolePermissions))
 	mux.HandleFunc("POST /admin/api/rbac/admins", h.requireAPI("rbac.write", true, h.createAdministrator))
 	mux.HandleFunc("POST /admin/api/rbac/admins/{id}", h.requireAPI("rbac.write", true, h.updateAdministrator))
+	mux.HandleFunc("POST /admin/api/rbac/admins/{id}/password", h.requireAPI("rbac.write", true, h.resetAdministratorPassword))
 }
 
 func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +245,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		Expires: session.ExpiresAt, MaxAge: int(time.Until(session.ExpiresAt).Seconds()),
 	})
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"admin": session.Admin, "csrf_token": session.CSRFToken,
+		"admin": adminIdentityForAPI(session.Admin), "csrf_token": session.CSRFToken,
 	})
 }
 
@@ -272,7 +284,7 @@ func (h *Handler) refreshCSRF(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	adminUser, _ := adminFromRequest(r)
-	httpx.OK(w, httpx.RequestID(r.Context()), adminUser)
+	httpx.OK(w, httpx.RequestID(r.Context()), adminIdentityForAPI(adminUser))
 }
 
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -303,20 +315,7 @@ func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {
 			(SELECT COUNT(*) FROM game_settlements
 			 WHERE created_at>=CURRENT_DATE AND created_at<CURRENT_DATE+INTERVAL 1 DAY),
 			(SELECT COUNT(*) FROM sports_matches
-			 WHERE match_status IN ('NS','LIVE','HT')
-			   AND (
-				   source<>'api-football'
-				   OR EXISTS (
-					   SELECT 1
-					   FROM sports_markets visible_market
-					   JOIN sports_market_options visible_option
-					     ON visible_option.market_id=visible_market.id
-					    AND visible_option.status=1
-					    AND visible_option.odds_scaled>1000000
-					   WHERE visible_market.match_id=sports_matches.id
-					     AND visible_market.status=1
-				   )
-			   )),
+			 WHERE match_status IN ('NS','LIVE','HT')),
 			(SELECT COUNT(*) FROM lottery_bet_orders WHERE status=0),
 			(SELECT COUNT(*) FROM sports_bet_orders WHERE status=0)`,
 	).Scan(

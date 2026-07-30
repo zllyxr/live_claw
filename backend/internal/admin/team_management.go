@@ -15,6 +15,28 @@ import (
 var teamCodePattern = regexp.MustCompile(`^[0-9a-z]{3}$`)
 
 func (h *Handler) listTeams(w http.ResponseWriter, r *http.Request) {
+	page, pageSize := pageParams(r)
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	like := "%" + escapeLike(keyword) + "%"
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		if parsedStatus, parseErr := strconv.Atoi(rawStatus); parseErr == nil {
+			status = parsedStatus
+		}
+	}
+	filterArguments := []any{keyword, like, like, like, like, status, status}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM teams team
+		WHERE (?='' OR CAST(team.id AS CHAR) LIKE ? OR team.code LIKE ? OR team.name LIKE ?
+		       OR CAST(team.owner_user_id AS CHAR) LIKE ?)
+		  AND (? < 0 OR team.status=?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取团队失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT team.id,team.code,team.name,team.owner_user_id,team.status,team.created_at,
 		       COALESCE(member_count.count_value,0)
@@ -23,13 +45,19 @@ func (h *Handler) listTeams(w http.ResponseWriter, r *http.Request) {
 			SELECT team_id,COUNT(*) count_value
 			FROM team_members WHERE status=1 GROUP BY team_id
 		) member_count ON member_count.team_id=team.id
-		ORDER BY team.status DESC,team.code`)
+		WHERE (?='' OR CAST(team.id AS CHAR) LIKE ? OR team.code LIKE ? OR team.name LIKE ?
+		       OR CAST(team.owner_user_id AS CHAR) LIKE ?)
+		  AND (? < 0 OR team.status=?)
+		ORDER BY team.status DESC,team.code
+		LIMIT ? OFFSET ?`,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
+	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取团队失败")
 		return
 	}
 	defer rows.Close()
-	items := make([]map[string]any, 0, 32)
+	items := make([]map[string]any, 0, pageSize)
 	for rows.Next() {
 		var id, ownerUserID, memberCount int64
 		var code, name string
@@ -40,30 +68,35 @@ func (h *Handler) listTeams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "code": code, "name": name, "owner_user_id": ownerUserID,
-			"status": status, "member_count": memberCount, "created_at": createdAt.Unix(),
+			"id": apiDecimalID(id), "code": code, "name": name,
+			"owner_user_id": apiDecimalID(ownerUserID),
+			"status":        status, "member_count": memberCount, "created_at": createdAt.Unix(),
 		})
 	}
 	if err = rows.Err(); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取团队失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"items": items})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
+	})
 }
 
 func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Code        string `json:"code"`
-		Name        string `json:"name"`
-		OwnerUserID int64  `json:"owner_user_id"`
+		Code        string         `json:"code"`
+		Name        string         `json:"name"`
+		OwnerUserID decimalIDInput `json:"owner_user_id"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.Code = strings.ToLower(strings.TrimSpace(request.Code))
 	request.Name = strings.TrimSpace(request.Name)
+	ownerUserID := request.OwnerUserID.Int64()
 	if !teamCodePattern.MatchString(request.Code) || request.Name == "" ||
-		len(request.Name) > 100 || request.OwnerUserID < 0 {
+		len(request.Name) > 100 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队参数无效")
 		return
 	}
@@ -72,8 +105,8 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO teams(code,name,owner_user_id,status,created_by)
 		SELECT ?,?,?,1,?
 		WHERE ?=0 OR EXISTS(SELECT 1 FROM users WHERE id=? AND status=1)`,
-		request.Code, request.Name, request.OwnerUserID, adminUser.ID,
-		request.OwnerUserID, request.OwnerUserID,
+		request.Code, request.Name, ownerUserID, adminUser.ID,
+		ownerUserID, ownerUserID,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "团队代码已存在")
@@ -85,11 +118,19 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	teamID, _ := result.LastInsertId()
-	if err = auditAdmin(r.Context(), h.db, r, "team.create", "team", teamID, nil, request); err != nil {
+	if err = auditAdmin(
+		r.Context(), h.db, r, "team.create", "team", teamID, nil,
+		map[string]any{
+			"code": request.Code, "name": request.Name,
+			"owner_user_id": apiDecimalID(ownerUserID),
+		},
+	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录团队审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": teamID, "code": request.Code})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(teamID), "code": request.Code,
+	})
 }
 
 func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
@@ -99,15 +140,16 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		Name        string `json:"name"`
-		OwnerUserID int64  `json:"owner_user_id"`
-		Status      int    `json:"status"`
+		Name        string         `json:"name"`
+		OwnerUserID decimalIDInput `json:"owner_user_id"`
+		Status      int            `json:"status"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
 	}
 	request.Name = strings.TrimSpace(request.Name)
-	if request.Name == "" || len(request.Name) > 100 || request.OwnerUserID < 0 ||
+	ownerUserID := request.OwnerUserID.Int64()
+	if request.Name == "" || len(request.Name) > 100 ||
 		request.Status < 0 || request.Status > 1 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队参数无效")
 		return
@@ -129,8 +171,8 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 	result, err := h.db.ExecContext(r.Context(), `
 		UPDATE teams SET name=?,owner_user_id=?,status=?
 		WHERE id=? AND (?=0 OR EXISTS(SELECT 1 FROM users WHERE id=? AND status=1))`,
-		request.Name, request.OwnerUserID, request.Status,
-		teamID, request.OwnerUserID, request.OwnerUserID,
+		request.Name, ownerUserID, request.Status,
+		teamID, ownerUserID, ownerUserID,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新团队失败")
@@ -143,13 +185,19 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = auditAdmin(
 		r.Context(), h.db, r, "team.update", "team", teamID,
-		map[string]any{"name": beforeName, "owner_user_id": beforeOwner, "status": beforeStatus},
-		request,
+		map[string]any{
+			"name": beforeName, "owner_user_id": apiDecimalID(beforeOwner), "status": beforeStatus,
+		},
+		map[string]any{
+			"name": request.Name, "owner_user_id": apiDecimalID(ownerUserID), "status": request.Status,
+		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录团队审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": teamID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(teamID), "updated": true,
+	})
 }
 
 func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
@@ -159,8 +207,8 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		TeamID int64  `json:"team_id"`
-		Reason string `json:"reason"`
+		TeamID decimalIDInput `json:"team_id"`
+		Reason string         `json:"reason"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -190,7 +238,7 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 	var teamCode string
 	if err = tx.QueryRowContext(r.Context(), `
 		SELECT code FROM teams WHERE id=? AND status=1 FOR UPDATE`,
-		request.TeamID,
+		request.TeamID.Int64(),
 	).Scan(&teamCode); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "目标团队不存在或已停用")
 		return
@@ -198,9 +246,10 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调整用户团队失败")
 		return
 	}
-	if oldTeamID == request.TeamID {
+	if oldTeamID == request.TeamID.Int64() {
 		httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-			"user_id": userID, "team_id": request.TeamID, "team_code": teamCode, "unchanged": true,
+			"user_id": apiDecimalID(userID), "team_id": apiDecimalID(request.TeamID.Int64()),
+			"team_code": teamCode, "unchanged": true,
 		})
 		return
 	}
@@ -227,7 +276,9 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err = tx.ExecContext(r.Context(), "UPDATE users SET team_id=? WHERE id=?", request.TeamID, userID); err != nil {
+	if _, err = tx.ExecContext(
+		r.Context(), "UPDATE users SET team_id=? WHERE id=?", request.TeamID.Int64(), userID,
+	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调整用户团队失败")
 		return
 	}
@@ -237,15 +288,18 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		ON DUPLICATE KEY UPDATE
 			team_id=VALUES(team_id),inviter_user_id=0,status=1,
 			joined_at=CURRENT_TIMESTAMP(3),left_at=NULL`,
-		userID, request.TeamID,
+		userID, request.TeamID.Int64(),
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调整用户团队失败")
 		return
 	}
 	if err = auditAdmin(
 		r.Context(), tx, r, "user.team.assign", "user", userID,
-		map[string]any{"team_id": oldTeamID, "invite_code": oldInviteCode.String},
-		map[string]any{"team_id": request.TeamID, "team_code": teamCode, "reason": request.Reason},
+		map[string]any{"team_id": apiDecimalID(oldTeamID), "invite_code": oldInviteCode.String},
+		map[string]any{
+			"team_id":   apiDecimalID(request.TeamID.Int64()),
+			"team_code": teamCode, "reason": request.Reason,
+		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录团队审计失败")
 		return
@@ -255,7 +309,8 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"user_id": userID, "team_id": request.TeamID, "team_code": teamCode,
+		"user_id": apiDecimalID(userID), "team_id": apiDecimalID(request.TeamID.Int64()),
+		"team_code":               teamCode,
 		"invite_code_regenerated": oldInviteCode.Valid,
 	})
 }

@@ -20,6 +20,20 @@ func (h *Handler) listSupportConversations(w http.ResponseWriter, r *http.Reques
 	}
 	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
 	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{status, status, keyword, like, like, like, like}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM support_conversations conversation
+		JOIN users user ON user.id=conversation.user_id
+		WHERE (? < 0 OR conversation.status=?)
+		  AND (?='' OR conversation.id LIKE ? OR user.username LIKE ?
+		       OR user.nickname LIKE ? OR conversation.subject LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取客服会话失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT conversation.id,conversation.user_id,
 		       COALESCE(NULLIF(user.nickname,''),user.username),
@@ -37,9 +51,9 @@ func (h *Handler) listSupportConversations(w http.ResponseWriter, r *http.Reques
 		       OR user.nickname LIKE ? OR conversation.subject LIKE ?)
 		ORDER BY
 		  CASE conversation.status WHEN 0 THEN 0 WHEN 1 THEN 1 ELSE 2 END,
-		  conversation.priority DESC,conversation.last_message_at DESC
+		  conversation.priority DESC,conversation.last_message_at DESC,conversation.id DESC
 		LIMIT ? OFFSET ?`,
-		status, status, keyword, like, like, like, like, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取客服会话失败")
@@ -61,9 +75,10 @@ func (h *Handler) listSupportConversations(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "user_id": userID, "username": username, "subject": subject,
+			"id": id, "user_id": apiDecimalID(userID),
+			"username": username, "subject": subject,
 			"category": category, "priority": priority, "status": conversationStatus,
-			"assigned_admin_id": assignedAdminID, "assignee_name": assigneeName,
+			"assigned_admin_id": apiDecimalID(assignedAdminID), "assignee_name": assigneeName,
 			"message_count": messageCount, "last_message_at": lastMessageAt.Unix(),
 			"created_at": createdAt.Unix(),
 		})
@@ -73,7 +88,8 @@ func (h *Handler) listSupportConversations(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
@@ -81,6 +97,34 @@ func (h *Handler) listSupportMessages(w http.ResponseWriter, r *http.Request) {
 	conversationID := strings.TrimSpace(r.PathValue("id"))
 	if conversationID == "" {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "客服会话编号无效")
+		return
+	}
+	page, pageSize := pageParams(r)
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		status, _ = strconv.Atoi(rawStatus)
+	}
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		conversationID,
+		status, status,
+		keyword, like, like, like, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM support_messages message
+		LEFT JOIN users user ON message.sender_type=1 AND user.id=message.sender_id
+		LEFT JOIN admin_users admin ON message.sender_type=2 AND admin.id=message.sender_id
+		WHERE message.conversation_id=?
+		  AND (? < 0 OR message.status=?)
+		  AND (?='' OR message.id LIKE ? OR message.text_content LIKE ?
+		       OR user.username LIKE ? OR user.nickname LIKE ?
+		       OR admin.username LIKE ? OR admin.display_name LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取客服消息失败")
 		return
 	}
 	rows, err := h.db.QueryContext(r.Context(), `
@@ -96,9 +140,13 @@ func (h *Handler) listSupportMessages(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN users user ON message.sender_type=1 AND user.id=message.sender_id
 		LEFT JOIN admin_users admin ON message.sender_type=2 AND admin.id=message.sender_id
 		WHERE message.conversation_id=?
+		  AND (? < 0 OR message.status=?)
+		  AND (?='' OR message.id LIKE ? OR message.text_content LIKE ?
+		       OR user.username LIKE ? OR user.nickname LIKE ?
+		       OR admin.username LIKE ? OR admin.display_name LIKE ?)
 		ORDER BY message.created_at ASC,message.id ASC
-		LIMIT 500`,
-		conversationID,
+		LIMIT ? OFFSET ?`,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取客服消息失败")
@@ -119,9 +167,10 @@ func (h *Handler) listSupportMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "sender_type": senderType, "sender_id": senderID,
+			"id": id, "sender_type": senderType,
+			"sender_id":   apiDecimalID(senderID),
 			"sender_name": senderName, "message_type": messageType,
-			"text_content": textContent, "asset_id": assetID,
+			"text_content": textContent, "asset_id": apiDecimalID(assetID),
 			"status": messageStatus, "created_at": createdAt.Unix(),
 		})
 	}
@@ -129,7 +178,10 @@ func (h *Handler) listSupportMessages(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取客服消息失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"items": items})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
+	})
 }
 
 func (h *Handler) replySupportConversation(w http.ResponseWriter, r *http.Request) {
@@ -264,8 +316,14 @@ func (h *Handler) updateSupportConversation(w http.ResponseWriter, r *http.Reque
 	}
 	if err = auditAdmin(
 		r.Context(), tx, r, "support.conversation.update", "support_conversation", conversationID,
-		map[string]any{"status": beforeStatus, "priority": beforePriority, "assigned_admin_id": beforeAssignee},
-		map[string]any{"status": request.Status, "priority": request.Priority, "assigned_admin_id": assignee},
+		map[string]any{
+			"status": beforeStatus, "priority": beforePriority,
+			"assigned_admin_id": apiDecimalID(beforeAssignee),
+		},
+		map[string]any{
+			"status": request.Status, "priority": request.Priority,
+			"assigned_admin_id": apiDecimalID(assignee),
+		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录客服操作失败")
 		return
@@ -276,6 +334,6 @@ func (h *Handler) updateSupportConversation(w http.ResponseWriter, r *http.Reque
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
 		"id": conversationID, "status": request.Status, "priority": request.Priority,
-		"assigned_admin_id": assignee,
+		"assigned_admin_id": apiDecimalID(assignee),
 	})
 }

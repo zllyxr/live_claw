@@ -266,10 +266,10 @@ func (r *Runner) storeSportsFixture(
 			home_name=VALUES(home_name),away_name=VALUES(away_name),
 			home_logo_url=VALUES(home_logo_url),away_logo_url=VALUES(away_logo_url),
 			kickoff_at=VALUES(kickoff_at),bet_close_at=VALUES(bet_close_at),
-			home_score=IF(settle_status=2,home_score,VALUES(home_score)),
-			away_score=IF(settle_status=2,away_score,VALUES(away_score)),
-			match_status=IF(settle_status=2,match_status,VALUES(match_status)),
-			bet_status=IF(settle_status=2,bet_status,VALUES(bet_status)),
+			home_score=IF(settle_status<>0,home_score,VALUES(home_score)),
+			away_score=IF(settle_status<>0,away_score,VALUES(away_score)),
+			match_status=IF(settle_status<>0,match_status,VALUES(match_status)),
+			bet_status=IF(settle_status<>0,bet_status,VALUES(bet_status)),
 			raw_payload=VALUES(raw_payload),source_updated_at=VALUES(source_updated_at)`,
 		publicID, strconv.FormatInt(fixture.Fixture.ID, 10),
 		boundedSportsText(fixture.League.Name, 190),
@@ -292,7 +292,7 @@ func (r *Runner) storeSportsFixture(
 	).Scan(&matchID, &settleStatus); err != nil {
 		return false, err
 	}
-	if settleStatus != 2 && (status == "FT" || status == "CANCELLED") {
+	if settleStatus == 0 && (status == "FT" || status == "CANCELLED") {
 		if status == "FT" {
 			if err = finalizeSportsMarketResults(ctx, tx, matchID, homeScore, awayScore); err != nil {
 				return false, err
@@ -745,6 +745,18 @@ func (r *Runner) storeSportsOdds(ctx context.Context, item apiFootballOdds) (int
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err = tx.QueryRowContext(ctx, `
+		SELECT match_status,settle_status
+		FROM sports_matches WHERE id=? FOR UPDATE`,
+		matchID,
+	).Scan(&matchStatus, &settleStatus); errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
+	}
+	if settleStatus != 0 || sportsMatchIsTerminal(matchStatus) {
+		return 0, nil
+	}
 	if _, err = tx.ExecContext(ctx, `
 		UPDATE sports_markets SET status=0 WHERE match_id=?`,
 		matchID,

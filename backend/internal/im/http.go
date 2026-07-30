@@ -17,6 +17,8 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 )
 
+const socketSessionRecheckInterval = 15 * time.Second
+
 type jsonInt64 int64
 
 func (value *jsonInt64) UnmarshalJSON(data []byte) error {
@@ -493,7 +495,7 @@ func (h *Handler) socket(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := h.auth.Authenticate(r.Context(), int64(first.UID), first.Token)
 	if err != nil {
-		_ = connection.WriteJSON(map[string]any{"type": "error", "code": 401, "message": "invalid session"})
+		rejectSocketSession(connection)
 		return
 	}
 	_ = connection.SetReadDeadline(time.Now().Add(70 * time.Second))
@@ -533,6 +535,8 @@ func (h *Handler) socket(w http.ResponseWriter, r *http.Request) {
 	redisMessages := pubsub.Channel(redis.WithChannelSize(128))
 	ping := time.NewTicker(25 * time.Second)
 	defer ping.Stop()
+	sessionRecheck := time.NewTicker(socketSessionRecheckInterval)
+	defer sessionRecheck.Stop()
 	for {
 		select {
 		case <-socketContext.Done():
@@ -543,11 +547,19 @@ func (h *Handler) socket(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
+			if err = h.validateSocketSession(socketContext, user.ID, first.Token); err != nil {
+				rejectSocketSession(connection)
+				return
+			}
 			_ = connection.SetWriteDeadline(time.Now().Add(8 * time.Second))
 			if err = connection.WriteMessage(websocket.TextMessage, []byte(message.Payload)); err != nil {
 				return
 			}
 		case command := <-incoming:
+			if err = h.validateSocketSession(socketContext, user.ID, first.Token); err != nil {
+				rejectSocketSession(connection)
+				return
+			}
 			if command.Type != "send" {
 				_ = connection.WriteJSON(map[string]any{"type": "error", "code": 400, "message": "unsupported command"})
 				continue
@@ -574,6 +586,11 @@ func (h *Handler) socket(w http.ResponseWriter, r *http.Request) {
 			}) != nil {
 				return
 			}
+		case <-sessionRecheck.C:
+			if err = h.validateSocketSession(socketContext, user.ID, first.Token); err != nil {
+				rejectSocketSession(connection)
+				return
+			}
 		case <-ping.C:
 			_ = connection.SetWriteDeadline(time.Now().Add(8 * time.Second))
 			if err = connection.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -581,6 +598,30 @@ func (h *Handler) socket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func (h *Handler) validateSocketSession(ctx context.Context, userID int64, token string) error {
+	user, err := h.auth.Authenticate(ctx, userID, token)
+	if err != nil {
+		return err
+	}
+	if user.ID != userID {
+		return auth.ErrInvalidSession
+	}
+	return nil
+}
+
+func rejectSocketSession(connection *websocket.Conn) {
+	deadline := time.Now().Add(2 * time.Second)
+	_ = connection.SetWriteDeadline(deadline)
+	_ = connection.WriteJSON(map[string]any{
+		"type": "error", "code": 401, "message": "invalid session",
+	})
+	_ = connection.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "invalid session"),
+		deadline,
+	)
 }
 
 type socketCommand struct {

@@ -372,64 +372,75 @@ func (s *Service) PlaceHold(ctx context.Context, request HoldRequest) (Hold, err
 // available balance in the same transaction. The ledger row stores game, venue,
 // table and round identifiers for exact per-game win/loss reporting.
 func (s *Service) CommitHold(ctx context.Context, request CommitRequest) (Entry, error) {
+	return s.withTx(ctx, func(tx *sql.Tx) (Entry, error) {
+		return s.CommitHoldTx(ctx, tx, request)
+	})
+}
+
+// CommitHoldTx commits a hold inside a caller-owned transaction. It never
+// commits or rolls back, so the wallet mutation can be atomic with the owning
+// business record and its audit event.
+func (s *Service) CommitHoldTx(ctx context.Context, tx *sql.Tx, request CommitRequest) (Entry, error) {
+	if tx == nil {
+		return Entry{}, errors.New("wallet hold commit transaction is required")
+	}
 	if strings.TrimSpace(request.HoldNo) == "" || request.Payout < 0 {
 		return Entry{}, errors.New("invalid hold commit")
 	}
-	preview, err := s.loadHold(ctx, request.HoldNo)
+	request.HoldNo = strings.TrimSpace(request.HoldNo)
+	userID, err := holdUserID(ctx, tx, request.HoldNo)
 	if err != nil {
 		return Entry{}, err
 	}
-	return s.withTx(ctx, func(tx *sql.Tx) (Entry, error) {
-		account, err := lockAccount(ctx, tx, preview.UserID)
-		if err != nil {
-			return Entry{}, err
+	account, err := lockAccount(ctx, tx, userID)
+	if err != nil {
+		return Entry{}, err
+	}
+	hold, found, err := findHoldByNo(ctx, tx, request.HoldNo, true)
+	if err != nil {
+		return Entry{}, err
+	}
+	if !found {
+		return Entry{}, ErrHoldNotFound
+	}
+	businessType := "hold_commit/" + hold.BusinessType
+	if hold.Status == 1 {
+		existing, exists, findErr := findEntry(ctx, tx, businessType, hold.BusinessID, hold.UserID)
+		if findErr != nil {
+			return Entry{}, findErr
 		}
-		hold, found, err := findHoldByNo(ctx, tx, request.HoldNo, true)
-		if err != nil {
-			return Entry{}, err
+		if !exists || existing.DeltaAvailable != request.Payout || existing.DeltaFrozen != -hold.Amount {
+			return Entry{}, ErrIdempotencyReuse
 		}
-		if !found {
-			return Entry{}, ErrHoldNotFound
-		}
-		businessType := "hold_commit/" + hold.BusinessType
-		if hold.Status == 1 {
-			existing, exists, findErr := findEntry(ctx, tx, businessType, hold.BusinessID, hold.UserID)
-			if findErr != nil {
-				return Entry{}, findErr
-			}
-			if !exists || existing.DeltaAvailable != request.Payout || existing.DeltaFrozen != -hold.Amount {
-				return Entry{}, ErrIdempotencyReuse
-			}
-			return existing, nil
-		}
-		if hold.Status != 0 {
-			return Entry{}, ErrInvalidHoldState
-		}
-		if account.Frozen < hold.Amount {
-			return Entry{}, errors.New("wallet invariant violated: frozen balance below hold")
-		}
-		if account.Available > math.MaxInt64-request.Payout {
-			return Entry{}, errors.New("wallet balance would overflow")
-		}
-		account.Available += request.Payout
-		account.Frozen -= hold.Amount
-		account.Version++
-		if _, err = tx.ExecContext(ctx, `
+		return existing, nil
+	}
+	if hold.Status != 0 {
+		return Entry{}, ErrInvalidHoldState
+	}
+	if account.Frozen < hold.Amount {
+		return Entry{}, errors.New("wallet invariant violated: frozen balance below hold")
+	}
+	if account.Available > math.MaxInt64-request.Payout {
+		return Entry{}, errors.New("wallet balance would overflow")
+	}
+	account.Available += request.Payout
+	account.Frozen -= hold.Amount
+	account.Version++
+	if _, err = tx.ExecContext(ctx, `
 			UPDATE wallet_accounts SET available=?,frozen=?,version=? WHERE id=?`,
-			account.Available, account.Frozen, account.Version, account.ID,
-		); err != nil {
-			return Entry{}, fmt.Errorf("commit wallet account: %w", err)
-		}
-		if _, err = tx.ExecContext(ctx, `
+		account.Available, account.Frozen, account.Version, account.ID,
+	); err != nil {
+		return Entry{}, fmt.Errorf("commit wallet account: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, `
 			UPDATE wallet_holds SET status=1,committed_at=? WHERE hold_no=? AND status=0`,
-			s.now(), hold.HoldNo,
-		); err != nil {
-			return Entry{}, fmt.Errorf("commit wallet hold: %w", err)
-		}
-		return insertEntry(ctx, tx, account, request.Payout, -hold.Amount,
-			businessType, hold.BusinessID, request.Description, request.Metadata,
-			request.GameCode, request.VenueCode, request.TableNo, request.RoundNo)
-	})
+		s.now(), hold.HoldNo,
+	); err != nil {
+		return Entry{}, fmt.Errorf("commit wallet hold: %w", err)
+	}
+	return insertEntry(ctx, tx, account, request.Payout, -hold.Amount,
+		businessType, hold.BusinessID, request.Description, request.Metadata,
+		request.GameCode, request.VenueCode, request.TableNo, request.RoundNo)
 }
 
 // ReleaseHold returns an active hold to available balance.
@@ -440,65 +451,73 @@ func (s *Service) ReleaseHold(ctx context.Context, holdNo, description string, m
 }
 
 func (s *Service) ReleaseHoldWithContext(ctx context.Context, request ReleaseRequest) (Entry, error) {
+	return s.withTx(ctx, func(tx *sql.Tx) (Entry, error) {
+		return s.ReleaseHoldTx(ctx, tx, request)
+	})
+}
+
+// ReleaseHoldTx releases a hold inside a caller-owned transaction.
+func (s *Service) ReleaseHoldTx(ctx context.Context, tx *sql.Tx, request ReleaseRequest) (Entry, error) {
+	if tx == nil {
+		return Entry{}, errors.New("wallet hold release transaction is required")
+	}
 	request.HoldNo = strings.TrimSpace(request.HoldNo)
 	if request.HoldNo == "" {
 		return Entry{}, errors.New("hold number is required")
 	}
-	preview, err := s.loadHold(ctx, request.HoldNo)
+	userID, err := holdUserID(ctx, tx, request.HoldNo)
 	if err != nil {
 		return Entry{}, err
 	}
-	return s.withTx(ctx, func(tx *sql.Tx) (Entry, error) {
-		account, err := lockAccount(ctx, tx, preview.UserID)
-		if err != nil {
-			return Entry{}, err
+	account, err := lockAccount(ctx, tx, userID)
+	if err != nil {
+		return Entry{}, err
+	}
+	hold, found, err := findHoldByNo(ctx, tx, request.HoldNo, true)
+	if err != nil {
+		return Entry{}, err
+	}
+	if !found {
+		return Entry{}, ErrHoldNotFound
+	}
+	businessType := "hold_release/" + hold.BusinessType
+	if hold.Status == 2 || hold.Status == 3 {
+		existing, exists, findErr := findEntry(ctx, tx, businessType, hold.BusinessID, hold.UserID)
+		if findErr != nil {
+			return Entry{}, findErr
 		}
-		hold, found, err := findHoldByNo(ctx, tx, request.HoldNo, true)
-		if err != nil {
-			return Entry{}, err
-		}
-		if !found {
-			return Entry{}, ErrHoldNotFound
-		}
-		businessType := "hold_release/" + hold.BusinessType
-		if hold.Status == 2 || hold.Status == 3 {
-			existing, exists, findErr := findEntry(ctx, tx, businessType, hold.BusinessID, hold.UserID)
-			if findErr != nil {
-				return Entry{}, findErr
-			}
-			if !exists {
-				return Entry{}, ErrInvalidHoldState
-			}
-			return existing, nil
-		}
-		if hold.Status != 0 {
+		if !exists {
 			return Entry{}, ErrInvalidHoldState
 		}
-		if account.Frozen < hold.Amount {
-			return Entry{}, errors.New("wallet invariant violated: frozen balance below hold")
-		}
-		if account.Available > math.MaxInt64-hold.Amount {
-			return Entry{}, errors.New("wallet balance would overflow")
-		}
-		account.Available += hold.Amount
-		account.Frozen -= hold.Amount
-		account.Version++
-		if _, err = tx.ExecContext(ctx, `
+		return existing, nil
+	}
+	if hold.Status != 0 {
+		return Entry{}, ErrInvalidHoldState
+	}
+	if account.Frozen < hold.Amount {
+		return Entry{}, errors.New("wallet invariant violated: frozen balance below hold")
+	}
+	if account.Available > math.MaxInt64-hold.Amount {
+		return Entry{}, errors.New("wallet balance would overflow")
+	}
+	account.Available += hold.Amount
+	account.Frozen -= hold.Amount
+	account.Version++
+	if _, err = tx.ExecContext(ctx, `
 			UPDATE wallet_accounts SET available=?,frozen=?,version=? WHERE id=?`,
-			account.Available, account.Frozen, account.Version, account.ID,
-		); err != nil {
-			return Entry{}, fmt.Errorf("release wallet account: %w", err)
-		}
-		if _, err = tx.ExecContext(ctx, `
+		account.Available, account.Frozen, account.Version, account.ID,
+	); err != nil {
+		return Entry{}, fmt.Errorf("release wallet account: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, `
 			UPDATE wallet_holds SET status=2,released_at=? WHERE hold_no=? AND status=0`,
-			s.now(), hold.HoldNo,
-		); err != nil {
-			return Entry{}, fmt.Errorf("release wallet hold: %w", err)
-		}
-		return insertEntry(ctx, tx, account, hold.Amount, -hold.Amount,
-			businessType, hold.BusinessID, request.Description, request.Metadata,
-			request.GameCode, request.VenueCode, request.TableNo, request.RoundNo)
-	})
+		s.now(), hold.HoldNo,
+	); err != nil {
+		return Entry{}, fmt.Errorf("release wallet hold: %w", err)
+	}
+	return insertEntry(ctx, tx, account, hold.Amount, -hold.Amount,
+		businessType, hold.BusinessID, request.Description, request.Metadata,
+		request.GameCode, request.VenueCode, request.TableNo, request.RoundNo)
 }
 
 func (s *Service) Balance(ctx context.Context, userID int64) (Balance, error) {
@@ -548,6 +567,21 @@ func lockAccount(ctx context.Context, tx *sql.Tx, userID int64) (account, error)
 		return account{}, ErrAccountDisabled
 	}
 	return result, nil
+}
+
+func holdUserID(ctx context.Context, tx *sql.Tx, holdNo string) (int64, error) {
+	var userID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT user_id FROM wallet_holds WHERE hold_no=?`,
+		holdNo,
+	).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrHoldNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
 }
 
 func findEntry(ctx context.Context, tx *sql.Tx, businessType, businessID string, userID int64) (Entry, bool, error) {

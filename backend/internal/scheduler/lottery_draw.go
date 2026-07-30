@@ -135,7 +135,7 @@ func (r *Runner) drawLotteryIssues(ctx context.Context) error {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT issue.id
 		FROM lottery_issues issue
-		JOIN lottery_games game ON game.id=issue.game_id AND game.status=1
+		JOIN lottery_games game ON game.id=issue.game_id
 		WHERE issue.status=2
 		  AND issue.draw_at<=CURRENT_TIMESTAMP(3)
 		  AND JSON_UNQUOTE(JSON_EXTRACT(game.config,'$.draw.draw_mode'))='local_auto'

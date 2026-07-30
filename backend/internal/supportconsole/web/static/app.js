@@ -9,9 +9,23 @@
     scope: "queue",
     query: "",
     conversations: [],
+    conversationPage: 1,
+    conversationPageSize: 20,
+    conversationTotal: 0,
+    conversationHasMore: false,
+    conversationsLoading: false,
+    conversationsRequestSerial: 0,
     selectedID: "",
+    selectionToken: 0,
+    detailRequestSerial: 0,
+    messagesRequestSerial: 0,
+    olderMessagesRequestSerial: 0,
     detail: null,
     messages: [],
+    messageTotal: 0,
+    messagesHasMore: false,
+    messagesCursor: "",
+    olderMessagesLoading: false,
     agents: [],
     quickReplies: [],
     eventSource: null,
@@ -34,6 +48,8 @@
       "agent-username", "logout-button", "summary-queue", "summary-mine",
       "summary-resolved", "scope-count-queue", "scope-count-mine", "conversation-search",
       "search-clear", "queue-title", "queue-subtitle", "refresh-button", "conversation-list",
+      "conversation-pagination", "conversation-total", "conversation-page",
+      "conversation-prev", "conversation-next",
       "chat-empty", "chat-workspace", "chat-avatar", "chat-customer-name", "chat-status-tag",
       "chat-priority-tag", "chat-conversation-meta", "claim-button", "transfer-button",
       "priority-select", "resolve-button", "assignment-banner", "message-list",
@@ -298,6 +314,28 @@
     }
   }
 
+  function restoreButtonLabel(button) {
+    if (!button) return;
+    button.textContent = button.dataset.originalText || button.textContent;
+    delete button.dataset.originalText;
+  }
+
+  function sameConversationContext(conversationID, selectionToken) {
+    return state.selectedID === conversationID &&
+      state.selectionToken === selectionToken;
+  }
+
+  async function refreshAfterSuccessfulMutation(tasks, failureMessage) {
+    const results = await Promise.allSettled(tasks);
+    const failed = results.some(function (result) {
+      return result.status === "rejected";
+    });
+    if (failed) {
+      toast(failureMessage || "操作已成功，但页面刷新失败，请手动刷新", "error");
+    }
+    return !failed;
+  }
+
   function setConnection(stateName, label) {
     elements["connection-pill"].dataset.state = stateName;
     elements["connection-text"].textContent = label;
@@ -358,11 +396,28 @@
     elements["conversation-list"].replaceChildren(
       createElement("div", "list-state", "正在加载会话…")
     );
+    renderConversationPagination();
+  }
+
+  function renderConversationPagination() {
+    const total = Math.max(0, Number(state.conversationTotal) || 0);
+    const pageCount = Math.max(1, Math.ceil(total / state.conversationPageSize));
+    const currentPage = Math.min(Math.max(1, state.conversationPage), pageCount);
+    elements["conversation-total"].textContent = "共 " + total + " 条";
+    elements["conversation-page"].textContent = currentPage + " / " + pageCount;
+    elements["conversation-prev"].disabled =
+      state.conversationsLoading || currentPage <= 1;
+    elements["conversation-next"].disabled =
+      state.conversationsLoading || !state.conversationHasMore || currentPage >= pageCount;
+    elements["conversation-pagination"].setAttribute(
+      "aria-busy", String(state.conversationsLoading)
+    );
   }
 
   function renderConversations() {
     const list = elements["conversation-list"];
     list.replaceChildren();
+    renderConversationPagination();
     if (!state.conversations.length) {
       const empty = createElement("div", "queue-empty");
       const icon = createElement("span", "queue-empty-icon", state.query ? "⌕" : "✓");
@@ -416,33 +471,82 @@
 
   async function loadConversations(options) {
     options = options || {};
+    const requestSerial = state.conversationsRequestSerial + 1;
+    state.conversationsRequestSerial = requestSerial;
+    state.conversationsLoading = true;
+    const requestedScope = state.scope;
+    const requestedQuery = state.query;
+    const requestedPage = state.conversationPage;
     if (!options.silent) renderConversationLoading();
-    const params = new URLSearchParams({ scope: state.scope });
+    else renderConversationPagination();
+    const params = new URLSearchParams({
+      scope: state.scope,
+      page: String(state.conversationPage),
+      page_size: String(state.conversationPageSize)
+    });
     if (state.query) params.set("q", state.query);
     try {
       const data = await api("/conversations?" + params.toString());
-      state.conversations = itemList(data);
-      renderConversations();
-      if (state.selectedID) {
-        const stillVisible = state.conversations.some(function (item) {
-          return entityID(item) === state.selectedID;
-        });
-        if (!stillVisible && state.scope !== "all") {
-          clearSelection();
-        }
+      if (requestSerial !== state.conversationsRequestSerial ||
+          requestedScope !== state.scope || requestedQuery !== state.query ||
+          requestedPage !== state.conversationPage) {
+        return false;
       }
+      const total = Math.max(0, Number(data.total) || 0);
+      const lastPage = Math.max(1, Math.ceil(total / state.conversationPageSize));
+      if (requestedPage > lastPage) {
+        state.conversationTotal = total;
+        state.conversationPage = lastPage;
+        state.conversationsLoading = false;
+        return loadConversations(options);
+      }
+      state.conversations = itemList(data);
+      state.conversationTotal = total;
+      state.conversationHasMore = Boolean(data.has_more);
+      state.conversationsLoading = false;
+      renderConversations();
+      return true;
     } catch (error) {
+      if (requestSerial !== state.conversationsRequestSerial) return false;
+      state.conversationsLoading = false;
+      renderConversationPagination();
       elements["conversation-list"].replaceChildren(
         createElement("div", "list-state is-error", error.message || "会话加载失败")
       );
       if (!options.silent) toast(error.message || "会话加载失败", "error");
+      if (options.throwOnError) throw error;
+      return false;
+    }
+  }
+
+  async function changeConversationPage(nextPage) {
+    const totalPages = Math.max(
+      1, Math.ceil(state.conversationTotal / state.conversationPageSize)
+    );
+    const target = Math.min(Math.max(1, Number(nextPage) || 1), totalPages);
+    if (target === state.conversationPage || state.conversationsLoading) return;
+    const previousPage = state.conversationPage;
+    state.conversationPage = target;
+    const loaded = await loadConversations();
+    if (!loaded) {
+      state.conversationPage = previousPage;
+      renderConversationPagination();
     }
   }
 
   async function selectConversation(id) {
     if (!id) return;
     state.selectedID = String(id);
+    state.selectionToken += 1;
+    const selected = state.selectedID;
+    const selectionToken = state.selectionToken;
+    state.detail = null;
     state.initialMessagesLoaded = false;
+    state.messageTotal = 0;
+    state.messagesHasMore = false;
+    state.messagesCursor = "";
+    state.olderMessagesLoading = false;
+    state.messages = [];
     renderConversations();
     elements["chat-empty"].classList.add("is-hidden");
     elements["chat-workspace"].classList.remove("is-hidden");
@@ -453,14 +557,21 @@
     try {
       await Promise.all([loadConversationDetail(), loadMessages()]);
     } catch (error) {
-      toast(error.message || "会话加载失败", "error");
+      if (sameConversationContext(selected, selectionToken)) {
+        toast(error.message || "会话加载失败", "error");
+      }
     }
   }
 
   function clearSelection() {
     state.selectedID = "";
+    state.selectionToken += 1;
     state.detail = null;
     state.messages = [];
+    state.messageTotal = 0;
+    state.messagesHasMore = false;
+    state.messagesCursor = "";
+    state.olderMessagesLoading = false;
     elements["chat-empty"].classList.remove("is-hidden");
     elements["chat-workspace"].classList.add("is-hidden");
     elements["profile-empty"].classList.remove("is-hidden");
@@ -470,11 +581,27 @@
 
   async function loadConversationDetail() {
     if (!state.selectedID) return;
-    const id = encodeURIComponent(state.selectedID);
-    const data = await api("/conversations/" + id);
-    if (state.selectedID !== decodeURIComponent(id)) return;
+    const selected = state.selectedID;
+    const selectionToken = state.selectionToken;
+    const requestSerial = state.detailRequestSerial + 1;
+    state.detailRequestSerial = requestSerial;
+    let data;
+    try {
+      data = await api("/conversations/" + encodeURIComponent(selected));
+    } catch (error) {
+      if (!sameConversationContext(selected, selectionToken) ||
+          requestSerial !== state.detailRequestSerial) {
+        return false;
+      }
+      throw error;
+    }
+    if (!sameConversationContext(selected, selectionToken) ||
+        requestSerial !== state.detailRequestSerial) {
+      return false;
+    }
     state.detail = data;
     renderConversationDetail();
+    return true;
   }
 
   function renderConversationDetail() {
@@ -547,17 +674,123 @@
     options = options || {};
     if (!state.selectedID) return;
     const selected = state.selectedID;
-    const data = await api("/conversations/" + encodeURIComponent(selected) + "/messages");
-    if (state.selectedID !== selected) return;
+    const selectionToken = state.selectionToken;
+    const requestSerial = state.messagesRequestSerial + 1;
+    state.messagesRequestSerial = requestSerial;
+    const params = new URLSearchParams({ limit: "60" });
+    let data;
+    try {
+      data = await api(
+        "/conversations/" + encodeURIComponent(selected) + "/messages?" + params.toString()
+      );
+    } catch (error) {
+      if (!sameConversationContext(selected, selectionToken) ||
+          requestSerial !== state.messagesRequestSerial) {
+        return false;
+      }
+      throw error;
+    }
+    if (!sameConversationContext(selected, selectionToken) ||
+        requestSerial !== state.messagesRequestSerial) {
+      return false;
+    }
     const nextMessages = itemList(data);
     const previousLastID = state.messages.length ? entityID(state.messages[state.messages.length - 1]) : "";
     const nextLastID = nextMessages.length ? entityID(nextMessages[nextMessages.length - 1]) : "";
-    state.messages = nextMessages;
+    state.messages = mergeMessages(state.messages, nextMessages);
+    state.messageTotal = Math.max(
+      state.messages.length, Number(data.total) || state.messages.length
+    );
+    state.messagesCursor = state.messages.length ? entityID(state.messages[0]) : "";
+    state.messagesHasMore = state.messageTotal > state.messages.length ||
+      (state.messages.length === nextMessages.length && Boolean(data.has_more));
     renderMessages();
     if (!state.initialMessagesLoaded || (nextLastID && nextLastID !== previousLastID && !options.silent)) {
       scrollMessagesToBottom();
     }
     state.initialMessagesLoaded = true;
+    return true;
+  }
+
+  function compareMessageIDs(left, right) {
+    const leftID = entityID(left).replace(/^0+/, "") || "0";
+    const rightID = entityID(right).replace(/^0+/, "") || "0";
+    if (/^\d+$/.test(leftID) && /^\d+$/.test(rightID)) {
+      if (leftID.length !== rightID.length) return leftID.length - rightID.length;
+      if (leftID !== rightID) return leftID < rightID ? -1 : 1;
+    }
+    const leftTime = Number(firstValue(left, ["created_at", "sent_at"], 0));
+    const rightTime = Number(firstValue(right, ["created_at", "sent_at"], 0));
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return entityID(left).localeCompare(entityID(right));
+  }
+
+  function mergeMessages(existing, incoming) {
+    const byID = new Map();
+    existing.concat(incoming).forEach(function (message, index) {
+      const id = entityID(message);
+      const key = id || "missing-" + index;
+      byID.set(key, message);
+    });
+    return Array.from(byID.values()).sort(compareMessageIDs);
+  }
+
+  async function loadOlderMessages() {
+    if (!state.selectedID || !state.messagesHasMore ||
+        !state.messagesCursor || state.olderMessagesLoading) return;
+    const selected = state.selectedID;
+    const selectionToken = state.selectionToken;
+    const requestSerial = state.olderMessagesRequestSerial + 1;
+    state.olderMessagesRequestSerial = requestSerial;
+    const beforeID = state.messagesCursor;
+    const list = elements["message-list"];
+    state.olderMessagesLoading = true;
+    renderMessages();
+    const previousHeight = list.scrollHeight;
+    const previousTop = list.scrollTop;
+    try {
+      const params = new URLSearchParams({
+        before_id: beforeID,
+        limit: "60"
+      });
+      const data = await api(
+        "/conversations/" + encodeURIComponent(selected) + "/messages?" + params.toString()
+      );
+      if (!sameConversationContext(selected, selectionToken) ||
+          requestSerial !== state.olderMessagesRequestSerial) {
+        return;
+      }
+      const olderMessages = itemList(data);
+      state.messages = mergeMessages(state.messages, olderMessages);
+      state.messageTotal = Math.max(
+        state.messages.length, Number(data.total) || state.messageTotal
+      );
+      state.messagesCursor = state.messages.length ? entityID(state.messages[0]) : "";
+      const madeProgress =
+        state.messagesCursor !== beforeID && olderMessages.length > 0;
+      state.messagesHasMore = madeProgress &&
+        (Boolean(data.has_more) || state.messageTotal > state.messages.length);
+      state.olderMessagesLoading = false;
+      renderMessages();
+      requestAnimationFrame(function () {
+        if (!sameConversationContext(selected, selectionToken) ||
+            requestSerial !== state.olderMessagesRequestSerial) {
+          return;
+        }
+        const behavior = list.style.scrollBehavior;
+        list.style.scrollBehavior = "auto";
+        list.scrollTop = Math.max(0, list.scrollHeight - previousHeight + previousTop);
+        list.style.scrollBehavior = behavior;
+      });
+    } catch (error) {
+      if (!sameConversationContext(selected, selectionToken) ||
+          requestSerial !== state.olderMessagesRequestSerial) {
+        return;
+      }
+      state.olderMessagesLoading = false;
+      renderMessages();
+      toast(error.message || "更早消息加载失败", "error");
+    }
   }
 
   function renderMessages() {
@@ -572,6 +805,23 @@
       );
       list.appendChild(empty);
       return;
+    }
+
+    if (state.messagesHasMore) {
+      const historyControl = createElement("div", "message-history-control");
+      const loadedCount = createElement(
+        "span", "message-history-count",
+        "已加载 " + state.messages.length + " / " + state.messageTotal + " 条"
+      );
+      const loadOlderButton = createElement(
+        "button", "secondary-button compact-button message-history-button",
+        state.olderMessagesLoading ? "加载中…" : "加载更早消息"
+      );
+      loadOlderButton.type = "button";
+      loadOlderButton.dataset.loadOlderMessages = "true";
+      loadOlderButton.disabled = state.olderMessagesLoading;
+      historyControl.append(loadedCount, loadOlderButton);
+      list.appendChild(historyControl);
     }
 
     let previousDate = "";
@@ -702,8 +952,7 @@
 
   async function loadAgents() {
     try {
-      const data = await api("/agents");
-      state.agents = itemList(data);
+      state.agents = await loadAllPagedItems("/agents");
       renderAgents();
     } catch (error) {
       if (error.status !== 403) throw error;
@@ -730,12 +979,39 @@
 
   async function loadQuickReplies() {
     try {
-      const data = await api("/quick-replies");
-      state.quickReplies = itemList(data);
+      state.quickReplies = await loadAllPagedItems("/quick-replies");
       renderQuickReplies();
     } catch (error) {
       if (error.status !== 403) throw error;
     }
+  }
+
+  async function loadAllPagedItems(path) {
+    const allItems = [];
+    const seen = new Set();
+    let page = 1;
+    while (page <= 1000) {
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: "100"
+      });
+      const data = await api(path + "?" + params.toString());
+      const pageItems = itemList(data);
+      pageItems.forEach(function (item, index) {
+        const id = entityID(item);
+        const key = id || page + ":" + index;
+        if (seen.has(key)) return;
+        seen.add(key);
+        allItems.push(item);
+      });
+      const total = Math.max(0, Number(data.total) || 0);
+      if (!Boolean(data.has_more) || !pageItems.length ||
+          (total > 0 && allItems.length >= total)) {
+        break;
+      }
+      page += 1;
+    }
+    return allItems;
   }
 
   function renderQuickReplies() {
@@ -763,35 +1039,60 @@
 
   async function claimConversation() {
     if (!state.selectedID) return;
+    const conversationID = state.selectedID;
+    const selectionToken = state.selectionToken;
     setButtonBusy(elements["claim-button"], true, "接入中…");
     try {
-      await api("/conversations/" + encodeURIComponent(state.selectedID) + "/claim", {
+      await api("/conversations/" + encodeURIComponent(conversationID) + "/claim", {
         method: "POST",
         body: {}
       });
-      toast("会话已接入");
-      state.scope = "mine";
-      updateScopeUI();
-      await Promise.all([loadDashboard(), loadConversations({ silent: true }), loadConversationDetail()]);
-      elements["message-input"].focus();
     } catch (error) {
       toast(error.message || "接入会话失败", "error");
-      await loadConversationDetail().catch(function () {});
-    } finally {
-      setButtonBusy(elements["claim-button"], false);
+      if (sameConversationContext(conversationID, selectionToken)) {
+        setButtonBusy(elements["claim-button"], false);
+      } else {
+        restoreButtonLabel(elements["claim-button"]);
+      }
+      return;
+    }
+
+    toast("会话已接入");
+    if (sameConversationContext(conversationID, selectionToken)) {
+      state.scope = "mine";
+      state.conversationPage = 1;
+      updateScopeUI();
+    }
+    const refreshTasks = [
+      loadDashboard(),
+      loadConversations({ silent: true, throwOnError: true })
+    ];
+    if (sameConversationContext(conversationID, selectionToken)) {
+      refreshTasks.push(loadConversationDetail());
+    }
+    await refreshAfterSuccessfulMutation(
+      refreshTasks,
+      "会话已接入，但页面刷新失败，请手动刷新"
+    );
+    restoreButtonLabel(elements["claim-button"]);
+    if (sameConversationContext(conversationID, selectionToken)) {
+      elements["message-input"].focus();
     }
   }
 
   async function sendMessage() {
-    const text = elements["message-input"].value.trim();
+    const submittedDraft = elements["message-input"].value;
+    const text = submittedDraft.trim();
     if (!text || !state.selectedID || elements["send-button"].disabled) return;
+    const conversationID = state.selectedID;
+    const selectionToken = state.selectionToken;
     setButtonBusy(elements["send-button"], true, "发送中…");
     try {
       const clientID = "support_console_" + Date.now() + "_" +
         (window.crypto && window.crypto.randomUUID
           ? window.crypto.randomUUID()
           : Math.random().toString(36).slice(2));
-      await api("/conversations/" + encodeURIComponent(state.selectedID) + "/messages", {
+      await api("/conversations/" + encodeURIComponent(conversationID) + "/messages", {
         method: "POST",
         body: {
           client_message_id: clientID,
@@ -800,72 +1101,145 @@
           asset_id: 0
         }
       });
-      elements["message-input"].value = "";
-      elements["quick-reply-panel"].classList.add("is-hidden");
-      await Promise.all([loadMessages(), loadConversations({ silent: true })]);
-      elements["message-input"].focus();
     } catch (error) {
       toast(error.message || "消息发送失败", "error");
-    } finally {
-      setButtonBusy(elements["send-button"], false);
+      if (sameConversationContext(conversationID, selectionToken)) {
+        setButtonBusy(elements["send-button"], false);
+      } else {
+        restoreButtonLabel(elements["send-button"]);
+      }
+      return;
+    }
+
+    const sameContext = sameConversationContext(conversationID, selectionToken);
+    if (sameContext) {
+      if (elements["message-input"].value === submittedDraft) {
+        elements["message-input"].value = "";
+      }
+      elements["quick-reply-panel"].classList.add("is-hidden");
+    }
+    const refreshTasks = [
+      loadConversations({ silent: true, throwOnError: true })
+    ];
+    if (sameContext) refreshTasks.push(loadMessages());
+    await refreshAfterSuccessfulMutation(
+      refreshTasks,
+      "消息已发送，但页面刷新失败，请手动刷新"
+    );
+    if (sameConversationContext(conversationID, selectionToken)) {
+      restoreButtonLabel(elements["send-button"]);
+      if (state.detail) {
+        renderConversationDetail();
+      } else {
+        elements["send-button"].disabled = false;
+      }
+      if (!elements["message-input"].disabled) {
+        elements["message-input"].focus();
+      }
+    } else {
+      restoreButtonLabel(elements["send-button"]);
     }
   }
 
   async function changePriority() {
     if (!state.selectedID) return;
+    const conversationID = state.selectedID;
+    const selectionToken = state.selectionToken;
     const priority = Number(elements["priority-select"].value);
     elements["priority-select"].disabled = true;
     try {
-      await api("/conversations/" + encodeURIComponent(state.selectedID) + "/priority", {
+      await api("/conversations/" + encodeURIComponent(conversationID) + "/priority", {
         method: "POST",
         body: { priority: priority }
       });
-      toast("会话优先级已更新");
-      await Promise.all([loadConversationDetail(), loadConversations({ silent: true })]);
     } catch (error) {
       toast(error.message || "优先级更新失败", "error");
-      renderConversationDetail();
+      if (sameConversationContext(conversationID, selectionToken) && state.detail) {
+        renderConversationDetail();
+      }
+      return;
     }
+
+    toast("会话优先级已更新");
+    const refreshTasks = [
+      loadConversations({ silent: true, throwOnError: true })
+    ];
+    if (sameConversationContext(conversationID, selectionToken)) {
+      refreshTasks.push(loadConversationDetail());
+    }
+    await refreshAfterSuccessfulMutation(
+      refreshTasks,
+      "优先级已更新，但页面刷新失败，请手动刷新"
+    );
   }
 
   async function transferConversation(targetAgentID) {
     if (!state.selectedID || !targetAgentID) return;
+    const conversationID = state.selectedID;
+    const selectionToken = state.selectionToken;
+    const exactTargetAgentID = String(targetAgentID);
     setButtonBusy(elements["confirm-transfer"], true, "转接中…");
     try {
-      await api("/conversations/" + encodeURIComponent(state.selectedID) + "/transfer", {
+      await api("/conversations/" + encodeURIComponent(conversationID) + "/transfer", {
         method: "POST",
-        body: { target_agent_id: Number(targetAgentID) }
+        body: { target_agent_id: exactTargetAgentID }
       });
-      if (elements["transfer-dialog"].open) elements["transfer-dialog"].close();
-      toast("会话已转接");
-      clearSelection();
-      await Promise.all([loadDashboard(), loadConversations({ silent: true })]);
-      setMobilePanel("queue");
     } catch (error) {
       toast(error.message || "会话转接失败", "error");
-    } finally {
       setButtonBusy(elements["confirm-transfer"], false);
+      return;
     }
+
+    if (elements["transfer-dialog"].open) elements["transfer-dialog"].close();
+    toast("会话已转接");
+    const transferredCurrentConversation =
+      sameConversationContext(conversationID, selectionToken);
+    if (transferredCurrentConversation) {
+      clearSelection();
+      setMobilePanel("queue");
+    }
+    await refreshAfterSuccessfulMutation(
+      [
+        loadDashboard(),
+        loadConversations({ silent: true, throwOnError: true })
+      ],
+      "会话已转接，但页面刷新失败，请手动刷新"
+    );
+    setButtonBusy(elements["confirm-transfer"], false);
   }
 
   async function resolveConversation() {
     if (!state.selectedID) return;
+    const conversationID = state.selectedID;
+    const selectionToken = state.selectionToken;
     setButtonBusy(elements["confirm-resolve"], true, "处理中…");
     try {
-      await api("/conversations/" + encodeURIComponent(state.selectedID) + "/resolve", {
+      await api("/conversations/" + encodeURIComponent(conversationID) + "/resolve", {
         method: "POST",
         body: {}
       });
-      if (elements["resolve-dialog"].open) elements["resolve-dialog"].close();
-      toast("会话已解决");
-      clearSelection();
-      await Promise.all([loadDashboard(), loadConversations({ silent: true })]);
-      setMobilePanel("queue");
     } catch (error) {
       toast(error.message || "解决会话失败", "error");
-    } finally {
       setButtonBusy(elements["confirm-resolve"], false);
+      return;
     }
+
+    if (elements["resolve-dialog"].open) elements["resolve-dialog"].close();
+    toast("会话已解决");
+    const resolvedCurrentConversation =
+      sameConversationContext(conversationID, selectionToken);
+    if (resolvedCurrentConversation) {
+      clearSelection();
+      setMobilePanel("queue");
+    }
+    await refreshAfterSuccessfulMutation(
+      [
+        loadDashboard(),
+        loadConversations({ silent: true, throwOnError: true })
+      ],
+      "会话已解决，但页面刷新失败，请手动刷新"
+    );
+    setButtonBusy(elements["confirm-resolve"], false);
   }
 
   async function addNote() {
@@ -989,12 +1363,16 @@
       const scopeButton = event.target.closest(".scope-button");
       if (scopeButton) {
         state.scope = scopeButton.dataset.scope;
+        state.conversationPage = 1;
         updateScopeUI();
         loadConversations();
       }
 
       const conversationButton = event.target.closest("[data-conversation-id]");
       if (conversationButton) selectConversation(conversationButton.dataset.conversationId);
+
+      const olderMessagesButton = event.target.closest("[data-load-older-messages]");
+      if (olderMessagesButton) loadOlderMessages();
 
       const replyButton = event.target.closest("[data-quick-reply]");
       if (replyButton) {
@@ -1007,6 +1385,7 @@
     let searchTimer;
     elements["conversation-search"].addEventListener("input", function () {
       state.query = elements["conversation-search"].value.trim();
+      state.conversationPage = 1;
       elements["search-clear"].classList.toggle("is-visible", Boolean(state.query));
       window.clearTimeout(searchTimer);
       searchTimer = window.setTimeout(function () {
@@ -1016,9 +1395,16 @@
     elements["search-clear"].addEventListener("click", function () {
       elements["conversation-search"].value = "";
       state.query = "";
+      state.conversationPage = 1;
       elements["search-clear"].classList.remove("is-visible");
       loadConversations();
       elements["conversation-search"].focus();
+    });
+    elements["conversation-prev"].addEventListener("click", function () {
+      changeConversationPage(state.conversationPage - 1);
+    });
+    elements["conversation-next"].addEventListener("click", function () {
+      changeConversationPage(state.conversationPage + 1);
     });
     elements["refresh-button"].addEventListener("click", async function () {
       setButtonBusy(elements["refresh-button"], true, "刷新中…");

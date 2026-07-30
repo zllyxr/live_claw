@@ -31,7 +31,7 @@ type Service struct {
 }
 
 type Agent struct {
-	ID           int64  `json:"id"`
+	ID           int64  `json:"id,string"`
 	AgentNo      string `json:"agent_no"`
 	Username     string `json:"username"`
 	DisplayName  string `json:"display_name"`
@@ -53,7 +53,7 @@ type Dashboard struct {
 
 type Conversation struct {
 	ID                 string `json:"id"`
-	UserID             int64  `json:"user_id"`
+	UserID             int64  `json:"user_id,string"`
 	Username           string `json:"username"`
 	Nickname           string `json:"nickname"`
 	AvatarURL          string `json:"avatar_url"`
@@ -61,7 +61,7 @@ type Conversation struct {
 	Category           string `json:"category"`
 	Priority           int    `json:"priority"`
 	Status             int    `json:"status"`
-	AssignedAgentID    int64  `json:"assigned_agent_id"`
+	AssignedAgentID    int64  `json:"assigned_agent_id,string"`
 	AssignedAgentName  string `json:"assigned_agent_name"`
 	LastMessagePreview string `json:"last_message_preview"`
 	UnreadCount        int64  `json:"unread_count"`
@@ -70,7 +70,7 @@ type Conversation struct {
 }
 
 type UserCard struct {
-	ID           int64  `json:"id"`
+	ID           int64  `json:"id,string"`
 	Username     string `json:"username"`
 	Nickname     string `json:"nickname"`
 	AvatarURL    string `json:"avatar_url"`
@@ -86,12 +86,12 @@ type Message struct {
 	ID              string `json:"id"`
 	ConversationID  string `json:"conversation_id"`
 	SenderType      int    `json:"sender_type"`
-	SenderID        int64  `json:"sender_id"`
+	SenderID        int64  `json:"sender_id,string"`
 	SenderName      string `json:"sender_name"`
 	ClientMessageID string `json:"client_message_id"`
 	MessageType     int    `json:"message_type"`
 	TextContent     string `json:"text_content"`
-	AssetID         int64  `json:"asset_id"`
+	AssetID         int64  `json:"asset_id,string"`
 	AssetURL        string `json:"asset_url"`
 	MimeType        string `json:"mime_type"`
 	Status          int    `json:"status"`
@@ -99,16 +99,16 @@ type Message struct {
 }
 
 type Note struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user_id"`
-	AgentID   int64  `json:"agent_id"`
+	ID        int64  `json:"id,string"`
+	UserID    int64  `json:"user_id,string"`
+	AgentID   int64  `json:"agent_id,string"`
 	AgentName string `json:"agent_name"`
 	Content   string `json:"content"`
 	CreatedAt int64  `json:"created_at"`
 }
 
 type QuickReply struct {
-	ID       int64  `json:"id"`
+	ID       int64  `json:"id,string"`
 	Title    string `json:"title"`
 	Content  string `json:"content"`
 	Category string `json:"category"`
@@ -240,8 +240,29 @@ func (s *Service) Conversations(
 	scope string,
 	keyword string,
 ) ([]Conversation, error) {
+	items, _, err := s.ConversationsPage(ctx, agent, scope, keyword, 1, 100)
+	return items, err
+}
+
+func (s *Service) ConversationsPage(
+	ctx context.Context,
+	agent Agent,
+	scope string,
+	keyword string,
+	page int,
+	pageSize int,
+) ([]Conversation, int64, error) {
 	scope = strings.ToLower(strings.TrimSpace(scope))
 	keyword = strings.TrimSpace(keyword)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
 	where := ""
 	arguments := make([]any, 0, 6)
 	switch scope {
@@ -255,17 +276,27 @@ func (s *Service) Conversations(
 		arguments = append(arguments, agent.ID)
 	case "all":
 		if !agent.IsSupervisor {
-			return nil, ErrPermissionDenied
+			return nil, 0, ErrPermissionDenied
 		}
 		where = "1=1"
 	default:
-		return nil, ErrInvalidRequest
+		return nil, 0, ErrInvalidRequest
 	}
 	if keyword != "" {
 		where += ` AND (conversation.id LIKE ? OR user.username LIKE ?
 			OR user.nickname LIKE ? OR conversation.subject LIKE ?)`
 		like := "%" + escapeLike(keyword) + "%"
 		arguments = append(arguments, like, like, like, like)
+	}
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM support_conversations conversation
+		JOIN users user ON user.id=conversation.user_id
+		WHERE `+where,
+		arguments...,
+	).Scan(&total); err != nil {
+		return nil, 0, err
 	}
 	query := `
 		SELECT conversation.id,conversation.user_id,user.username,
@@ -297,24 +328,25 @@ func (s *Service) Conversations(
 		WHERE ` + where + `
 		ORDER BY
 		  CASE conversation.status WHEN 0 THEN 0 WHEN 1 THEN 1 ELSE 2 END,
-		  conversation.priority DESC,conversation.last_message_at DESC
-		LIMIT 100`
+		  conversation.priority DESC,conversation.last_message_at DESC,conversation.id DESC
+		LIMIT ? OFFSET ?`
 	arguments = append([]any{agent.ID}, arguments...)
+	arguments = append(arguments, pageSize, (page-1)*pageSize)
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	items := make([]Conversation, 0, 32)
 	for rows.Next() {
 		var item Conversation
 		if err = scanConversation(rows, &item); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		item.AvatarURL = mediaURL(item.AvatarURL)
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	return items, total, rows.Err()
 }
 
 func (s *Service) Conversation(
@@ -359,15 +391,49 @@ func (s *Service) Messages(
 	beforeID string,
 	limit int,
 ) ([]Message, error) {
+	items, _, _, err := s.MessagesPage(
+		ctx, agent, conversationID, beforeID, limit, "",
+	)
+	return items, err
+}
+
+func (s *Service) MessagesPage(
+	ctx context.Context,
+	agent Agent,
+	conversationID string,
+	beforeID string,
+	limit int,
+	keyword string,
+) ([]Message, int64, bool, error) {
 	conversation, err := s.conversation(ctx, agent.ID, conversationID)
 	if err != nil {
-		return nil, err
+		return nil, 0, false, err
 	}
 	if !canRead(agent, conversation) {
-		return nil, ErrPermissionDenied
+		return nil, 0, false, ErrPermissionDenied
 	}
 	if limit < 1 || limit > 100 {
 		limit = 60
+	}
+	keyword = strings.TrimSpace(keyword)
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		conversationID,
+		keyword, like, like, like, like, like, like,
+	}
+	var total int64
+	if err = s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM support_messages message
+		LEFT JOIN users user ON message.sender_type=1 AND user.id=message.sender_id
+		LEFT JOIN admin_users admin ON message.sender_type=2 AND admin.id=message.sender_id
+		WHERE message.conversation_id=? AND message.status=1
+		  AND (?='' OR message.id LIKE ? OR message.text_content LIKE ?
+		       OR user.username LIKE ? OR user.nickname LIKE ?
+		       OR admin.username LIKE ? OR admin.display_name LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		return nil, 0, false, err
 	}
 	query := `
 		SELECT message.id,message.conversation_id,message.sender_type,message.sender_id,
@@ -384,20 +450,23 @@ func (s *Service) Messages(
 		LEFT JOIN users user ON message.sender_type=1 AND user.id=message.sender_id
 		LEFT JOIN admin_users admin ON message.sender_type=2 AND admin.id=message.sender_id
 		LEFT JOIN media_assets asset ON asset.id=message.asset_id AND asset.status=1
-		WHERE message.conversation_id=? AND message.status=1`
-	arguments := []any{conversationID}
+		WHERE message.conversation_id=? AND message.status=1
+		  AND (?='' OR message.id LIKE ? OR message.text_content LIKE ?
+		       OR user.username LIKE ? OR user.nickname LIKE ?
+		       OR admin.username LIKE ? OR admin.display_name LIKE ?)`
+	arguments := append([]any{}, filterArguments...)
 	if strings.TrimSpace(beforeID) != "" {
 		query += " AND message.id<?"
 		arguments = append(arguments, strings.TrimSpace(beforeID))
 	}
 	query += " ORDER BY message.id DESC LIMIT ?"
-	arguments = append(arguments, limit)
+	arguments = append(arguments, limit+1)
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
-		return nil, err
+		return nil, 0, false, err
 	}
 	defer rows.Close()
-	items := make([]Message, 0, limit)
+	items := make([]Message, 0, limit+1)
 	lastReadID := ""
 	for rows.Next() {
 		var item Message
@@ -407,7 +476,7 @@ func (s *Service) Messages(
 			&item.TextContent, &item.AssetID, &item.AssetURL, &item.MimeType,
 			&item.Status, &item.CreatedAt,
 		); err != nil {
-			return nil, err
+			return nil, 0, false, err
 		}
 		item.AssetURL = mediaURL(item.AssetURL)
 		if item.ID > lastReadID {
@@ -416,7 +485,11 @@ func (s *Service) Messages(
 		items = append(items, item)
 	}
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, false, err
+	}
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
 	}
 	if lastReadID != "" {
 		_, _ = s.db.ExecContext(ctx, `
@@ -433,7 +506,7 @@ func (s *Service) Messages(
 	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
 		items[left], items[right] = items[right], items[left]
 	}
-	return items, nil
+	return items, total, hasMore, nil
 }
 
 func (s *Service) Claim(
@@ -891,6 +964,100 @@ func (s *Service) Agents(ctx context.Context) ([]Agent, error) {
 	return items, rows.Err()
 }
 
+func (s *Service) AgentsPage(
+	ctx context.Context,
+	keyword string,
+	page int,
+	pageSize int,
+) ([]Agent, int64, error) {
+	keyword = strings.TrimSpace(keyword)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{keyword, like, like, like}
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM support_agents support_agent
+		JOIN admin_users admin ON admin.id=support_agent.admin_user_id AND admin.status=1
+		WHERE support_agent.status=1
+		  AND (
+		    SELECT COUNT(DISTINCT permission.permission_key)
+		    FROM admin_user_roles assignment
+		    JOIN admin_roles role
+		      ON role.id=assignment.role_id AND role.status=1
+		    JOIN admin_role_permissions role_permission
+		      ON role_permission.role_id=role.id
+		    JOIN admin_permissions permission
+		      ON permission.id=role_permission.permission_id
+		    WHERE assignment.admin_user_id=support_agent.admin_user_id
+		      AND permission.permission_key IN
+		        ('support.console','support.read','support.write')
+		  )=3
+		  AND (?='' OR support_agent.agent_no LIKE ? OR admin.username LIKE ?
+		       OR admin.display_name LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT support_agent.admin_user_id,support_agent.agent_no,
+		       admin.username,COALESCE(NULLIF(admin.display_name,''),admin.username),
+		       support_agent.agent_role,support_agent.presence,support_agent.max_active,
+		       support_agent.support_only
+		FROM support_agents support_agent
+		JOIN admin_users admin ON admin.id=support_agent.admin_user_id AND admin.status=1
+		WHERE support_agent.status=1
+		  AND (
+		    SELECT COUNT(DISTINCT permission.permission_key)
+		    FROM admin_user_roles assignment
+		    JOIN admin_roles role
+		      ON role.id=assignment.role_id AND role.status=1
+		    JOIN admin_role_permissions role_permission
+		      ON role_permission.role_id=role.id
+		    JOIN admin_permissions permission
+		      ON permission.id=role_permission.permission_id
+		    WHERE assignment.admin_user_id=support_agent.admin_user_id
+		      AND permission.permission_key IN
+		        ('support.console','support.read','support.write')
+		  )=3
+		  AND (?='' OR support_agent.agent_no LIKE ? OR admin.username LIKE ?
+		       OR admin.display_name LIKE ?)
+		ORDER BY support_agent.presence DESC,support_agent.agent_role DESC,admin.id
+		LIMIT ? OFFSET ?`,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]Agent, 0, pageSize)
+	for rows.Next() {
+		var item Agent
+		if err = rows.Scan(
+			&item.ID, &item.AgentNo, &item.Username, &item.DisplayName,
+			&item.Role, &item.Presence, &item.MaxActive, &item.SupportOnly,
+		); err != nil {
+			return nil, 0, err
+		}
+		item.IsSupervisor = item.Role == 2
+		if item.IsSupervisor {
+			item.RoleName = "客服主管"
+		} else {
+			item.RoleName = "客服座席"
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
+}
+
 func (s *Service) QuickReplies(ctx context.Context) ([]QuickReply, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id,title,content,category FROM support_quick_replies
@@ -908,6 +1075,58 @@ func (s *Service) QuickReplies(ctx context.Context) ([]QuickReply, error) {
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Service) QuickRepliesPage(
+	ctx context.Context,
+	keyword string,
+	page int,
+	pageSize int,
+) ([]QuickReply, int64, error) {
+	keyword = strings.TrimSpace(keyword)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{keyword, like, like, like}
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM support_quick_replies
+		WHERE status=1
+		  AND (?='' OR title LIKE ? OR content LIKE ? OR category LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id,title,content,category
+		FROM support_quick_replies
+		WHERE status=1
+		  AND (?='' OR title LIKE ? OR content LIKE ? OR category LIKE ?)
+		ORDER BY sort_order DESC,id ASC
+		LIMIT ? OFFSET ?`,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]QuickReply, 0, pageSize)
+	for rows.Next() {
+		var item QuickReply
+		if err = rows.Scan(&item.ID, &item.Title, &item.Content, &item.Category); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
 }
 
 func (s *Service) AddNote(

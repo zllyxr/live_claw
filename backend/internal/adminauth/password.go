@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -53,6 +54,9 @@ func hashPassword(password string) (string, error) {
 }
 
 func VerifyPassword(encoded, password string) bool {
+	if len(password) > 512 || !utf8.ValidString(password) {
+		return false
+	}
 	memory, iterations, parallelism, salt, expected, err := parsePasswordHash(encoded)
 	if err != nil {
 		return false
@@ -62,10 +66,14 @@ func VerifyPassword(encoded, password string) bool {
 }
 
 func validatePassword(password string) error {
-	if len(password) < 12 {
+	if len(password) > 512 || !utf8.ValidString(password) {
+		return errors.New("password must be valid UTF-8 and no more than 512 bytes")
+	}
+	characterCount := utf8.RuneCountInString(password)
+	if characterCount < 12 {
 		return errors.New("password must contain at least 12 characters")
 	}
-	if len(password) > 128 {
+	if characterCount > 128 {
 		return errors.New("password must not exceed 128 characters")
 	}
 	return nil

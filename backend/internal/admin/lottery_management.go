@@ -49,7 +49,6 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 	categoryRows, err := h.db.QueryContext(r.Context(), `
 		SELECT id,category_key,name,status,sort_order
 		FROM lottery_categories
-		WHERE status=1
 		ORDER BY sort_order DESC,id`)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票分类失败")
@@ -66,7 +65,8 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		categories = append(categories, map[string]any{
-			"id": id, "category_key": key, "name": name, "status": status, "sort_order": sortOrder,
+			"id": apiDecimalID(id), "category_key": key, "name": name,
+			"status": status, "sort_order": sortOrder,
 		})
 	}
 	if err = categoryRows.Err(); err != nil {
@@ -80,13 +80,12 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 		       game.status,game.sort_order,game.config,
 		       issue.id,issue.issue_no,issue.sale_close_at,issue.draw_at,issue.status
 		FROM lottery_games game
-		JOIN lottery_categories category ON category.id=game.category_id AND category.status=1
+		JOIN lottery_categories category ON category.id=game.category_id
 		LEFT JOIN lottery_issues issue ON issue.id=(
 			SELECT latest.id FROM lottery_issues latest
 			WHERE latest.game_id=game.id
 			ORDER BY latest.draw_at DESC,latest.id DESC LIMIT 1
 			)
-		WHERE game.status=1
 		ORDER BY game.sort_order DESC,game.id`)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票游戏失败")
@@ -111,19 +110,19 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票游戏失败")
 			return
 		}
-		var config any
-		_ = json.Unmarshal(configJSON, &config)
+		config := jsonOrNil(configJSON)
 		var currentIssue any
 		if issueID.Valid {
 			currentIssue = map[string]any{
-				"id": issueID.Int64, "issue_no": issueNo.String,
+				"id": apiDecimalID(issueID.Int64), "issue_no": issueNo.String,
 				"sale_close_at": nullTime(saleClose), "draw_at": nullTime(drawAt),
 				"status": issueStatus.Int64,
 			}
 		}
 		games = append(games, map[string]any{
-			"id": id, "category_id": categoryID, "category_name": categoryName,
-			"game_code": gameCode, "name": name, "issue_interval_seconds": interval,
+			"id": apiDecimalID(id), "category_id": apiDecimalID(categoryID),
+			"category_name": categoryName,
+			"game_code":     gameCode, "name": name, "issue_interval_seconds": interval,
 			"sale_close_seconds": closeSeconds, "min_bet": minBet, "max_bet": maxBet,
 			"status": status, "sort_order": sortOrder, "config": config,
 			"latest_issue": currentIssue,
@@ -139,8 +138,7 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 		       play.settlement_rule,play.status,play.sort_order,
 		       (SELECT COUNT(*) FROM lottery_options option_row WHERE option_row.play_id=play.id)
 		FROM lottery_plays play
-		JOIN lottery_games game ON game.id=play.game_id AND game.status=1
-		WHERE play.status=1
+		JOIN lottery_games game ON game.id=play.game_id
 		ORDER BY game.sort_order DESC,play.sort_order DESC,play.id`)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票玩法失败")
@@ -160,7 +158,8 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		plays = append(plays, map[string]any{
-			"id": id, "game_id": gameID, "game_name": gameName, "play_code": playCode,
+			"id": apiDecimalID(id), "game_id": apiDecimalID(gameID),
+			"game_name": gameName, "play_code": playCode,
 			"name": name, "settlement_rule": settlementRule, "status": status,
 			"sort_order": sortOrder, "option_count": optionCount,
 		})
@@ -175,9 +174,8 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 		       option_row.option_code,option_row.name,option_row.odds_scaled,
 		       option_row.status,option_row.sort_order
 		FROM lottery_options option_row
-		JOIN lottery_plays play ON play.id=option_row.play_id AND play.status=1
-		JOIN lottery_games game ON game.id=play.game_id AND game.status=1
-		WHERE option_row.status=1
+		JOIN lottery_plays play ON play.id=option_row.play_id
+		JOIN lottery_games game ON game.id=play.game_id
 		ORDER BY game.sort_order DESC,play.sort_order DESC,option_row.sort_order DESC,option_row.id`)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票选项失败")
@@ -197,7 +195,8 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		options = append(options, map[string]any{
-			"id": id, "play_id": playID, "play_name": playName, "game_name": gameName,
+			"id": apiDecimalID(id), "play_id": apiDecimalID(playID),
+			"play_name": playName, "game_name": gameName,
 			"option_code": optionCode, "name": name, "odds_scaled": oddsScaled,
 			"status": status, "sort_order": sortOrder,
 		})
@@ -216,7 +215,7 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 		       (SELECT COALESCE(SUM(bet_order.total_payout),0)
 		        FROM lottery_bet_orders bet_order WHERE bet_order.issue_id=issue.id)
 		FROM lottery_issues issue
-		JOIN lottery_games game ON game.id=issue.game_id AND game.status=1
+		JOIN lottery_games game ON game.id=issue.game_id
 		ORDER BY issue.draw_at DESC,issue.id DESC LIMIT 100`)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
@@ -237,7 +236,8 @@ func (h *Handler) listLotteryCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		issues = append(issues, map[string]any{
-			"id": id, "game_id": gameID, "game_name": gameName, "issue_no": issueNo,
+			"id": apiDecimalID(id), "game_id": apiDecimalID(gameID),
+			"game_name": gameName, "issue_no": issueNo,
 			"sale_open_at": saleOpen.Unix(), "sale_close_at": saleClose.Unix(),
 			"draw_at": drawAt.Unix(), "status": status, "result_source": resultSource,
 			"order_count": orderCount, "total_bet": totalBet, "total_payout": totalPayout,
@@ -284,7 +284,7 @@ func (h *Handler) createLotteryCategory(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": id})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": apiDecimalID(id)})
 }
 
 func (h *Handler) updateLotteryCategory(w http.ResponseWriter, r *http.Request) {
@@ -333,12 +333,14 @@ func (h *Handler) updateLotteryCategory(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": categoryID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(categoryID), "updated": true,
+	})
 }
 
 func (h *Handler) createLotteryGame(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		CategoryID           int64          `json:"category_id"`
+		CategoryID           decimalIDInput `json:"category_id"`
 		GameCode             string         `json:"game_code"`
 		Name                 string         `json:"name"`
 		IssueIntervalSeconds int            `json:"issue_interval_seconds"`
@@ -373,9 +375,9 @@ func (h *Handler) createLotteryGame(w http.ResponseWriter, r *http.Request) {
 			(category_id,game_code,name,issue_interval_seconds,sale_close_seconds,
 			 min_bet,max_bet,status,sort_order,config)
 		SELECT ?,?,?,?,?,?,?,?,?,? FROM lottery_categories WHERE id=? AND status=1`,
-		request.CategoryID, request.GameCode, request.Name, request.IssueIntervalSeconds,
+		request.CategoryID.Int64(), request.GameCode, request.Name, request.IssueIntervalSeconds,
 		request.SaleCloseSeconds, request.MinBet, request.MaxBet, request.Status,
-		request.SortOrder, configJSON, request.CategoryID,
+		request.SortOrder, configJSON, request.CategoryID.Int64(),
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "彩票标识已存在")
@@ -391,7 +393,7 @@ func (h *Handler) createLotteryGame(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": id})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": apiDecimalID(id)})
 }
 
 func (h *Handler) updateLotteryGame(w http.ResponseWriter, r *http.Request) {
@@ -401,14 +403,14 @@ func (h *Handler) updateLotteryGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		CategoryID           int64  `json:"category_id"`
-		GameCode             string `json:"game_code"`
-		Name                 string `json:"name"`
-		IssueIntervalSeconds int    `json:"issue_interval_seconds"`
-		SaleCloseSeconds     int    `json:"sale_close_seconds"`
-		MinBet               int64  `json:"min_bet"`
-		MaxBet               int64  `json:"max_bet"`
-		SortOrder            int    `json:"sort_order"`
+		CategoryID           decimalIDInput `json:"category_id"`
+		GameCode             string         `json:"game_code"`
+		Name                 string         `json:"name"`
+		IssueIntervalSeconds int            `json:"issue_interval_seconds"`
+		SaleCloseSeconds     int            `json:"sale_close_seconds"`
+		MinBet               int64          `json:"min_bet"`
+		MaxBet               int64          `json:"max_bet"`
+		SortOrder            int            `json:"sort_order"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -427,7 +429,7 @@ func (h *Handler) updateLotteryGame(w http.ResponseWriter, r *http.Request) {
 	var categoryExists int
 	if err = h.db.QueryRowContext(r.Context(), `
 		SELECT COUNT(*) FROM lottery_categories WHERE id=? AND status=1`,
-		request.CategoryID,
+		request.CategoryID.Int64(),
 	).Scan(&categoryExists); err != nil || categoryExists != 1 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "彩票分类不存在")
 		return
@@ -436,7 +438,7 @@ func (h *Handler) updateLotteryGame(w http.ResponseWriter, r *http.Request) {
 	var beforeCode, beforeName string
 	if err = h.db.QueryRowContext(r.Context(), `
 		SELECT category_id,game_code,name
-		FROM lottery_games WHERE id=? AND status=1`,
+		FROM lottery_games WHERE id=?`,
 		gameID,
 	).Scan(&beforeCategoryID, &beforeCode, &beforeName); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "彩票不存在")
@@ -449,8 +451,8 @@ func (h *Handler) updateLotteryGame(w http.ResponseWriter, r *http.Request) {
 		UPDATE lottery_games
 		SET category_id=?,game_code=?,name=?,issue_interval_seconds=?,
 		    sale_close_seconds=?,min_bet=?,max_bet=?,sort_order=?
-		WHERE id=? AND status=1`,
-		request.CategoryID, request.GameCode, request.Name, request.IssueIntervalSeconds,
+		WHERE id=?`,
+		request.CategoryID.Int64(), request.GameCode, request.Name, request.IssueIntervalSeconds,
 		request.SaleCloseSeconds, request.MinBet, request.MaxBet, request.SortOrder, gameID,
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "彩票标识已存在")
@@ -458,13 +460,18 @@ func (h *Handler) updateLotteryGame(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = auditAdmin(
 		r.Context(), h.db, r, "lottery.game.update", "lottery_game", gameID,
-		map[string]any{"category_id": beforeCategoryID, "game_code": beforeCode, "name": beforeName},
+		map[string]any{
+			"category_id": apiDecimalID(beforeCategoryID),
+			"game_code":   beforeCode, "name": beforeName,
+		},
 		request,
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": gameID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(gameID), "updated": true,
+	})
 }
 
 func (h *Handler) setLotteryGameStatus(w http.ResponseWriter, r *http.Request) {
@@ -479,12 +486,18 @@ func (h *Handler) setLotteryGameStatus(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	if request.Status != 1 {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "禁用彩票已永久移除，不能创建停用记录")
+	if request.Status < 0 || request.Status > 1 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "彩票状态无效")
 		return
 	}
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新彩票状态失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
 	var before int
-	if err = h.db.QueryRowContext(r.Context(), "SELECT status FROM lottery_games WHERE id=?", gameID).Scan(&before); errors.Is(err, sql.ErrNoRows) {
+	if err = tx.QueryRowContext(r.Context(), "SELECT status FROM lottery_games WHERE id=? FOR UPDATE", gameID).Scan(&before); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "彩票不存在")
 		return
 	}
@@ -492,23 +505,29 @@ func (h *Handler) setLotteryGameStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新彩票状态失败")
 		return
 	}
-	if _, err = h.db.ExecContext(r.Context(), "UPDATE lottery_games SET status=? WHERE id=?", request.Status, gameID); err != nil {
+	if _, err = tx.ExecContext(r.Context(), "UPDATE lottery_games SET status=? WHERE id=?", request.Status, gameID); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新彩票状态失败")
 		return
 	}
 	if err = auditAdmin(
-		r.Context(), h.db, r, "lottery.game.status", "lottery_game", gameID,
+		r.Context(), tx, r, "lottery.game.status", "lottery_game", gameID,
 		map[string]int{"status": before}, request,
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": gameID, "status": request.Status})
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新彩票状态失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(gameID), "status": request.Status,
+	})
 }
 
 func (h *Handler) createLotteryPlay(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		GameID         int64          `json:"game_id"`
+		GameID         decimalIDInput `json:"game_id"`
 		PlayCode       string         `json:"play_code"`
 		Name           string         `json:"name"`
 		SettlementRule string         `json:"settlement_rule"`
@@ -532,8 +551,8 @@ func (h *Handler) createLotteryPlay(w http.ResponseWriter, r *http.Request) {
 	result, err := h.db.ExecContext(r.Context(), `
 		INSERT INTO lottery_plays(game_id,play_code,name,settlement_rule,status,sort_order,config)
 		SELECT ?,?,?,?,?,?,? FROM lottery_games WHERE id=? AND status=1`,
-		request.GameID, request.PlayCode, request.Name, request.SettlementRule,
-		request.Status, request.SortOrder, configJSON, request.GameID,
+		request.GameID.Int64(), request.PlayCode, request.Name, request.SettlementRule,
+		request.Status, request.SortOrder, configJSON, request.GameID.Int64(),
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "彩票玩法已存在")
@@ -549,7 +568,7 @@ func (h *Handler) createLotteryPlay(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": id})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": apiDecimalID(id)})
 }
 
 func (h *Handler) updateLotteryPlay(w http.ResponseWriter, r *http.Request) {
@@ -599,12 +618,14 @@ func (h *Handler) updateLotteryPlay(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": playID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(playID), "updated": true,
+	})
 }
 
 func (h *Handler) createLotteryOption(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		PlayID     int64          `json:"play_id"`
+		PlayID     decimalIDInput `json:"play_id"`
 		OptionCode string         `json:"option_code"`
 		Name       string         `json:"name"`
 		OddsScaled int64          `json:"odds_scaled"`
@@ -627,8 +648,8 @@ func (h *Handler) createLotteryOption(w http.ResponseWriter, r *http.Request) {
 	result, err := h.db.ExecContext(r.Context(), `
 		INSERT INTO lottery_options(play_id,option_code,name,odds_scaled,status,sort_order,config)
 		SELECT ?,?,?,?,?,?,? FROM lottery_plays WHERE id=? AND status=1`,
-		request.PlayID, request.OptionCode, request.Name, request.OddsScaled,
-		request.Status, request.SortOrder, configJSON, request.PlayID,
+		request.PlayID.Int64(), request.OptionCode, request.Name, request.OddsScaled,
+		request.Status, request.SortOrder, configJSON, request.PlayID.Int64(),
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "彩票选项已存在")
@@ -644,7 +665,7 @@ func (h *Handler) createLotteryOption(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": id})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": apiDecimalID(id)})
 }
 
 func (h *Handler) updateLotteryOption(w http.ResponseWriter, r *http.Request) {
@@ -694,16 +715,18 @@ func (h *Handler) updateLotteryOption(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": optionID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(optionID), "updated": true,
+	})
 }
 
 func (h *Handler) createLotteryIssue(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		GameID      int64  `json:"game_id"`
-		IssueNo     string `json:"issue_no"`
-		SaleOpenAt  int64  `json:"sale_open_at"`
-		SaleCloseAt int64  `json:"sale_close_at"`
-		DrawAt      int64  `json:"draw_at"`
+		GameID      decimalIDInput `json:"game_id"`
+		IssueNo     string         `json:"issue_no"`
+		SaleOpenAt  int64          `json:"sale_open_at"`
+		SaleCloseAt int64          `json:"sale_close_at"`
+		DrawAt      int64          `json:"draw_at"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -720,13 +743,19 @@ func (h *Handler) createLotteryIssue(w http.ResponseWriter, r *http.Request) {
 	if request.SaleOpenAt <= now && request.SaleCloseAt > now {
 		status = 1
 	}
-	result, err := h.db.ExecContext(r.Context(), `
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建彩票期号失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	result, err := tx.ExecContext(r.Context(), `
 		INSERT INTO lottery_issues
 			(game_id,issue_no,sale_open_at,sale_close_at,draw_at,status)
 		SELECT ?,?,FROM_UNIXTIME(?),FROM_UNIXTIME(?),FROM_UNIXTIME(?),?
-		FROM lottery_games WHERE id=?`,
-		request.GameID, request.IssueNo, request.SaleOpenAt, request.SaleCloseAt,
-		request.DrawAt, status, request.GameID,
+		FROM lottery_games WHERE id=? AND status=1`,
+		request.GameID.Int64(), request.IssueNo, request.SaleOpenAt, request.SaleCloseAt,
+		request.DrawAt, status, request.GameID.Int64(),
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "彩票期号已存在或时间冲突")
@@ -734,15 +763,21 @@ func (h *Handler) createLotteryIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	affected, _ := result.RowsAffected()
 	if affected != 1 {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "彩票游戏不存在")
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "彩票游戏不存在或已停用")
 		return
 	}
 	id, _ := result.LastInsertId()
-	if err = auditAdmin(r.Context(), h.db, r, "lottery.issue.create", "lottery_issue", id, nil, request); err != nil {
+	if err = auditAdmin(r.Context(), tx, r, "lottery.issue.create", "lottery_issue", id, nil, request); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": id, "status": status})
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建彩票期号失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(id), "status": status,
+	})
 }
 
 func (h *Handler) closeLotteryIssue(w http.ResponseWriter, r *http.Request) {
@@ -751,7 +786,13 @@ func (h *Handler) closeLotteryIssue(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "期号编号无效")
 		return
 	}
-	result, err := h.db.ExecContext(r.Context(), `
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "封盘失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	result, err := tx.ExecContext(r.Context(), `
 		UPDATE lottery_issues SET status=2,sale_close_at=LEAST(sale_close_at,CURRENT_TIMESTAMP(3))
 		WHERE id=? AND status IN (0,1)`,
 		issueID,
@@ -765,11 +806,17 @@ func (h *Handler) closeLotteryIssue(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "期号不存在或当前状态不能封盘")
 		return
 	}
-	if err = auditAdmin(r.Context(), h.db, r, "lottery.issue.close", "lottery_issue", issueID, nil, map[string]int{"status": 2}); err != nil {
+	if err = auditAdmin(r.Context(), tx, r, "lottery.issue.close", "lottery_issue", issueID, nil, map[string]int{"status": 2}); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录彩票审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": issueID, "status": 2})
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "封盘失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(issueID), "status": 2,
+	})
 }
 
 func (h *Handler) drawLotteryIssue(w http.ResponseWriter, r *http.Request) {
@@ -793,7 +840,9 @@ func (h *Handler) drawLotteryIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	canonical := make([]byte, 0, len(request.Result))
 	var resultValue any
-	if err = json.Unmarshal(request.Result, &resultValue); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(request.Result)))
+	decoder.UseNumber()
+	if err = decoder.Decode(&resultValue); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "开奖结果参数无效")
 		return
 	}
@@ -850,13 +899,40 @@ func (h *Handler) drawLotteryIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"id": issueID, "status": 3, "result_sha256": hex.EncodeToString(digest[:]),
+		"id": apiDecimalID(issueID), "status": 3,
+		"result_sha256": hex.EncodeToString(digest[:]),
 	})
 }
 
 func (h *Handler) listLotteryOrders(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := pageParams(r)
 	userID, _ := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 64)
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		status, _ = strconv.Atoi(rawStatus)
+	}
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		userID, userID,
+		status, status,
+		keyword, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM lottery_bet_orders order_row
+		JOIN lottery_games game ON game.id=order_row.game_id
+		JOIN lottery_issues issue ON issue.id=order_row.issue_id
+		WHERE (?=0 OR order_row.user_id=?)
+		  AND (? < 0 OR order_row.status=?)
+		  AND (?='' OR order_row.order_no LIKE ? OR game.game_code LIKE ?
+		       OR issue.issue_no LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票订单失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT order_row.id,order_row.order_no,order_row.user_id,game.game_code,
 		       issue.issue_no,order_row.total_bet,order_row.total_payout,
@@ -865,9 +941,12 @@ func (h *Handler) listLotteryOrders(w http.ResponseWriter, r *http.Request) {
 		JOIN lottery_games game ON game.id=order_row.game_id
 		JOIN lottery_issues issue ON issue.id=order_row.issue_id
 		WHERE (?=0 OR order_row.user_id=?)
+		  AND (? < 0 OR order_row.status=?)
+		  AND (?='' OR order_row.order_no LIKE ? OR game.game_code LIKE ?
+		       OR issue.issue_no LIKE ?)
 		ORDER BY order_row.created_at DESC,order_row.id DESC
 		LIMIT ? OFFSET ?`,
-		userID, userID, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票订单失败")
@@ -889,7 +968,8 @@ func (h *Handler) listLotteryOrders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "order_no": orderNo, "user_id": rowUserID, "game_code": gameCode,
+			"id": apiDecimalID(id), "order_no": orderNo,
+			"user_id": apiDecimalID(rowUserID), "game_code": gameCode,
 			"issue_no": issueNo, "total_bet": totalBet, "total_payout": totalPayout,
 			"status": status, "settled_at": nullTime(settledAt), "created_at": createdAt.Unix(),
 		})
@@ -899,6 +979,7 @@ func (h *Handler) listLotteryOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }

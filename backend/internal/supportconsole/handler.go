@@ -38,6 +38,25 @@ type Handler struct {
 
 type contextAgentKey struct{}
 
+type exactInt64 int64
+
+func (value *exactInt64) UnmarshalJSON(data []byte) error {
+	token := strings.TrimSpace(string(data))
+	if strings.HasPrefix(token, `"`) {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		token = strings.TrimSpace(text)
+	}
+	parsed, err := strconv.ParseInt(token, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse exact decimal int64: %w", err)
+	}
+	*value = exactInt64(parsed)
+	return nil
+}
+
 func NewHandler(
 	authService *adminauth.Service,
 	service *Service,
@@ -217,14 +236,29 @@ func (h *Handler) presence(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) conversations(w http.ResponseWriter, r *http.Request) {
 	agent, _ := agentFromRequest(r)
-	items, err := h.service.Conversations(
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	items, total, err := h.service.ConversationsPage(
 		r.Context(), agent, r.URL.Query().Get("scope"), r.URL.Query().Get("q"),
+		page, pageSize,
 	)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"items": items})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
+	})
 }
 
 func (h *Handler) conversation(w http.ResponseWriter, r *http.Request) {
@@ -242,15 +276,25 @@ func (h *Handler) conversation(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) messages(w http.ResponseWriter, r *http.Request) {
 	agent, _ := agentFromRequest(r)
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	items, err := h.service.Messages(
+	if limit < 1 || limit > 100 {
+		limit = 60
+	}
+	items, total, hasMore, err := h.service.MessagesPage(
 		r.Context(), agent, r.PathValue("id"),
-		r.URL.Query().Get("before_id"), limit,
+		r.URL.Query().Get("before_id"), limit, r.URL.Query().Get("q"),
 	)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"items": items})
+	nextCursor := ""
+	if len(items) > 0 {
+		nextCursor = items[0].ID
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"limit": limit, "total": total, "has_more": hasMore,
+		"next_cursor": nextCursor, "items": items,
+	})
 }
 
 func (h *Handler) claim(w http.ResponseWriter, r *http.Request) {
@@ -267,10 +311,10 @@ func (h *Handler) claim(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) send(w http.ResponseWriter, r *http.Request) {
 	agent, _ := agentFromRequest(r)
 	var request struct {
-		ClientMessageID string `json:"client_message_id"`
-		MessageType     int    `json:"message_type"`
-		TextContent     string `json:"text_content"`
-		AssetID         int64  `json:"asset_id"`
+		ClientMessageID string     `json:"client_message_id"`
+		MessageType     int        `json:"message_type"`
+		TextContent     string     `json:"text_content"`
+		AssetID         exactInt64 `json:"asset_id"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -280,7 +324,7 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request) {
 		SendRequest{
 			ClientMessageID: request.ClientMessageID,
 			MessageType:     request.MessageType, TextContent: request.TextContent,
-			AssetID: request.AssetID,
+			AssetID: int64(request.AssetID),
 		},
 		actionMeta(r),
 	)
@@ -294,13 +338,13 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) transfer(w http.ResponseWriter, r *http.Request) {
 	agent, _ := agentFromRequest(r)
 	var request struct {
-		TargetAgentID int64 `json:"target_agent_id"`
+		TargetAgentID exactInt64 `json:"target_agent_id"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
 	}
 	if err := h.service.Transfer(
-		r.Context(), agent, r.PathValue("id"), request.TargetAgentID, actionMeta(r),
+		r.Context(), agent, r.PathValue("id"), int64(request.TargetAgentID), actionMeta(r),
 	); err != nil {
 		h.writeError(w, r, err)
 		return
@@ -337,21 +381,53 @@ func (h *Handler) priority(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) agents(w http.ResponseWriter, r *http.Request) {
-	items, err := h.service.Agents(r.Context())
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	items, total, err := h.service.AgentsPage(
+		r.Context(), r.URL.Query().Get("q"), page, pageSize,
+	)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"items": items})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
+	})
 }
 
 func (h *Handler) quickReplies(w http.ResponseWriter, r *http.Request) {
-	items, err := h.service.QuickReplies(r.Context())
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	items, total, err := h.service.QuickRepliesPage(
+		r.Context(), r.URL.Query().Get("q"), page, pageSize,
+	)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"items": items})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
+	})
 }
 
 func (h *Handler) addNote(w http.ResponseWriter, r *http.Request) {

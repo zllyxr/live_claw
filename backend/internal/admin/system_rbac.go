@@ -45,11 +45,11 @@ func (h *Handler) listSystemSettings(w http.ResponseWriter, r *http.Request) {
 		if secret == 1 {
 			value = map[string]bool{"configured": string(raw) != "null" && string(raw) != `""`}
 		} else {
-			_ = json.Unmarshal(raw, &value)
+			value = jsonOrNil(raw)
 		}
 		items = append(items, map[string]any{
 			"key": key, "value": value, "is_secret": secret == 1, "version": version,
-			"updated_by": updatedBy, "updated_at": updatedAt.Unix(),
+			"updated_by": apiDecimalID(updatedBy), "updated_at": updatedAt.Unix(),
 		})
 	}
 	if err = rows.Err(); err != nil {
@@ -75,7 +75,9 @@ func (h *Handler) updateSystemSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var normalized any
-	if err := json.Unmarshal(request.Value, &normalized); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(request.Value)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&normalized); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "系统设置参数无效")
 		return
 	}
@@ -121,7 +123,7 @@ func (h *Handler) updateSystemSetting(w http.ResponseWriter, r *http.Request) {
 	if previousVersion > 0 {
 		beforeValue := any("***")
 		if previousSecret == 0 {
-			_ = json.Unmarshal(previous, &beforeValue)
+			beforeValue = jsonOrNil(previous)
 		}
 		beforeAudit = map[string]any{
 			"value": beforeValue, "is_secret": previousSecret == 1, "version": previousVersion,
@@ -152,6 +154,27 @@ func (h *Handler) updateSystemSetting(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := pageParams(r)
 	action := strings.TrimSpace(r.URL.Query().Get("action"))
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	actionLike := "%" + escapeLike(action) + "%"
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		action, actionLike,
+		keyword, like, like, like, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM audit_logs audit
+		LEFT JOIN admin_users admin ON audit.actor_type=1 AND admin.id=audit.actor_id
+		WHERE (?='' OR audit.action LIKE ?)
+		  AND (?='' OR audit.request_id LIKE ? OR admin.username LIKE ?
+		       OR audit.action LIKE ? OR audit.resource_type LIKE ?
+		       OR audit.resource_id LIKE ? OR audit.ip LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取审计日志失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT audit.id,audit.request_id,audit.actor_id,
 		       COALESCE(admin.username,''),audit.action,audit.resource_type,audit.resource_id,
@@ -159,9 +182,12 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		FROM audit_logs audit
 		LEFT JOIN admin_users admin ON audit.actor_type=1 AND admin.id=audit.actor_id
 		WHERE (?='' OR audit.action LIKE ?)
+		  AND (?='' OR audit.request_id LIKE ? OR admin.username LIKE ?
+		       OR audit.action LIKE ? OR audit.resource_type LIKE ?
+		       OR audit.resource_id LIKE ? OR audit.ip LIKE ?)
 		ORDER BY audit.created_at DESC,audit.id DESC
 		LIMIT ? OFFSET ?`,
-		action, "%"+escapeLike(action)+"%", pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取审计日志失败")
@@ -182,7 +208,8 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "request_id": requestID, "actor_id": actorID, "actor_name": actorName,
+			"id": apiDecimalID(id), "request_id": requestID,
+			"actor_id": apiDecimalID(actorID), "actor_name": actorName,
 			"action": actionValue, "resource_type": resourceType, "resource_id": resourceID,
 			"before": jsonOrNil(before), "after": jsonOrNil(after), "ip": ip,
 			"created_at": createdAt.Unix(),
@@ -193,7 +220,8 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
@@ -215,7 +243,7 @@ func (h *Handler) listRBAC(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		permissions = append(permissions, map[string]any{
-			"id": id, "permission_key": key, "name": name, "module": module,
+			"id": apiDecimalID(id), "permission_key": key, "name": name, "module": module,
 			"action": action, "description": description,
 		})
 	}
@@ -242,8 +270,9 @@ func (h *Handler) listRBAC(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		roles = append(roles, map[string]any{
-			"id": id, "role_key": roleKey, "name": name, "description": description,
-			"data_scope": dataScope, "status": status, "permissions": splitCSV(permissionCSV),
+			"id": apiDecimalID(id), "role_key": roleKey, "name": name,
+			"description": description,
+			"data_scope":  dataScope, "status": status, "permissions": splitCSV(permissionCSV),
 		})
 	}
 
@@ -274,7 +303,8 @@ func (h *Handler) listRBAC(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		admins = append(admins, map[string]any{
-			"id": id, "username": username, "display_name": displayName, "email": email,
+			"id": apiDecimalID(id), "username": username,
+			"display_name": displayName, "email": email,
 			"status": status, "last_login_at": nullTime(lastLogin), "created_at": createdAt.Unix(),
 			"roles": splitCSV(roleCSV),
 		})
@@ -286,11 +316,11 @@ func (h *Handler) listRBAC(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		RoleKey       string  `json:"role_key"`
-		Name          string  `json:"name"`
-		Description   string  `json:"description"`
-		DataScope     int     `json:"data_scope"`
-		PermissionIDs []int64 `json:"permission_ids"`
+		RoleKey       string             `json:"role_key"`
+		Name          string             `json:"name"`
+		Description   string             `json:"description"`
+		DataScope     int                `json:"data_scope"`
+		PermissionIDs decimalIDListInput `json:"permission_ids"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -320,7 +350,7 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roleID, _ := result.LastInsertId()
-	if err = grantPermissions(r, tx, roleID, request.PermissionIDs); err != nil {
+	if err = grantPermissions(r, tx, roleID, request.PermissionIDs.Int64s()); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "权限编号无效")
 		return
 	}
@@ -332,7 +362,7 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建角色失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": roleID})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": apiDecimalID(roleID)})
 }
 
 func (h *Handler) updateRolePermissions(w http.ResponseWriter, r *http.Request) {
@@ -342,8 +372,8 @@ func (h *Handler) updateRolePermissions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var request struct {
-		PermissionIDs []int64 `json:"permission_ids"`
-		Status        int     `json:"status"`
+		PermissionIDs decimalIDListInput `json:"permission_ids"`
+		Status        int                `json:"status"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -380,7 +410,7 @@ func (h *Handler) updateRolePermissions(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新角色失败")
 		return
 	}
-	if err = grantPermissions(r, tx, roleID, request.PermissionIDs); err != nil {
+	if err = grantPermissions(r, tx, roleID, request.PermissionIDs.Int64s()); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "权限编号无效")
 		return
 	}
@@ -399,16 +429,18 @@ func (h *Handler) updateRolePermissions(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新角色失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": roleID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(roleID), "updated": true,
+	})
 }
 
 func (h *Handler) createAdministrator(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Username    string  `json:"username"`
-		Password    string  `json:"password"`
-		DisplayName string  `json:"display_name"`
-		Email       string  `json:"email"`
-		RoleIDs     []int64 `json:"role_ids"`
+		Username    string             `json:"username"`
+		Password    string             `json:"password"`
+		DisplayName string             `json:"display_name"`
+		Email       string             `json:"email"`
+		RoleIDs     decimalIDListInput `json:"role_ids"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -416,8 +448,8 @@ func (h *Handler) createAdministrator(w http.ResponseWriter, r *http.Request) {
 	request.Username = strings.TrimSpace(request.Username)
 	request.DisplayName = strings.TrimSpace(request.DisplayName)
 	request.Email = strings.ToLower(strings.TrimSpace(request.Email))
-	if !adminNamePattern.MatchString(request.Username) || len(request.Password) < 12 ||
-		len(request.Password) > 128 || request.DisplayName == "" || len(request.DisplayName) > 100 ||
+	if !adminNamePattern.MatchString(request.Username) || !validManagedPassword(request.Password) ||
+		request.DisplayName == "" || len(request.DisplayName) > 100 ||
 		len(request.Email) > 190 || len(request.RoleIDs) < 1 || len(request.RoleIDs) > 20 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "管理员参数无效")
 		return
@@ -447,7 +479,7 @@ func (h *Handler) createAdministrator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	adminIDValue, _ := result.LastInsertId()
-	if err = assignRoles(r, tx, adminIDValue, request.RoleIDs); err != nil {
+	if err = assignRoles(r, tx, adminIDValue, request.RoleIDs.Int64s()); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "角色编号无效")
 		return
 	}
@@ -468,7 +500,7 @@ func (h *Handler) createAdministrator(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建管理员失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": adminIDValue})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": apiDecimalID(adminIDValue)})
 }
 
 func (h *Handler) updateAdministrator(w http.ResponseWriter, r *http.Request) {
@@ -478,9 +510,9 @@ func (h *Handler) updateAdministrator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		DisplayName string  `json:"display_name"`
-		Status      int     `json:"status"`
-		RoleIDs     []int64 `json:"role_ids"`
+		DisplayName string             `json:"display_name"`
+		Status      int                `json:"status"`
+		RoleIDs     decimalIDListInput `json:"role_ids"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
@@ -525,7 +557,7 @@ func (h *Handler) updateAdministrator(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新管理员失败")
 		return
 	}
-	if err = assignRoles(r, tx, targetID, request.RoleIDs); err != nil {
+	if err = assignRoles(r, tx, targetID, request.RoleIDs.Int64s()); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "角色编号无效")
 		return
 	}
@@ -555,7 +587,112 @@ func (h *Handler) updateAdministrator(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新管理员失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": targetID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(targetID), "updated": true,
+	})
+}
+
+type resetAdministratorPasswordRequest struct {
+	Password string `json:"password"`
+	Reason   string `json:"reason"`
+}
+
+func (request *resetAdministratorPasswordRequest) normalize() error {
+	request.Reason = strings.TrimSpace(request.Reason)
+	if !validManagedPassword(request.Password) ||
+		strings.TrimSpace(request.Password) == "" ||
+		request.Reason == "" || len(request.Reason) > 500 {
+		return errors.New("invalid administrator password reset request")
+	}
+	return nil
+}
+
+func (h *Handler) resetAdministratorPassword(w http.ResponseWriter, r *http.Request) {
+	targetID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || targetID < 1 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "管理员编号无效")
+		return
+	}
+	var request resetAdministratorPasswordRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	if err = request.normalize(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "密码须为 12 至 128 个字符，且必须填写重置原因")
+		return
+	}
+	passwordHash, err := adminauth.HashPassword(request.Password)
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "管理员密码不符合安全要求")
+		return
+	}
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置管理员密码失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var username, previousHash string
+	var status int
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT username,password_hash,status
+		FROM admin_users WHERE id=? FOR UPDATE`,
+		targetID,
+	).Scan(&username, &previousHash, &status); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "管理员不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置管理员密码失败")
+		return
+	}
+	if adminauth.VerifyPassword(previousHash, request.Password) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "新密码不能与当前密码相同")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `
+		UPDATE admin_users
+		SET password_hash=?,password_changed_at=CURRENT_TIMESTAMP(3)
+		WHERE id=?`,
+		passwordHash, targetID,
+	); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置管理员密码失败")
+		return
+	}
+	revokeResult, err := tx.ExecContext(r.Context(), `
+		UPDATE admin_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
+		WHERE admin_user_id=? AND revoked_at IS NULL`,
+		targetID,
+	)
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "撤销管理员登录会话失败")
+		return
+	}
+	revokedSessions, _ := revokeResult.RowsAffected()
+	if err = auditAdmin(
+		r.Context(), tx, r, "rbac.admin.password.reset", "admin_user", targetID,
+		map[string]any{
+			"username": username,
+			"status":   status,
+		},
+		map[string]any{
+			"username":         username,
+			"status":           status,
+			"password_changed": true,
+			"reason":           request.Reason,
+			"revoked_sessions": revokedSessions,
+		},
+	); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录管理员密码审计失败")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置管理员密码失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(targetID), "password_reset": true,
+		"revoked_sessions": revokedSessions,
+	})
 }
 
 func grantPermissions(r *http.Request, tx *sql.Tx, roleID int64, permissionIDs []int64) error {
@@ -703,8 +840,50 @@ func jsonOrNil(value []byte) any {
 		return nil
 	}
 	var result any
-	if json.Unmarshal(value, &result) != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(value)))
+	decoder.UseNumber()
+	if decoder.Decode(&result) != nil {
 		return nil
 	}
-	return result
+	return stringifyAuditIdentifierValues("", result)
+}
+
+func stringifyAuditIdentifierValues(key string, value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		for childKey, childValue := range typed {
+			typed[childKey] = stringifyAuditIdentifierValues(childKey, childValue)
+		}
+		return typed
+	case []any:
+		for index, childValue := range typed {
+			typed[index] = stringifyAuditIdentifierValues(key, childValue)
+		}
+		return typed
+	case json.Number:
+		if auditIdentifierKey(key) {
+			return typed.String()
+		}
+		return typed
+	default:
+		return value
+	}
+}
+
+func auditIdentifierKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "id" ||
+		strings.HasSuffix(normalized, "_id") ||
+		strings.HasSuffix(normalized, "_ids") {
+		return true
+	}
+	switch normalized {
+	case "user_id", "admin_id", "actor_id", "sender_id", "owner_user_id",
+		"host_user_id", "target_user_id", "applicant_user_id", "from_user_id",
+		"to_user_id", "assigned_admin_id", "requested_by", "reviewed_by",
+		"confirmed_by", "verified_by", "created_by", "updated_by":
+		return true
+	default:
+		return false
+	}
 }

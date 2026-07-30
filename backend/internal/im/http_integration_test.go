@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -138,5 +139,85 @@ func TestWebSocketDeliveryIntegration(t *testing.T) {
 	if pushed.Type != "message" || pushed.Data.TextContent != "实时消息" ||
 		pushed.Data.ConversationID != conversation.ID {
 		t.Fatalf("unexpected websocket message: %#v", pushed)
+	}
+
+	senderConnection, _, err := websocket.DefaultDialer.Dial(socketURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer senderConnection.Close()
+	if err = senderConnection.WriteJSON(map[string]any{
+		"type": "auth", "uid": userA, "token": tokenA,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ready = nil
+	if err = senderConnection.ReadJSON(&ready); err != nil || ready["type"] != "ready" {
+		t.Fatalf("sender websocket did not authenticate: %#v %v", ready, err)
+	}
+	if _, err = db.ExecContext(ctx, `
+		UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP(3) WHERE id=?`,
+		sessionA,
+	); err != nil {
+		t.Fatal(err)
+	}
+	blockedClientID := "revoked-ws-send-" + strconv.FormatInt(userA, 10)
+	if err = senderConnection.WriteJSON(map[string]any{
+		"type": "send", "conversation_id": conversation.ID,
+		"client_message_id": blockedClientID, "message_type": 1,
+		"text_content": "不应发送",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertInvalidSocketSession(t, senderConnection)
+	var blockedMessageCount int
+	if err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM im_messages
+		WHERE sender_user_id=? AND client_message_id=?`,
+		userA, blockedClientID,
+	).Scan(&blockedMessageCount); err != nil {
+		t.Fatal(err)
+	}
+	if blockedMessageCount != 0 {
+		t.Fatalf("revoked websocket session inserted %d messages", blockedMessageCount)
+	}
+
+	if _, err = db.ExecContext(ctx, "UPDATE users SET status=2 WHERE id=?", userB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Send(ctx, SendRequest{
+		ConversationID:  conversation.ID,
+		ClientMessageID: "disabled-recipient-" + strconv.FormatInt(userA, 10),
+		SenderUserID:    userA,
+		MessageType:     1,
+		TextContent:     "不应推送",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertInvalidSocketSession(t, connection)
+}
+
+func assertInvalidSocketSession(t *testing.T, connection *websocket.Conn) {
+	t.Helper()
+	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var invalid struct {
+		Type    string `json:"type"`
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := connection.ReadJSON(&invalid); err != nil {
+		t.Fatalf("websocket did not report the invalid session: %v", err)
+	}
+	if invalid.Type != "error" || invalid.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected invalid-session response: %#v", invalid)
+	}
+	var afterClose map[string]any
+	err := connection.ReadJSON(&afterClose)
+	if err == nil {
+		t.Fatalf("invalid websocket session remained open: %#v", afterClose)
+	}
+	var closeError *websocket.CloseError
+	if !errors.As(err, &closeError) || closeError.Code != websocket.ClosePolicyViolation {
+		t.Fatalf("invalid websocket session closed unexpectedly: %v", err)
 	}
 }

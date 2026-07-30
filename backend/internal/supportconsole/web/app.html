@@ -6,8 +6,8 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#17233d">
   <title>客服座席工作台</title>
-  <link rel="stylesheet" href="/support-console/static/app.css">
-  <script src="/support-console/static/app.js" defer></script>
+  <link rel="stylesheet" href="/support-console/static/app.css?v=20260730-3">
+  <script src="/support-console/static/app.js?v=20260730-3" defer></script>
 </head>
 <body class="console-body">
   <div class="console-app" id="console-app">
@@ -98,6 +98,16 @@
 
         <div class="conversation-list" id="conversation-list" aria-live="polite">
           <div class="list-state">正在加载会话…</div>
+        </div>
+        <div class="conversation-pagination" id="conversation-pagination" aria-label="会话分页">
+          <span class="conversation-total" id="conversation-total">共 0 条</span>
+          <div class="conversation-page-actions">
+            <button class="secondary-button compact-button" id="conversation-prev"
+                    type="button" aria-label="上一页">上一页</button>
+            <span class="conversation-page" id="conversation-page">1 / 1</span>
+            <button class="secondary-button compact-button" id="conversation-next"
+                    type="button" aria-label="下一页">下一页</button>
+          </div>
         </div>
       </aside>
 

@@ -41,6 +41,26 @@ func (h *Handler) listLiveRooms(w http.ResponseWriter, r *http.Request) {
 	}
 	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
 	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		status, status, keyword,
+		like, like, like, like, like, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM live_rooms room
+		LEFT JOIN users user ON user.id=room.host_user_id
+		LEFT JOIN douyin_room_profiles profile ON profile.live_room_id=room.id
+		WHERE (? < 0 OR room.status=?)
+		  AND (?='' OR room.room_no LIKE ? OR room.title LIKE ?
+		       OR room.provider_room_id LIKE ? OR profile.nickname LIKE ?
+		       OR CAST(room.host_user_id AS CHAR) LIKE ? OR user.username LIKE ?
+		       OR user.nickname LIKE ? OR profile.unique_id LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取直播间失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT room.id,room.room_no,room.host_user_id,
 		       COALESCE(NULLIF(user.nickname,''),user.username),
@@ -58,10 +78,12 @@ func (h *Handler) listLiveRooms(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN douyin_room_profiles profile ON profile.live_room_id=room.id
 		WHERE (? < 0 OR room.status=?)
 		  AND (?='' OR room.room_no LIKE ? OR room.title LIKE ?
-		       OR room.provider_room_id LIKE ? OR profile.nickname LIKE ?)
+		       OR room.provider_room_id LIKE ? OR profile.nickname LIKE ?
+		       OR CAST(room.host_user_id AS CHAR) LIKE ? OR user.username LIKE ?
+		       OR user.nickname LIKE ? OR profile.unique_id LIKE ?)
 		ORDER BY room.sort_order DESC,room.id DESC
 		LIMIT ? OFFSET ?`,
-		status, status, keyword, like, like, like, like, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取直播间失败")
@@ -104,7 +126,9 @@ func (h *Handler) listLiveRooms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items, "provider": "douyin",
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total,
+		"items":    items, "provider": "douyin",
 	})
 }
 

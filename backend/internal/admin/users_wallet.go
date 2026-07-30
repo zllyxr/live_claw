@@ -16,10 +16,47 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
 )
 
+type adminUserListItem struct {
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	CountryCode string `json:"country_code"`
+	Mobile      string `json:"mobile"`
+	Email       string `json:"email"`
+	Nickname    string `json:"nickname"`
+	Status      int    `json:"status"`
+	IsVirtual   bool   `json:"is_virtual"`
+	TeamCode    string `json:"team_code"`
+	TeamName    string `json:"team_name"`
+	Available   int64  `json:"available"`
+	Frozen      int64  `json:"frozen"`
+	LastLoginAt any    `json:"last_login_at"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := pageParams(r)
 	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
 	status, _ := strconv.Atoi(r.URL.Query().Get("status"))
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		keyword, like, like, like, like, like, like, like,
+		status, status,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM users app_user
+		LEFT JOIN teams team ON team.id=app_user.team_id
+		WHERE (?='' OR CAST(app_user.id AS CHAR) LIKE ?
+		       OR app_user.username LIKE ? OR app_user.mobile LIKE ?
+		       OR app_user.email LIKE ? OR app_user.nickname LIKE ?
+		       OR team.code LIKE ? OR team.name LIKE ?)
+		  AND (?=0 OR app_user.status=?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取用户失败")
+		return
+	}
 	query := `
 		SELECT app_user.id,app_user.username,app_user.country_code,COALESCE(app_user.mobile,''),
 		       COALESCE(app_user.email,''),app_user.nickname,app_user.status,app_user.is_virtual,
@@ -29,20 +66,22 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		FROM users app_user
 		LEFT JOIN teams team ON team.id=app_user.team_id
 		LEFT JOIN wallet_accounts wallet ON wallet.user_id=app_user.id AND wallet.currency='COIN'
-		WHERE (?='' OR app_user.username LIKE ? OR app_user.mobile LIKE ? OR app_user.email LIKE ? OR app_user.nickname LIKE ?)
+		WHERE (?='' OR CAST(app_user.id AS CHAR) LIKE ?
+		       OR app_user.username LIKE ? OR app_user.mobile LIKE ?
+		       OR app_user.email LIKE ? OR app_user.nickname LIKE ?
+		       OR team.code LIKE ? OR team.name LIKE ?)
 		  AND (?=0 OR app_user.status=?)
 		ORDER BY app_user.created_at DESC,app_user.id DESC
 		LIMIT ? OFFSET ?`
-	like := "%" + escapeLike(keyword) + "%"
 	rows, err := h.db.QueryContext(r.Context(), query,
-		keyword, like, like, like, like, status, status, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取用户失败")
 		return
 	}
 	defer rows.Close()
-	items := make([]map[string]any, 0, pageSize)
+	items := make([]adminUserListItem, 0, pageSize)
 	for rows.Next() {
 		var id, available, frozen int64
 		var username, countryCode, mobile, email, nickname, teamCode, teamName string
@@ -56,11 +95,11 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取用户失败")
 			return
 		}
-		items = append(items, map[string]any{
-			"id": id, "username": username, "country_code": countryCode, "mobile": mobile,
-			"email": email, "nickname": nickname, "status": userStatus, "is_virtual": virtual == 1,
-			"team_code": teamCode, "team_name": teamName, "available": available, "frozen": frozen,
-			"last_login_at": nullTime(lastLogin), "created_at": createdAt.Unix(),
+		items = append(items, adminUserListItem{
+			ID: apiDecimalID(id), Username: username, CountryCode: countryCode, Mobile: mobile,
+			Email: email, Nickname: nickname, Status: userStatus, IsVirtual: virtual == 1,
+			TeamCode: teamCode, TeamName: teamName, Available: available, Frozen: frozen,
+			LastLoginAt: nullTime(lastLogin), CreatedAt: createdAt.Unix(),
 		})
 	}
 	if err = rows.Err(); err != nil {
@@ -68,7 +107,8 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
@@ -192,8 +232,8 @@ func (h *Handler) adjustUserWallet(w http.ResponseWriter, r *http.Request) {
 		BusinessID:   adjustmentNo,
 		Description:  request.Reason,
 		Metadata: map[string]any{
-			"adjustment_id": adjustmentID,
-			"admin_id":      adminUser.ID,
+			"adjustment_id": apiDecimalID(adjustmentID),
+			"admin_id":      apiDecimalID(adminUser.ID),
 			"direction":     request.Direction,
 			"request_id":    request.RequestID,
 		},
@@ -232,7 +272,7 @@ func (h *Handler) adjustUserWallet(w http.ResponseWriter, r *http.Request) {
 		if err = auditAdmin(
 			r.Context(), tx, r, "wallet.adjustment.direct", "wallet_adjustment", adjustmentID,
 			map[string]any{
-				"user_id":   userID,
+				"user_id":   apiDecimalID(userID),
 				"currency":  "COIN",
 				"available": entry.Available - signedAmount,
 				"frozen":    entry.Frozen,
@@ -240,7 +280,7 @@ func (h *Handler) adjustUserWallet(w http.ResponseWriter, r *http.Request) {
 			map[string]any{
 				"adjustment_no":   adjustmentNo,
 				"request_id":      request.RequestID,
-				"user_id":         userID,
+				"user_id":         apiDecimalID(userID),
 				"direction":       request.Direction,
 				"amount":          request.Amount,
 				"reason":          request.Reason,
@@ -260,8 +300,8 @@ func (h *Handler) adjustUserWallet(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
 		"adjustment": map[string]any{
-			"id": adjustmentID, "adjustment_no": adjustmentNo, "request_id": request.RequestID,
-			"user_id": userID, "direction": request.Direction, "amount": request.Amount,
+			"id": apiDecimalID(adjustmentID), "adjustment_no": adjustmentNo, "request_id": request.RequestID,
+			"user_id": apiDecimalID(userID), "direction": request.Direction, "amount": request.Amount,
 			"reason": request.Reason, "status": "applied",
 		},
 		"balance": map[string]any{
@@ -336,7 +376,9 @@ func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新用户失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"user_id": userID, "status": request.Status})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"user_id": apiDecimalID(userID), "status": request.Status,
+	})
 }
 
 func (h *Handler) listWalletLedger(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +386,30 @@ func (h *Handler) listWalletLedger(w http.ResponseWriter, r *http.Request) {
 	userID, _ := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 64)
 	gameCode := strings.TrimSpace(r.URL.Query().Get("game_code"))
 	roundNo := strings.TrimSpace(r.URL.Query().Get("round_no"))
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		userID, userID,
+		gameCode, gameCode,
+		roundNo, roundNo,
+		keyword, like, like, like, like, like, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM wallet_ledger_entries entry
+		WHERE (?=0 OR entry.user_id=?)
+		  AND (?='' OR entry.game_code=?)
+		  AND (?='' OR entry.round_no=?)
+		  AND (?='' OR entry.entry_no LIKE ? OR entry.business_type LIKE ?
+		       OR entry.business_id LIKE ? OR entry.description LIKE ?
+		       OR entry.game_code LIKE ? OR entry.venue_code LIKE ?
+		       OR entry.round_no LIKE ? OR CAST(entry.user_id AS CHAR) LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取资金流水失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT entry.id,entry.entry_no,entry.user_id,entry.delta_available,entry.delta_frozen,
 		       entry.balance_available,entry.balance_frozen,entry.business_type,entry.business_id,
@@ -353,9 +419,13 @@ func (h *Handler) listWalletLedger(w http.ResponseWriter, r *http.Request) {
 		WHERE (?=0 OR entry.user_id=?)
 		  AND (?='' OR entry.game_code=?)
 		  AND (?='' OR entry.round_no=?)
+		  AND (?='' OR entry.entry_no LIKE ? OR entry.business_type LIKE ?
+		       OR entry.business_id LIKE ? OR entry.description LIKE ?
+		       OR entry.game_code LIKE ? OR entry.venue_code LIKE ?
+		       OR entry.round_no LIKE ? OR CAST(entry.user_id AS CHAR) LIKE ?)
 		ORDER BY entry.created_at DESC,entry.id DESC
 		LIMIT ? OFFSET ?`,
-		userID, userID, gameCode, gameCode, roundNo, roundNo, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取资金流水失败")
@@ -377,7 +447,7 @@ func (h *Handler) listWalletLedger(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "entry_no": entryNo, "user_id": ledgerUserID,
+			"id": apiDecimalID(id), "entry_no": entryNo, "user_id": apiDecimalID(ledgerUserID),
 			"delta_available": deltaAvailable, "delta_frozen": deltaFrozen,
 			"balance_available": available, "balance_frozen": frozen,
 			"business_type": businessType, "business_id": businessID, "direction": direction,
@@ -390,22 +460,24 @@ func (h *Handler) listWalletLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
 func (h *Handler) createWalletAdjustment(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		UserID          int64  `json:"user_id"`
-		Amount          int64  `json:"amount"`
-		Reason          string `json:"reason"`
-		EvidenceAssetID int64  `json:"evidence_asset_id"`
+		UserID          decimalIDInput `json:"user_id"`
+		Amount          int64          `json:"amount"`
+		Reason          string         `json:"reason"`
+		EvidenceAssetID decimalIDInput `json:"evidence_asset_id"`
 	}
 	if !decodeJSON(w, r, &request) {
 		return
 	}
+	userID := request.UserID.Int64()
 	request.Reason = strings.TrimSpace(request.Reason)
-	if request.UserID < 1 || request.Amount == 0 || request.Reason == "" || len(request.Reason) > 500 {
+	if userID < 1 || request.Amount == 0 || request.Reason == "" || len(request.Reason) > 500 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "调账参数无效")
 		return
 	}
@@ -425,8 +497,8 @@ func (h *Handler) createWalletAdjustment(w http.ResponseWriter, r *http.Request)
 		INSERT INTO wallet_adjustments
 			(adjustment_no,user_id,amount,reason,evidence_asset_id,status,requested_by)
 		SELECT ?,?,?,?,?,0,? FROM users WHERE id=?`,
-		adjustmentNo, request.UserID, request.Amount, request.Reason,
-		request.EvidenceAssetID, adminUser.ID, request.UserID,
+		adjustmentNo, userID, request.Amount, request.Reason,
+		request.EvidenceAssetID.Int64(), adminUser.ID, userID,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建调账失败")
@@ -441,7 +513,7 @@ func (h *Handler) createWalletAdjustment(w http.ResponseWriter, r *http.Request)
 	if err = auditAdmin(
 		r.Context(), tx, r, "wallet.adjustment.create", "wallet_adjustment", adjustmentID,
 		nil, map[string]any{
-			"adjustment_no": adjustmentNo, "user_id": request.UserID,
+			"adjustment_no": adjustmentNo, "user_id": apiDecimalID(userID),
 			"amount": request.Amount, "reason": request.Reason,
 		},
 	); err != nil {
@@ -453,7 +525,7 @@ func (h *Handler) createWalletAdjustment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"id": adjustmentID, "adjustment_no": adjustmentNo, "status": "pending",
+		"id": apiDecimalID(adjustmentID), "adjustment_no": adjustmentNo, "status": "pending",
 	})
 }
 
@@ -464,12 +536,19 @@ func (h *Handler) approveWalletAdjustment(w http.ResponseWriter, r *http.Request
 		return
 	}
 	adminUser, _ := adminFromRequest(r)
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "审核调账失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	var adjustmentNo, reason string
 	var userID, amount, requestedBy int64
 	var status int
-	err = h.db.QueryRowContext(r.Context(), `
+	err = tx.QueryRowContext(r.Context(), `
 		SELECT adjustment_no,user_id,amount,reason,status,requested_by
-		FROM wallet_adjustments WHERE id=?`,
+		FROM wallet_adjustments WHERE id=? FOR UPDATE`,
 		adjustmentID,
 	).Scan(&adjustmentNo, &userID, &amount, &reason, &status, &requestedBy)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -484,21 +563,30 @@ func (h *Handler) approveWalletAdjustment(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusForbidden, 403, "申请人不能审核自己的调账")
 		return
 	}
-	entry, err := h.wallet.Apply(r.Context(), wallet.ApplyRequest{
+	entry, err := h.wallet.ApplyTx(r.Context(), tx, wallet.ApplyRequest{
 		UserID: userID, Amount: amount, BusinessType: "admin_adjustment",
 		BusinessID: adjustmentNo, Description: reason,
-		Metadata: map[string]any{"adjustment_id": adjustmentID, "reviewed_by": adminUser.ID},
+		Metadata: map[string]any{
+			"adjustment_id": apiDecimalID(adjustmentID),
+			"reviewed_by":   apiDecimalID(adminUser.ID),
+		},
 	})
-	if err != nil {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "调账执行失败")
+	if errors.Is(err, wallet.ErrInsufficientFunds) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "可用余额不足，调账无法执行")
 		return
 	}
-	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新调账状态失败")
+	if errors.Is(err, wallet.ErrAccountDisabled) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "用户钱包不可用")
 		return
 	}
-	defer tx.Rollback() //nolint:errcheck
+	if errors.Is(err, wallet.ErrIdempotencyReuse) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "调账业务号已被其他金额占用")
+		return
+	}
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调账执行失败")
+		return
+	}
 	result, err := tx.ExecContext(r.Context(), `
 		UPDATE wallet_adjustments
 		SET status=3,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP(3)
@@ -516,8 +604,11 @@ func (h *Handler) approveWalletAdjustment(w http.ResponseWriter, r *http.Request
 	}
 	if err = auditAdmin(
 		r.Context(), tx, r, "wallet.adjustment.approve", "wallet_adjustment", adjustmentID,
-		map[string]any{"status": status, "requested_by": requestedBy},
-		map[string]any{"status": 3, "ledger_entry_no": entry.EntryNo, "reviewed_by": adminUser.ID},
+		map[string]any{"status": status, "requested_by": apiDecimalID(requestedBy)},
+		map[string]any{
+			"status": 3, "ledger_entry_no": entry.EntryNo,
+			"reviewed_by": apiDecimalID(adminUser.ID),
+		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录资金审计失败")
 		return
@@ -527,7 +618,8 @@ func (h *Handler) approveWalletAdjustment(w http.ResponseWriter, r *http.Request
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"adjustment_id": adjustmentID, "status": "applied", "ledger": entry,
+		"adjustment_id": apiDecimalID(adjustmentID), "status": "applied",
+		"ledger": walletEntryForAPI(entry),
 	})
 }
 
@@ -574,7 +666,10 @@ func (h *Handler) rejectWalletAdjustment(w http.ResponseWriter, r *http.Request)
 	if err = auditAdmin(
 		r.Context(), tx, r, "wallet.adjustment.reject", "wallet_adjustment", adjustmentID,
 		map[string]int{"status": 0},
-		map[string]any{"status": 2, "reason": request.Reason, "reviewed_by": adminUser.ID},
+		map[string]any{
+			"status": 2, "reason": request.Reason,
+			"reviewed_by": apiDecimalID(adminUser.ID),
+		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录资金审计失败")
 		return
@@ -583,7 +678,9 @@ func (h *Handler) rejectWalletAdjustment(w http.ResponseWriter, r *http.Request)
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "驳回调账失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"adjustment_id": adjustmentID, "status": "rejected"})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"adjustment_id": apiDecimalID(adjustmentID), "status": "rejected",
+	})
 }
 
 func (h *Handler) listRechargeOrders(w http.ResponseWriter, r *http.Request) {
@@ -596,19 +693,61 @@ func (h *Handler) listWithdrawOrders(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) listSimpleOrders(w http.ResponseWriter, r *http.Request, orderType string) {
 	page, pageSize := pageParams(r)
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	like := "%" + escapeLike(keyword) + "%"
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		if parsedStatus, parseErr := strconv.Atoi(rawStatus); parseErr == nil {
+			status = parsedStatus
+		}
+	}
+	filterArguments := []any{keyword, like, like, status, status}
+	var total int64
 	var rows *sql.Rows
 	var err error
 	if orderType == "recharge" {
+		err = h.db.QueryRowContext(r.Context(), `
+			SELECT COUNT(*)
+			FROM recharge_orders recharge_order
+			WHERE (?='' OR recharge_order.order_no LIKE ?
+			       OR CAST(recharge_order.user_id AS CHAR) LIKE ?)
+			  AND (? < 0 OR recharge_order.status=?)`,
+			filterArguments...,
+		).Scan(&total)
+		if err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取资金订单失败")
+			return
+		}
 		rows, err = h.db.QueryContext(r.Context(), `
 			SELECT id,order_no,user_id,amount_minor,coin_amount,bonus_coin,status,created_at
-			FROM recharge_orders ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,
-			pageSize, (page-1)*pageSize,
+			FROM recharge_orders recharge_order
+			WHERE (?='' OR recharge_order.order_no LIKE ?
+			       OR CAST(recharge_order.user_id AS CHAR) LIKE ?)
+			  AND (? < 0 OR recharge_order.status=?)
+			ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,
+			append(filterArguments, pageSize, (page-1)*pageSize)...,
 		)
 	} else {
+		err = h.db.QueryRowContext(r.Context(), `
+			SELECT COUNT(*)
+			FROM withdraw_orders withdraw_order
+			WHERE (?='' OR withdraw_order.order_no LIKE ?
+			       OR CAST(withdraw_order.user_id AS CHAR) LIKE ?)
+			  AND (? < 0 OR withdraw_order.status=?)`,
+			filterArguments...,
+		).Scan(&total)
+		if err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取资金订单失败")
+			return
+		}
 		rows, err = h.db.QueryContext(r.Context(), `
 			SELECT id,order_no,user_id,payout_amount_minor,coin_amount,fee_coin,status,created_at
-			FROM withdraw_orders ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,
-			pageSize, (page-1)*pageSize,
+			FROM withdraw_orders withdraw_order
+			WHERE (?='' OR withdraw_order.order_no LIKE ?
+			       OR CAST(withdraw_order.user_id AS CHAR) LIKE ?)
+			  AND (? < 0 OR withdraw_order.status=?)
+			ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,
+			append(filterArguments, pageSize, (page-1)*pageSize)...,
 		)
 	}
 	if err != nil {
@@ -627,7 +766,8 @@ func (h *Handler) listSimpleOrders(w http.ResponseWriter, r *http.Request, order
 			return
 		}
 		item := map[string]any{
-			"id": id, "order_no": orderNo, "user_id": userID, "amount_minor": amountMinor,
+			"id": apiDecimalID(id), "order_no": orderNo,
+			"user_id": apiDecimalID(userID), "amount_minor": amountMinor,
 			"coin_amount": coinAmount, "status": status, "created_at": createdAt.Unix(),
 		}
 		if orderType == "recharge" {
@@ -637,8 +777,13 @@ func (h *Handler) listSimpleOrders(w http.ResponseWriter, r *http.Request, order
 		}
 		items = append(items, item)
 	}
+	if err = rows.Err(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取资金订单失败")
+		return
+	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 

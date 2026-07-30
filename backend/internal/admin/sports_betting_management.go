@@ -70,7 +70,7 @@ func (h *Handler) sportsSyncStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logs = append(logs, map[string]any{
-			"id": id, "sync_type": syncType, "source": source, "status": status,
+			"id": apiDecimalID(id), "sync_type": syncType, "source": source, "status": status,
 			"received_count": received, "changed_count": changed,
 			"error_message": errorMessage, "created_at": createdAt.Unix(),
 		})
@@ -101,7 +101,24 @@ func (h *Handler) listSportsMatches(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "赛事状态筛选无效")
 		return
 	}
-	likeQuery := "%" + query + "%"
+	likeQuery := "%" + escapeLike(query) + "%"
+	filterArguments := []any{
+		status, status,
+		query, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM sports_matches match_row
+		WHERE (?='' OR match_row.match_status=?)
+		  AND (?='' OR CAST(match_row.id AS CHAR) LIKE ?
+		       OR match_row.competition LIKE ? OR match_row.home_name LIKE ?
+		       OR match_row.away_name LIKE ? OR match_row.public_match_id LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取体育赛事失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT match_row.id,match_row.public_match_id,match_row.source,
 		       match_row.source_match_id,match_row.competition,match_row.competition_type,
@@ -120,25 +137,12 @@ func (h *Handler) listSportsMatches(w http.ResponseWriter, r *http.Request) {
 		        FROM sports_bet_orders bet_order WHERE bet_order.match_id=match_row.id)
 		FROM sports_matches match_row
 		WHERE (?='' OR match_row.match_status=?)
-		  AND (?='' OR match_row.competition LIKE ? OR match_row.home_name LIKE ?
+		  AND (?='' OR CAST(match_row.id AS CHAR) LIKE ?
+		       OR match_row.competition LIKE ? OR match_row.home_name LIKE ?
 		       OR match_row.away_name LIKE ? OR match_row.public_match_id LIKE ?)
-		  AND (
-			  match_row.source<>'api-football'
-			  OR EXISTS (
-				  SELECT 1
-				  FROM sports_markets visible_market
-				  JOIN sports_market_options visible_option
-				    ON visible_option.market_id=visible_market.id
-				   AND visible_option.status=1
-				   AND visible_option.odds_scaled>1000000
-				  WHERE visible_market.match_id=match_row.id
-				    AND visible_market.status=1
-			  )
-		  )
 		ORDER BY match_row.kickoff_at DESC,match_row.id DESC
 		LIMIT ? OFFSET ?`,
-		status, status, query, likeQuery, likeQuery, likeQuery, likeQuery,
-		pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取体育赛事失败")
@@ -161,7 +165,7 @@ func (h *Handler) listSportsMatches(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "public_match_id": publicID, "source": source,
+			"id": apiDecimalID(id), "public_match_id": publicID, "source": source,
 			"source_match_id": sourceMatchID, "competition": competition,
 			"competition_type": competitionType, "home_name": homeName, "away_name": awayName,
 			"kickoff_at": kickoffAt.Unix(), "bet_close_at": betCloseAt.Unix(),
@@ -177,7 +181,8 @@ func (h *Handler) listSportsMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
@@ -216,7 +221,9 @@ func (h *Handler) createSportsMatch(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录体育审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": id, "public_match_id": publicID})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(id), "public_match_id": publicID,
+	})
 }
 
 func (h *Handler) updateSportsMatch(w http.ResponseWriter, r *http.Request) {
@@ -240,16 +247,22 @@ func (h *Handler) updateSportsMatch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var beforeStatus string
-	var beforeBetStatus, beforeHomeScore, beforeAwayScore int
+	var beforeBetStatus, beforeHomeScore, beforeAwayScore, settleStatus int
 	if err = tx.QueryRowContext(r.Context(), `
-		SELECT match_status,bet_status,home_score,away_score
+		SELECT match_status,bet_status,home_score,away_score,settle_status
 		FROM sports_matches WHERE id=? FOR UPDATE`,
 		matchID,
-	).Scan(&beforeStatus, &beforeBetStatus, &beforeHomeScore, &beforeAwayScore); errors.Is(err, sql.ErrNoRows) {
+	).Scan(
+		&beforeStatus, &beforeBetStatus, &beforeHomeScore, &beforeAwayScore, &settleStatus,
+	); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "赛事不存在")
 		return
 	} else if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新赛事失败")
+		return
+	}
+	if settleStatus != 0 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "赛事已提交结算，不可再修改")
 		return
 	}
 	if _, err = tx.ExecContext(r.Context(), `
@@ -281,7 +294,9 @@ func (h *Handler) updateSportsMatch(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新赛事失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": matchID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(matchID), "updated": true,
+	})
 }
 
 func (h *Handler) listSportsMarkets(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +341,7 @@ func (h *Handler) listSportsMarkets(w http.ResponseWriter, r *http.Request) {
 		market, found := byID[marketID]
 		if !found {
 			market = map[string]any{
-				"id": marketID, "market_code": marketCode, "name": marketName,
+				"id": apiDecimalID(marketID), "market_code": marketCode, "name": marketName,
 				"settlement_rule": settlementRule, "status": marketStatus,
 				"sort_order": sortOrder, "options": []map[string]any{},
 			}
@@ -336,7 +351,8 @@ func (h *Handler) listSportsMarkets(w http.ResponseWriter, r *http.Request) {
 		if optionID.Valid {
 			options := market["options"].([]map[string]any)
 			market["options"] = append(options, map[string]any{
-				"id": optionID.Int64, "option_code": optionCode.String, "name": optionName.String,
+				"id": apiDecimalID(optionID.Int64), "option_code": optionCode.String,
+				"name":        optionName.String,
 				"odds_scaled": oddsScaled.Int64, "result": optionResult.Int64,
 				"status": optionStatus.Int64,
 			})
@@ -346,17 +362,19 @@ func (h *Handler) listSportsMarkets(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取体育盘口失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"match_id": matchID, "items": markets})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"match_id": apiDecimalID(matchID), "items": markets,
+	})
 }
 
 func (h *Handler) createSportsMarket(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		MatchID        int64  `json:"match_id"`
-		MarketCode     string `json:"market_code"`
-		Name           string `json:"name"`
-		SettlementRule string `json:"settlement_rule"`
-		Status         int    `json:"status"`
-		SortOrder      int    `json:"sort_order"`
+		MatchID        decimalIDInput `json:"match_id"`
+		MarketCode     string         `json:"market_code"`
+		Name           string         `json:"name"`
+		SettlementRule string         `json:"settlement_rule"`
+		Status         int            `json:"status"`
+		SortOrder      int            `json:"sort_order"`
 		Options        []struct {
 			OptionCode string `json:"option_code"`
 			Name       string `json:"name"`
@@ -392,19 +410,29 @@ func (h *Handler) createSportsMarket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback() //nolint:errcheck
+	var settleStatus int
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT settle_status FROM sports_matches WHERE id=? FOR UPDATE`,
+		request.MatchID.Int64(),
+	).Scan(&settleStatus); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "赛事不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建体育盘口失败")
+		return
+	}
+	if settleStatus != 0 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "赛事已提交结算，不可新增盘口")
+		return
+	}
 	result, err := tx.ExecContext(r.Context(), `
 		INSERT INTO sports_markets(match_id,market_code,name,settlement_rule,status,sort_order)
-		SELECT ?,?,?,?,?,? FROM sports_matches WHERE id=?`,
-		request.MatchID, request.MarketCode, request.Name, request.SettlementRule,
-		request.Status, request.SortOrder, request.MatchID,
+		VALUES(?,?,?,?,?,?)`,
+		request.MatchID.Int64(), request.MarketCode, request.Name, request.SettlementRule,
+		request.Status, request.SortOrder,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "体育盘口已存在")
-		return
-	}
-	affected, _ := result.RowsAffected()
-	if affected != 1 {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "赛事不存在")
 		return
 	}
 	marketID, _ := result.LastInsertId()
@@ -427,7 +455,9 @@ func (h *Handler) createSportsMarket(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建体育盘口失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": marketID, "match_id": request.MatchID})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(marketID), "match_id": apiDecimalID(request.MatchID.Int64()),
+	})
 }
 
 func (h *Handler) updateSportsOption(w http.ResponseWriter, r *http.Request) {
@@ -449,11 +479,59 @@ func (h *Handler) updateSportsOption(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "盘口选项参数无效")
 		return
 	}
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新盘口选项失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var marketID, matchID int64
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT market_option.market_id,market.match_id
+		FROM sports_market_options market_option
+		JOIN sports_markets market ON market.id=market_option.market_id
+		WHERE market_option.id=?`,
+		optionID,
+	).Scan(&marketID, &matchID); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "盘口选项不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新盘口选项失败")
+		return
+	}
+	var settleStatus int
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT settle_status FROM sports_matches WHERE id=? FOR UPDATE`,
+		matchID,
+	).Scan(&settleStatus); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "体育赛事不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新盘口选项失败")
+		return
+	}
+	if settleStatus != 0 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "赛事已提交结算，盘口选项不可再修改")
+		return
+	}
+	var lockedMarketID int64
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT id FROM sports_markets WHERE id=? AND match_id=? FOR UPDATE`,
+		marketID, matchID,
+	).Scan(&lockedMarketID); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "体育盘口不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新盘口选项失败")
+		return
+	}
 	var beforeOdds int64
 	var beforeResult, beforeStatus int
-	if err = h.db.QueryRowContext(r.Context(), `
-		SELECT odds_scaled,result,status FROM sports_market_options WHERE id=?`,
-		optionID,
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT odds_scaled,result,status
+		FROM sports_market_options
+		WHERE id=? AND market_id=? FOR UPDATE`,
+		optionID, marketID,
 	).Scan(&beforeOdds, &beforeResult, &beforeStatus); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "盘口选项不存在")
 		return
@@ -461,7 +539,24 @@ func (h *Handler) updateSportsOption(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新盘口选项失败")
 		return
 	}
-	if _, err = h.db.ExecContext(r.Context(), `
+	if beforeStatus == 1 && request.Status == 0 {
+		var unsettledBets int
+		if err = tx.QueryRowContext(r.Context(), `
+			SELECT COUNT(*)
+			FROM sports_bet_items bet_item
+			JOIN sports_bet_orders bet_order ON bet_order.id=bet_item.order_id
+			WHERE bet_item.option_id=? AND bet_order.status=0`,
+			optionID,
+		).Scan(&unsettledBets); err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "检查选项投注失败")
+			return
+		}
+		if unsettledBets > 0 {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "选项已有未结投注，不可停用")
+			return
+		}
+	}
+	if _, err = tx.ExecContext(r.Context(), `
 		UPDATE sports_market_options
 		SET odds_scaled=?,result=?,status=?,source_updated_at=CURRENT_TIMESTAMP(3)
 		WHERE id=?`,
@@ -471,14 +566,20 @@ func (h *Handler) updateSportsOption(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = auditAdmin(
-		r.Context(), h.db, r, "sports.option.update", "sports_option", optionID,
+		r.Context(), tx, r, "sports.option.update", "sports_option", optionID,
 		map[string]any{"odds_scaled": beforeOdds, "result": beforeResult, "status": beforeStatus},
 		request,
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录体育审计失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": optionID, "updated": true})
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新盘口选项失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(optionID), "updated": true,
+	})
 }
 
 func (h *Handler) markSportsSettlementReady(w http.ResponseWriter, r *http.Request) {
@@ -505,8 +606,12 @@ func (h *Handler) markSportsSettlementReady(w http.ResponseWriter, r *http.Reque
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "提交体育结算失败")
 		return
 	}
-	if settleStatus == 2 {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "赛事已经结算")
+	if settleStatus != 0 {
+		message := "赛事已经提交结算"
+		if settleStatus == 2 {
+			message = "赛事已经结算"
+		}
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, message)
 		return
 	}
 	if matchStatus != "FT" && matchStatus != "CANCELLED" {
@@ -516,10 +621,11 @@ func (h *Handler) markSportsSettlementReady(w http.ResponseWriter, r *http.Reque
 	if matchStatus == "FT" {
 		var pendingOptions int
 		if err = tx.QueryRowContext(r.Context(), `
-			SELECT COUNT(*)
-			FROM sports_market_options market_option
-			JOIN sports_markets market ON market.id=market_option.market_id
-			WHERE market.match_id=? AND market.status=1 AND market_option.result=0`,
+			SELECT COUNT(DISTINCT market_option.id)
+			FROM sports_bet_orders bet_order
+			JOIN sports_bet_items bet_item ON bet_item.order_id=bet_order.id
+			JOIN sports_market_options market_option ON market_option.id=bet_item.option_id
+			WHERE bet_order.match_id=? AND bet_order.status=0 AND market_option.result=0`,
 			matchID,
 		).Scan(&pendingOptions); err != nil {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "检查盘口结果失败")
@@ -550,7 +656,7 @@ func (h *Handler) markSportsSettlementReady(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"id": matchID, "settle_status": 1, "queued": true,
+		"id": apiDecimalID(matchID), "settle_status": 1, "queued": true,
 	})
 }
 
@@ -605,7 +711,7 @@ func (h *Handler) bettingDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"user_id": userID, "summary": summary,
+		"user_id": apiDecimalID(userID), "summary": summary,
 		"lottery_orders": lotteryOrders, "sports_orders": sportsOrders, "game_orders": gameOrders,
 	})
 }
@@ -647,7 +753,8 @@ func (h *Handler) bettingLotteryOrders(r *http.Request, userID int64, limit int)
 			return nil, err
 		}
 		items = append(items, map[string]any{
-			"id": id, "order_no": orderNo, "user_id": rowUserID, "nickname": nickname,
+			"id": apiDecimalID(id), "order_no": orderNo,
+			"user_id": apiDecimalID(rowUserID), "nickname": nickname,
 			"event": gameName + " · " + issueNo, "total_bet": totalBet,
 			"total_payout": totalPayout, "status": status, "created_at": createdAt.Unix(),
 		})
@@ -685,7 +792,8 @@ func (h *Handler) bettingSportsOrders(r *http.Request, userID int64, limit int) 
 			return nil, err
 		}
 		items = append(items, map[string]any{
-			"id": id, "order_no": orderNo, "user_id": rowUserID, "nickname": nickname,
+			"id": apiDecimalID(id), "order_no": orderNo,
+			"user_id": apiDecimalID(rowUserID), "nickname": nickname,
 			"event":     competition + " · " + homeName + " VS " + awayName,
 			"total_bet": totalBet, "total_payout": totalPayout,
 			"status": status, "created_at": createdAt.Unix(),
@@ -731,7 +839,8 @@ func (h *Handler) bettingGameOrders(r *http.Request, userID int64, limit int) ([
 			event += " · " + sessionID.String
 		}
 		items = append(items, map[string]any{
-			"id": id, "order_no": orderNo, "user_id": rowUserID, "nickname": nickname,
+			"id": apiDecimalID(id), "order_no": orderNo,
+			"user_id": apiDecimalID(rowUserID), "nickname": nickname,
 			"event": event, "total_bet": totalBet, "total_payout": totalPayout,
 			"status": status, "created_at": createdAt.Unix(),
 		})

@@ -57,13 +57,17 @@ body {
 /* Interaction rule: every button, span, tag and badge centers its direct content. */
 button,
 span,
+tag,
 .tag,
 .badge,
 .status-tag,
 .priority-tag,
 .profile-tag,
 .section-badge,
-.unread-badge {
+.unread-badge,
+button *,
+tag *,
+.tag * {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -684,6 +688,39 @@ p {
   overscroll-behavior: contain;
 }
 
+.conversation-pagination {
+  display: flex;
+  flex: none;
+  min-height: 50px;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.conversation-total,
+.conversation-page {
+  min-height: 26px;
+  color: var(--ink-500);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.conversation-page-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+}
+
+.conversation-page-actions .compact-button {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
 .conversation-card {
   width: 100%;
   min-height: 106px;
@@ -1066,6 +1103,26 @@ p {
   padding: 22px clamp(18px, 3vw, 42px);
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+}
+
+.message-history-control {
+  display: flex;
+  min-height: 34px;
+  gap: 9px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 15px;
+}
+
+.message-history-count {
+  min-height: 28px;
+  color: var(--ink-400);
+  font-size: 10px;
+}
+
+.message-history-button {
+  min-width: 118px;
+  min-height: 30px;
 }
 
 .date-separator,

@@ -14,8 +14,31 @@ import (
 func (h *Handler) listIMConversations(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := pageParams(r)
 	conversationType, _ := strconv.Atoi(r.URL.Query().Get("type"))
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		status, _ = strconv.Atoi(rawStatus)
+	}
 	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
 	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		conversationType, conversationType,
+		status, status,
+		keyword, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM im_conversations conversation
+		LEFT JOIN im_groups group_info ON group_info.conversation_id=conversation.id
+		WHERE (?=0 OR conversation.conversation_type=?)
+		  AND (? < 0 OR conversation.status=?)
+		  AND (?='' OR conversation.id LIKE ? OR conversation.title LIKE ?
+		       OR group_info.group_no LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取 IM 会话失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT conversation.id,conversation.conversation_type,conversation.title,
 		       conversation.message_seq,conversation.status,conversation.created_by,
@@ -29,11 +52,11 @@ func (h *Handler) listIMConversations(w http.ResponseWriter, r *http.Request) {
 		FROM im_conversations conversation
 		LEFT JOIN im_groups group_info ON group_info.conversation_id=conversation.id
 		WHERE (?=0 OR conversation.conversation_type=?)
+		  AND (? < 0 OR conversation.status=?)
 		  AND (?='' OR conversation.id LIKE ? OR conversation.title LIKE ? OR group_info.group_no LIKE ?)
 		ORDER BY conversation.updated_at DESC,conversation.id DESC
 		LIMIT ? OFFSET ?`,
-		conversationType, conversationType, keyword, like, like, like,
-		pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取 IM 会话失败")
@@ -57,9 +80,11 @@ func (h *Handler) listIMConversations(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, map[string]any{
 			"id": id, "conversation_type": conversationTypeValue, "title": title,
-			"message_seq": messageSeq, "status": status, "created_by": createdBy,
-			"group_no": groupNo, "owner_user_id": ownerUserID, "member_count": memberCount,
-			"max_members": maxMembers, "all_muted": allMuted == 1,
+			"message_seq": messageSeq, "status": status,
+			"created_by": apiDecimalID(createdBy),
+			"group_no":   groupNo, "owner_user_id": apiDecimalID(ownerUserID),
+			"member_count": memberCount,
+			"max_members":  maxMembers, "all_muted": allMuted == 1,
 			"dissolved_at": nullTime(dissolvedAt),
 			"created_at":   createdAt.Unix(), "updated_at": updatedAt.Unix(),
 		})
@@ -69,7 +94,8 @@ func (h *Handler) listIMConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
@@ -108,7 +134,8 @@ func (h *Handler) listIMMembers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"user_id": userID, "nickname": nickname, "role": role, "member_status": status,
+			"user_id": apiDecimalID(userID), "nickname": nickname,
+			"role": role, "member_status": status,
 			"mute_until": nullTime(muteUntil), "last_read_seq": lastReadSeq,
 			"joined_at": joinedAt.Unix(), "left_at": nullTime(leftAt),
 		})
@@ -123,6 +150,34 @@ func (h *Handler) listIMMembers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listIMMessages(w http.ResponseWriter, r *http.Request) {
 	conversationID := strings.TrimSpace(r.PathValue("id"))
 	page, pageSize := pageParams(r)
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	messageType, _ := strconv.Atoi(r.URL.Query().Get("type"))
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		status, _ = strconv.Atoi(rawStatus)
+	}
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		conversationID,
+		messageType, messageType,
+		status, status,
+		keyword, like, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM im_messages message
+		LEFT JOIN users user ON user.id=message.sender_user_id
+		WHERE message.conversation_id=?
+		  AND (?=0 OR message.message_type=?)
+		  AND (? < 0 OR message.status=?)
+		  AND (?='' OR message.id LIKE ? OR message.text_content LIKE ?
+		       OR user.username LIKE ? OR user.nickname LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取 IM 消息失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT message.id,message.sequence,message.sender_user_id,
 		       COALESCE(NULLIF(user.nickname,''),user.username,'已注销用户'),
@@ -131,9 +186,13 @@ func (h *Handler) listIMMessages(w http.ResponseWriter, r *http.Request) {
 		FROM im_messages message
 		LEFT JOIN users user ON user.id=message.sender_user_id
 		WHERE message.conversation_id=?
+		  AND (?=0 OR message.message_type=?)
+		  AND (? < 0 OR message.status=?)
+		  AND (?='' OR message.id LIKE ? OR message.text_content LIKE ?
+		       OR user.username LIKE ? OR user.nickname LIKE ?)
 		ORDER BY message.sequence DESC
 		LIMIT ? OFFSET ?`,
-		conversationID, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取 IM 消息失败")
@@ -156,9 +215,10 @@ func (h *Handler) listIMMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "sequence": sequence, "sender_user_id": senderUserID,
-			"sender_name": senderName, "message_type": messageType, "text_content": textContent,
-			"asset_id": assetID, "metadata": string(metadata), "status": status,
+			"id": id, "sequence": sequence,
+			"sender_user_id": apiDecimalID(senderUserID),
+			"sender_name":    senderName, "message_type": messageType, "text_content": textContent,
+			"asset_id": apiDecimalID(assetID), "metadata": string(metadata), "status": status,
 			"created_at": createdAt.Unix(), "revoked_at": nullTime(revokedAt),
 		})
 	}
@@ -167,7 +227,8 @@ func (h *Handler) listIMMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }
 
@@ -266,8 +327,11 @@ func (h *Handler) moderateIMMember(w http.ResponseWriter, r *http.Request) {
 	}
 	if err = auditAdmin(
 		r.Context(), tx, r, "im.member."+request.Action, "im_conversation", conversationID,
-		map[string]any{"user_id": userID, "role": role, "status": status},
-		map[string]any{"user_id": userID, "action": request.Action, "duration_seconds": request.DurationSeconds},
+		map[string]any{"user_id": apiDecimalID(userID), "role": role, "status": status},
+		map[string]any{
+			"user_id": apiDecimalID(userID), "action": request.Action,
+			"duration_seconds": request.DurationSeconds,
+		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录 IM 审计失败")
 		return
@@ -277,7 +341,8 @@ func (h *Handler) moderateIMMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"conversation_id": conversationID, "user_id": userID, "action": request.Action,
+		"conversation_id": conversationID, "user_id": apiDecimalID(userID),
+		"action":     request.Action,
 		"mute_until": muteUntil,
 	})
 }

@@ -3,11 +3,14 @@ package lottery
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -71,6 +74,22 @@ type betOption struct {
 	OddsScaled int64
 	Amount     int64
 }
+
+type lockedBetOption struct {
+	PlayID     int64
+	Status     int
+	OddsScaled int64
+}
+
+const (
+	placeBetTraceLockWaitSeconds = 10
+	placeBetCleanupTimeout       = 5 * time.Second
+)
+
+// Each distributed trace lock owns one dedicated sql.Conn while PlaceBet
+// creates its hold and order. Keep enough pool capacity available for the
+// actual transactions even under a burst of unrelated bets.
+var placeBetTraceLockSlots = make(chan struct{}, 16)
 
 func New(db *sql.DB, walletService *wallet.Service, mediaBaseURL string) *Service {
 	return &Service{
@@ -338,6 +357,23 @@ func (s *Service) PlaceBet(ctx context.Context, request BetRequest) (map[string]
 		return nil, err
 	}
 
+	unlockTrace, err := s.lockBetTrace(ctx, request.UserID, request.ClientTraceID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockTrace()
+	// Another request may have completed this trace while the catalog snapshot
+	// above was being validated. Recheck only after acquiring the distributed
+	// trace lock, before touching the wallet.
+	if existing, lookupErr := s.orderByTrace(ctx, request.UserID, request.ClientTraceID); lookupErr == nil {
+		return existing, nil
+	} else if !errors.Is(lookupErr, sql.ErrNoRows) {
+		return nil, lookupErr
+	}
+	orderNo, err := idgen.New()
+	if err != nil {
+		return nil, err
+	}
 	hold, err := s.wallet.PlaceHold(ctx, wallet.HoldRequest{
 		UserID: request.UserID, Amount: totalBet,
 		BusinessType: "lottery_bet", BusinessID: request.ClientTraceID,
@@ -350,22 +386,34 @@ func (s *Service) PlaceBet(ctx context.Context, request BetRequest) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	releaseFailedHold := func() {
-		_, _ = s.wallet.ReleaseHold(ctx, hold.HoldNo, "彩票订单创建失败退回", map[string]any{
-			"client_trace_id": request.ClientTraceID,
-		})
+	if hold.UserID != request.UserID ||
+		hold.BusinessType != "lottery_bet" ||
+		hold.BusinessID != request.ClientTraceID ||
+		hold.Amount != totalBet ||
+		hold.Status != 0 {
+		return nil, &Error{Code: 1001, Message: "客户端订单号已失效，请更换后重试"}
 	}
-	orderNo, err := idgen.New()
-	if err != nil {
-		releaseFailedHold()
-		return nil, err
+	failAfterHold := func(failure error) (map[string]any, error) {
+		existing, cleanupErr := s.recoverOrderOrReleaseHold(ctx, request, hold)
+		if existing != nil {
+			return existing, nil
+		}
+		if cleanupErr != nil {
+			return nil, errors.Join(failure, fmt.Errorf("recover lottery bet hold: %w", cleanupErr))
+		}
+		return nil, failure
 	}
 	insertTx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		releaseFailedHold()
-		return nil, err
+		return failAfterHold(err)
 	}
 	defer insertTx.Rollback() //nolint:errcheck
+	if err = s.revalidateBetForInsert(
+		ctx, insertTx, gameID, request.IssueID, totalBet, options,
+	); err != nil {
+		_ = insertTx.Rollback()
+		return failAfterHold(err)
+	}
 	result, err := insertTx.ExecContext(ctx, `
 		INSERT INTO lottery_bet_orders
 			(order_no,user_id,game_id,issue_id,hold_no,total_bet,status,client_trace_id)
@@ -376,10 +424,10 @@ func (s *Service) PlaceBet(ctx context.Context, request BetRequest) (map[string]
 		var mysqlErr *mysqlDriver.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 			_ = insertTx.Rollback()
-			return s.orderByTrace(ctx, request.UserID, request.ClientTraceID)
+			return failAfterHold(err)
 		}
-		releaseFailedHold()
-		return nil, err
+		_ = insertTx.Rollback()
+		return failAfterHold(err)
 	}
 	orderID, _ := result.LastInsertId()
 	for _, option := range options {
@@ -390,18 +438,269 @@ func (s *Service) PlaceBet(ctx context.Context, request BetRequest) (map[string]
 			orderID, option.PlayID, option.ID, option.Amount, option.OddsScaled,
 		); err != nil {
 			_ = insertTx.Rollback()
-			releaseFailedHold()
-			return nil, err
+			return failAfterHold(err)
 		}
 	}
 	if err = insertTx.Commit(); err != nil {
-		if existing, lookupErr := s.orderByTrace(ctx, request.UserID, request.ClientTraceID); lookupErr == nil {
-			return existing, nil
-		}
-		releaseFailedHold()
-		return nil, err
+		_ = insertTx.Rollback()
+		return failAfterHold(err)
 	}
 	return s.orderByID(ctx, orderID)
+}
+
+func (s *Service) lockBetTrace(
+	ctx context.Context,
+	userID int64,
+	traceID string,
+) (func(), error) {
+	select {
+	case placeBetTraceLockSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	releaseSlot := true
+	defer func() {
+		if releaseSlot {
+			<-placeBetTraceLockSlots
+		}
+	}()
+
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lockName := placeBetTraceLockName(userID, traceID)
+	var acquired sql.NullInt64
+	if err = conn.QueryRowContext(
+		ctx,
+		"SELECT GET_LOCK(?,?)",
+		lockName,
+		placeBetTraceLockWaitSeconds,
+	).Scan(&acquired); err != nil {
+		discardSQLConn(conn)
+		_ = conn.Close()
+		return nil, err
+	}
+	if !acquired.Valid || acquired.Int64 != 1 {
+		_ = conn.Close()
+		return nil, &Error{Code: 1001, Message: "订单正在处理中，请稍后重试"}
+	}
+	releaseSlot = false
+	return func() {
+		defer func() {
+			_ = conn.Close()
+			<-placeBetTraceLockSlots
+		}()
+		releaseCtx, cancel := context.WithTimeout(context.Background(), placeBetCleanupTimeout)
+		defer cancel()
+		var released sql.NullInt64
+		releaseErr := conn.QueryRowContext(
+			releaseCtx,
+			"SELECT RELEASE_LOCK(?)",
+			lockName,
+		).Scan(&released)
+		if releaseErr != nil || !released.Valid || released.Int64 != 1 {
+			// Returning a physical connection with an unresolved named lock to
+			// database/sql would leak that lock to an unrelated future request.
+			discardSQLConn(conn)
+		}
+	}, nil
+}
+
+func placeBetTraceLockName(userID int64, traceID string) string {
+	sum := sha256.Sum256([]byte(strconv.FormatInt(userID, 10) + "\x00" + traceID))
+	return fmt.Sprintf("lottery-bet:%x", sum[:24])
+}
+
+func discardSQLConn(conn *sql.Conn) {
+	_ = conn.Raw(func(any) error {
+		return driver.ErrBadConn
+	})
+}
+
+func (s *Service) revalidateBetForInsert(
+	ctx context.Context,
+	tx *sql.Tx,
+	gameID int64,
+	issueID int64,
+	totalBet int64,
+	options []betOption,
+) error {
+	var gameStatus int
+	var minBet, maxBet int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status,min_bet,max_bet FROM lottery_games WHERE id=? FOR UPDATE`,
+		gameID,
+	).Scan(&gameStatus, &minBet, &maxBet); errors.Is(err, sql.ErrNoRows) {
+		return &Error{Code: 1003, Message: "游戏不存在或维护中"}
+	} else if err != nil {
+		return err
+	}
+
+	var issueStatus int
+	var saleClose time.Time
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status,sale_close_at FROM lottery_issues
+		WHERE id=? AND game_id=? FOR UPDATE`,
+		issueID, gameID,
+	).Scan(&issueStatus, &saleClose); errors.Is(err, sql.ErrNoRows) {
+		return &Error{Code: 1004, Message: "期号不存在"}
+	} else if err != nil {
+		return err
+	}
+
+	playIDs := make([]int64, 0, len(options))
+	seenPlays := make(map[int64]struct{}, len(options))
+	for _, option := range options {
+		if _, exists := seenPlays[option.PlayID]; exists {
+			continue
+		}
+		seenPlays[option.PlayID] = struct{}{}
+		playIDs = append(playIDs, option.PlayID)
+	}
+	sort.Slice(playIDs, func(left, right int) bool {
+		return playIDs[left] < playIDs[right]
+	})
+	playStatuses := make(map[int64]int, len(playIDs))
+	for _, playID := range playIDs {
+		var status int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT status FROM lottery_plays
+			WHERE id=? AND game_id=? FOR UPDATE`,
+			playID, gameID,
+		).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+			return &Error{Code: 1007, Message: "玩法选项已失效"}
+		} else if err != nil {
+			return err
+		}
+		playStatuses[playID] = status
+	}
+
+	sortedOptions := append([]betOption(nil), options...)
+	sort.Slice(sortedOptions, func(left, right int) bool {
+		return sortedOptions[left].ID < sortedOptions[right].ID
+	})
+	lockedOptions := make(map[int64]lockedBetOption, len(sortedOptions))
+	for _, expected := range sortedOptions {
+		var current lockedBetOption
+		if err := tx.QueryRowContext(ctx, `
+			SELECT play_id,status,odds_scaled FROM lottery_options
+			WHERE id=? FOR UPDATE`,
+			expected.ID,
+		).Scan(
+			&current.PlayID, &current.Status, &current.OddsScaled,
+		); errors.Is(err, sql.ErrNoRows) {
+			return &Error{Code: 1007, Message: "玩法选项已失效"}
+		} else if err != nil {
+			return err
+		}
+		lockedOptions[expected.ID] = current
+	}
+	return validateRevalidatedBetState(
+		gameStatus,
+		minBet,
+		maxBet,
+		totalBet,
+		issueStatus,
+		saleClose,
+		s.now(),
+		options,
+		playStatuses,
+		lockedOptions,
+	)
+}
+
+func validateRevalidatedBetState(
+	gameStatus int,
+	minBet int64,
+	maxBet int64,
+	totalBet int64,
+	issueStatus int,
+	saleClose time.Time,
+	now time.Time,
+	options []betOption,
+	playStatuses map[int64]int,
+	lockedOptions map[int64]lockedBetOption,
+) error {
+	if gameStatus != 1 {
+		return &Error{Code: 1003, Message: "游戏不存在或维护中"}
+	}
+	if issueStatus != 1 || !saleClose.After(now) {
+		return &Error{Code: 1005, Message: "本期已封盘"}
+	}
+	if totalBet < minBet {
+		return &Error{Code: 1009, Message: "下注金额低于最低限制"}
+	}
+	if totalBet > maxBet {
+		return &Error{Code: 1010, Message: "下注金额超过单次限制"}
+	}
+	for _, expected := range options {
+		if playStatuses[expected.PlayID] != 1 {
+			return &Error{Code: 1007, Message: "玩法选项已失效"}
+		}
+		current, exists := lockedOptions[expected.ID]
+		if !exists || current.PlayID != expected.PlayID || current.Status != 1 {
+			return &Error{Code: 1007, Message: "玩法选项已失效"}
+		}
+		if current.OddsScaled != expected.OddsScaled {
+			return &Error{Code: 1008, Message: "赔率已变化，请重新确认"}
+		}
+	}
+	return nil
+}
+
+func (s *Service) recoverOrderOrReleaseHold(
+	ctx context.Context,
+	request BetRequest,
+	hold wallet.Hold,
+) (map[string]any, error) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), placeBetCleanupTimeout)
+	defer cancel()
+
+	existing, err := s.orderByTrace(cleanupCtx, request.UserID, request.ClientTraceID)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		// A lookup failure makes order persistence uncertain. Never release a
+		// hold when a committed order might already reference it.
+		return nil, err
+	}
+
+	var orderID, linkedUserID int64
+	var linkedTraceID string
+	err = s.db.QueryRowContext(cleanupCtx, `
+		SELECT id,user_id,client_trace_id
+		FROM lottery_bet_orders WHERE hold_no=?`,
+		hold.HoldNo,
+	).Scan(&orderID, &linkedUserID, &linkedTraceID)
+	if err == nil {
+		if linkedUserID != request.UserID || linkedTraceID != request.ClientTraceID {
+			return nil, wallet.ErrIdempotencyReuse
+		}
+		return s.orderByID(cleanupCtx, orderID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	_, err = s.wallet.ReleaseHold(
+		cleanupCtx,
+		hold.HoldNo,
+		"彩票订单创建失败退回",
+		map[string]any{"client_trace_id": request.ClientTraceID},
+	)
+	if err == nil {
+		return nil, nil
+	}
+	// If releasing raced with an uncertain commit from an older process,
+	// preserve the accepted order instead of reporting a false failure.
+	if existing, lookupErr := s.orderByTrace(
+		cleanupCtx, request.UserID, request.ClientTraceID,
+	); lookupErr == nil {
+		return existing, nil
+	}
+	return nil, err
 }
 
 func (s *Service) Orders(

@@ -5,7 +5,15 @@
   const description = document.getElementById("page-description");
   const topTitle = document.getElementById("top-title");
   const actions = document.getElementById("page-actions");
-  const state = { me: null, route: "", cache: {} };
+  const state = {
+    me: null,
+    route: "",
+    cache: {},
+    tableSequence: 0,
+    tables: {},
+    tablePreferences: {},
+    routeLoadSerial: 0
+  };
 
   const pages = {
     dashboard: ["数据统计", "平台概览", "关键业务数据、资金与待处理事项"],
@@ -43,6 +51,15 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  function safeHTTPURL(value) {
+    try {
+      const url = new URL(String(value || "").trim());
+      return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
   function formatNumber(value) {
     return new Intl.NumberFormat("zh-CN").format(Number(value || 0));
   }
@@ -51,6 +68,34 @@
     const numeric = Number(value || 0);
     if (!numeric) return "—";
     return new Date(numeric * 1000).toLocaleString("zh-CN", { hour12: false });
+  }
+
+  function utf8ByteLength(value) {
+    if (typeof TextEncoder === "function") {
+      return new TextEncoder().encode(String(value || "")).length;
+    }
+    return unescape(encodeURIComponent(String(value || ""))).length;
+  }
+
+  function decimalEntityID(value, allowZero) {
+    const normalized = String(value === undefined || value === null ? "" : value).trim();
+    const pattern = allowZero ? /^(0|[1-9]\d*)$/ : /^[1-9]\d*$/;
+    if (!pattern.test(normalized)) return "";
+    const unsigned = normalized.replace(/^0+(?=\d)/, "");
+    const maximum = "9223372036854775807";
+    if (unsigned.length > maximum.length ||
+        (unsigned.length === maximum.length && unsigned > maximum)) {
+      return "";
+    }
+    return unsigned;
+  }
+
+  function requireDecimalEntityID(value, label, allowZero) {
+    const normalized = decimalEntityID(value, Boolean(allowZero));
+    if (!normalized) {
+      throw new Error((label || "编号") + "格式无效");
+    }
+    return normalized;
   }
 
   function statusTag(value, labels) {
@@ -118,6 +163,16 @@
     }
   }
 
+  async function mutateAndRefresh(path, options, successMessage) {
+    const result = await api(path, options);
+    notify(successMessage || "操作成功");
+    const refreshed = await loadRoute();
+    if (!refreshed) {
+      notify("操作已成功，但列表刷新失败，请点击“刷新数据”重试", true);
+    }
+    return result;
+  }
+
   function errorPanel(error) {
     content.innerHTML = '<div class="panel-error">' + esc(error.message || "加载失败") + "</div>";
   }
@@ -128,31 +183,353 @@
       '</p></div></div>' + body + "</section>";
   }
 
-  function table(columns, rows) {
-    if (!rows || !rows.length) {
-      return '<div class="empty-state">暂无数据</div>';
+  function stripHTML(value) {
+    return String(value || "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'");
+  }
+
+  function searchableRowText(row, columns) {
+    const rendered = columns.map((column) => {
+      if (column.label === "操作") return "";
+      try {
+        return typeof column.render === "function" ?
+          stripHTML(column.render(row)) : String(row[column.key] ?? "");
+      } catch (_) {
+        return "";
+      }
+    });
+    let serialized = "";
+    try {
+      serialized = JSON.stringify(row);
+    } catch (_) {
+      serialized = String(row);
     }
-    const head = columns.map((column) => "<th>" + esc(column.label) + "</th>").join("");
-    const body = rows.map((row) => "<tr>" + columns.map((column) => {
-      const value = typeof column.render === "function" ? column.render(row) : esc(row[column.key]);
-      return '<td class="' + (column.className || "") + '">' + value + "</td>";
-    }).join("") + "</tr>").join("");
-    return '<div class="table-wrap"><table class="admin-table"><thead><tr>' +
-      head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    return (rendered.join(" ") + " " + serialized).toLocaleLowerCase("zh-CN");
+  }
+
+  function tablePageNumbers(page, totalPages) {
+    const pages = [];
+    const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+    const end = Math.min(totalPages, Math.max(page + 2, 5));
+    for (let value = start; value <= end; value += 1) pages.push(value);
+    return pages;
+  }
+
+  function tablePreferenceKey(key, route) {
+    return String(route || state.route) + ":" + key;
+  }
+
+  function remoteTableURL(key, path, extraParams, route) {
+    const preferences = state.tablePreferences[tablePreferenceKey(key, route)] || {};
+    const params = new URLSearchParams();
+    Object.entries(extraParams || {}).forEach(([name, value]) => {
+      if (value !== undefined && value !== null && String(value) !== "") {
+        params.set(name, String(value));
+      }
+    });
+    params.set("page", String(Math.max(1, Number(preferences.page || 1))));
+    params.set("page_size", String([10, 20, 50, 100].includes(Number(preferences.pageSize)) ?
+      Number(preferences.pageSize) : 10));
+    const query = String(preferences.query || "").trim();
+    if (query) params.set("q", query);
+    return path + (path.includes("?") ? "&" : "?") + params.toString();
+  }
+
+  async function remoteTableData(key, path, extraParams) {
+    const requestRoute = state.route;
+    const preferenceKey = tablePreferenceKey(key, requestRoute);
+    const data = await api(remoteTableURL(key, path, extraParams, requestRoute));
+    const pageSize = Math.max(1, Number(data.page_size || 10));
+    const lastPage = Math.max(1, Math.ceil(Number(data.total || 0) / pageSize));
+    if (Number(data.page || 1) <= lastPage) return data;
+    const preferences = state.tablePreferences[preferenceKey] || {};
+    state.tablePreferences[preferenceKey] = Object.assign({}, preferences, { page: lastPage });
+    return api(remoteTableURL(key, path, extraParams, requestRoute));
+  }
+
+  async function fetchAllRemoteItems(path, extraParams) {
+    const items = [];
+    let page = 1;
+    while (true) {
+      const params = new URLSearchParams();
+      Object.entries(extraParams || {}).forEach(([name, value]) => {
+        if (value !== undefined && value !== null && String(value) !== "") {
+          params.set(name, String(value));
+        }
+      });
+      params.set("page", String(page));
+      params.set("page_size", "100");
+      const data = await api(path + (path.includes("?") ? "&" : "?") + params.toString());
+      const batch = Array.isArray(data.items) ? data.items : [];
+      items.push(...batch);
+      if (!data.has_more) return items;
+      page += 1;
+      if (page > 10000 || !batch.length) {
+        throw new Error("全量列表加载异常，请稍后重试");
+      }
+    }
+  }
+
+  function tableViewButton(tableID, rowIndex) {
+    return '<button type="button" class="layui-btn layui-btn-sm layui-btn-primary table-view-button" ' +
+      'data-action="table-view" data-table-id="' + esc(tableID) +
+      '" data-row-index="' + esc(rowIndex) + '">查看</button>';
+  }
+
+  function withTableViewAction(value, tableID, rowIndex) {
+    const view = tableViewButton(tableID, rowIndex);
+    const rendered = String(value || "").trim();
+    if (!rendered || rendered === "—") {
+      return '<div class="row-actions">' + view + "</div>";
+    }
+    if (/^<div class="row-actions">[\s\S]*<\/div>$/.test(rendered)) {
+      return rendered.replace(/<\/div>$/, view + "</div>");
+    }
+    return '<div class="row-actions">' + rendered + view + "</div>";
+  }
+
+  function renderTable(model) {
+    const query = String(model.query || "").trim().toLocaleLowerCase("zh-CN");
+    const indexedRows = model.rows.map((row, rowIndex) => ({ row, rowIndex }));
+    const filteredRows = model.remote ? indexedRows : query ? indexedRows.filter((item) =>
+      searchableRowText(item.row, model.columns).includes(query)) : indexedRows;
+    const total = model.remote ? Number(model.total || 0) : filteredRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / model.pageSize));
+    model.page = Math.max(1, Math.min(Number(model.page || 1), totalPages));
+    const offset = (model.page - 1) * model.pageSize;
+    const pageRows = model.remote ? filteredRows : filteredRows.slice(offset, offset + model.pageSize);
+    state.tablePreferences[model.preferenceKey] = {
+      query: model.query,
+      page: model.page,
+      pageSize: model.pageSize
+    };
+
+    const actionColumnIndex = model.columns.findIndex((column) => column.label === "操作");
+    const displayColumns = actionColumnIndex === -1 ?
+      model.columns.concat([{ label: "操作", generatedAction: true }]) : model.columns;
+    const head = displayColumns.map((column) => "<th>" + esc(column.label) + "</th>").join("");
+    const body = pageRows.length ? pageRows.map((item) => {
+      return "<tr>" + displayColumns.map((column, columnIndex) => {
+        let value;
+        if (column.generatedAction) {
+          value = '<div class="row-actions">' +
+            tableViewButton(model.id, item.rowIndex) + "</div>";
+        } else {
+          value = typeof column.render === "function" ?
+            column.render(item.row) : esc(item.row[column.key]);
+          if (columnIndex === actionColumnIndex) {
+            value = withTableViewAction(value, model.id, item.rowIndex);
+          }
+        }
+        return '<td class="' + esc(column.className || "") + '">' + value + "</td>";
+      }).join("") + "</tr>";
+    }).join("") : '<tr><td class="table-empty-cell" colspan="' +
+      esc(displayColumns.length) + '">' + (query ? "没有符合检索条件的数据" : "暂无数据") + "</td></tr>";
+
+    const pageButtons = tablePageNumbers(model.page, totalPages).map((page) =>
+      '<button type="button" class="table-page-number' + (page === model.page ? " active" : "") +
+      '" data-action="table-page" data-table-id="' + esc(model.id) + '" data-page="' +
+      esc(page) + '" aria-current="' + (page === model.page ? "page" : "false") + '">' +
+      esc(page) + "</button>").join("");
+    const from = total && pageRows.length ? offset + 1 : 0;
+    const to = total && pageRows.length ? Math.min(offset + pageRows.length, total) : 0;
+    const sizeOptions = [10, 20, 50, 100].map((size) =>
+      '<option value="' + size + '"' + (size === model.pageSize ? " selected" : "") +
+      ">" + size + "</option>").join("");
+
+    return '<div class="admin-data-table" id="' + esc(model.id) +
+      '" data-admin-table="' + esc(model.id) + '">' +
+      '<div class="table-toolbar"><label class="table-search">' +
+      '<span>检索</span><input type="search" data-table-search="' + esc(model.id) +
+      '" value="' + esc(model.query) + '" autocomplete="off" placeholder="' +
+      (model.remote ? "检索全部记录" : "检索当前已加载列表") + '" ' +
+      'aria-label="检索当前列表"></label>' +
+      '<label class="table-page-size"><span>每页</span><select data-table-page-size="' +
+      esc(model.id) + '" aria-label="每页显示数量">' + sizeOptions +
+      '</select><span>条</span></label>' +
+      '<span class="table-result-count">' + (model.remote ? "共 " : "当前已加载 ") +
+      '<strong>' + esc(total) + "</strong> 条" +
+      (query ? "（已检索）" : "") + "</span></div>" +
+      '<div class="table-wrap"><table class="admin-table"><thead><tr>' +
+      head + "</tr></thead><tbody>" + body + "</tbody></table></div>" +
+      '<div class="table-pagination"><span class="table-range">显示 ' + esc(from) +
+      " - " + esc(to) + "，共 " + esc(total) + " 条</span>" +
+      '<div class="table-page-controls">' +
+      '<button type="button" data-action="table-page" data-table-id="' + esc(model.id) +
+      '" data-page="' + esc(model.page - 1) + '"' + (model.page <= 1 ? " disabled" : "") +
+      '>上一页</button>' + pageButtons +
+      '<button type="button" data-action="table-page" data-table-id="' + esc(model.id) +
+      '" data-page="' + esc(model.page + 1) + '"' +
+      (model.page >= totalPages ? " disabled" : "") + '>下一页</button></div>' +
+      '<span class="table-page-status">第 <strong>' + esc(model.page) +
+      "</strong> / " + esc(totalPages) + " 页</span></div></div>";
+  }
+
+  function table(columns, rows, options) {
+    const config = options || {};
+    const sequence = ++state.tableSequence;
+    const stableKey = String(config.key || ("table-" + sequence));
+    const preferenceKey = tablePreferenceKey(stableKey);
+    const preferences = state.tablePreferences[preferenceKey] || {};
+    const tableID = "admin-table-" + state.route + "-" + sequence;
+    const pageSize = [10, 20, 50, 100].includes(Number(preferences.pageSize)) ?
+      Number(preferences.pageSize) :
+      [10, 20, 50, 100].includes(Number(config.pageSize)) ? Number(config.pageSize) : 10;
+    const model = {
+      id: tableID,
+      key: stableKey,
+      preferenceKey,
+      columns: Array.isArray(columns) ? columns : [],
+      rows: Array.isArray(rows) ? rows : [],
+      query: String(preferences.query || ""),
+      page: Number(preferences.page || config.page || 1),
+      pageSize,
+      total: Number(config.total ?? (Array.isArray(rows) ? rows.length : 0)),
+      hasMore: Boolean(config.hasMore),
+      remote: config.remote || null,
+      searchTimer: null,
+      requestSerial: 0
+    };
+    model.confirmed = {
+      rows: model.rows,
+      query: model.query,
+      page: model.page,
+      pageSize: model.pageSize,
+      total: model.total,
+      hasMore: model.hasMore
+    };
+    state.tables[tableID] = model;
+    return renderTable(model);
+  }
+
+  function refreshTable(tableID, focusSearch) {
+    const model = state.tables[tableID];
+    const root = document.getElementById(tableID);
+    if (!model || !root) return;
+    root.outerHTML = renderTable(model);
+    if (!focusSearch) return;
+    const input = document.querySelector('[data-table-search="' + tableID + '"]');
+    if (input) {
+      input.focus();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    }
+  }
+
+  async function loadRemoteTable(model, focusSearch) {
+    if (!model || !model.remote) return;
+    const serial = ++model.requestSerial;
+    const root = document.getElementById(model.id);
+    root?.classList.add("loading");
+    const params = Object.assign({}, model.remote.params || {}, {
+      page: model.page,
+      page_size: model.pageSize
+    });
+    const query = String(model.query || "").trim();
+    if (query) params.q = query;
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([name, value]) => {
+      if (value !== undefined && value !== null && String(value) !== "") {
+        search.set(name, String(value));
+      }
+    });
+    try {
+      const data = await api(model.remote.path +
+        (model.remote.path.includes("?") ? "&" : "?") + search.toString());
+      if (serial !== model.requestSerial) return;
+      model.rows = Array.isArray(data.items) ? data.items : [];
+      model.page = Math.max(1, Number(data.page || model.page));
+      model.pageSize = [10, 20, 50, 100].includes(Number(data.page_size)) ?
+        Number(data.page_size) : model.pageSize;
+      model.total = Number(data.total ?? model.rows.length);
+      model.hasMore = Boolean(data.has_more);
+      const lastPage = Math.max(1, Math.ceil(model.total / model.pageSize));
+      if (model.page > lastPage) {
+        model.page = lastPage;
+        await loadRemoteTable(model, focusSearch);
+        return;
+      }
+      model.confirmed = {
+        rows: model.rows,
+        query: model.query,
+        page: model.page,
+        pageSize: model.pageSize,
+        total: model.total,
+        hasMore: model.hasMore
+      };
+      if (model.remote.cacheName) {
+        state.cache[model.remote.cacheName] = model.rows;
+      }
+      refreshTable(model.id, focusSearch);
+    } catch (error) {
+      if (serial !== model.requestSerial) return;
+      Object.assign(model, model.confirmed);
+      refreshTable(model.id, focusSearch);
+      notify(error.message || "列表加载失败", true);
+    }
+  }
+
+  function openTableRowDetails(tableID, rowIndex) {
+    const model = state.tables[tableID];
+    const row = model && model.rows[Number(rowIndex)];
+    if (!model || !row) {
+      notify("该条数据已刷新，请重新打开", true);
+      return;
+    }
+    const fields = model.columns.filter((column) => column.label !== "操作").map((column) => {
+      let value;
+      try {
+        value = typeof column.render === "function" ?
+          column.render(row) : esc(row[column.key]);
+      } catch (_) {
+        value = "—";
+      }
+      return '<div class="table-detail-field"><dt>' + esc(column.label) +
+        "</dt><dd>" + (String(value).trim() || "—") + "</dd></div>";
+    }).join("");
+    let record = "";
+    try {
+      record = JSON.stringify(row, null, 2);
+    } catch (_) {
+      record = String(row);
+    }
+    const html = '<div class="table-detail-modal"><dl>' + fields +
+      '</dl><details><summary>查看完整记录</summary><pre class="json-block">' +
+      esc(record) + "</pre></details></div>";
+    if (!layer) {
+      window.alert(stripHTML(fields) + "\n\n" + record);
+      return;
+    }
+    layer.open({
+      type: 1,
+      title: "查看详情",
+      skin: "table-detail-layer",
+      area: ["720px", "min(760px, calc(100vh - 48px))"],
+      content: html,
+      btn: ["关闭"]
+    });
   }
 
   function button(label, action, id, style) {
-    return '<button class="layui-btn layui-btn-sm ' + (style || "layui-btn-primary") +
+    return '<button type="button" class="layui-btn layui-btn-sm ' + (style || "layui-btn-primary") +
       '" data-action="' + esc(action) + '" data-id="' + esc(id) + '">' + esc(label) + "</button>";
   }
 
   function userActionButtons(row) {
     const buttons = [];
     if (has("users.write")) {
+      buttons.push(button("编辑资料", "user-edit", row.id, "layui-btn-normal"));
+      buttons.push(button("重置密码", "user-password", row.id, "layui-btn-warm"));
       buttons.push(button("状态", "user-status", row.id));
       buttons.push(button("团队", "user-team", row.id));
     }
-    if (has("wallet.review")) {
+    if (has("wallet.adjust")) {
       buttons.push(button("调账", "user-wallet-adjustment", row.id, "layui-btn-normal"));
     }
     return buttons.length ? '<div class="row-actions">' + buttons.join("") + "</div>" : "—";
@@ -169,8 +546,15 @@
     actions.innerHTML = '<button class="layui-btn layui-btn-primary" data-action="refresh">刷新数据</button>';
   }
 
-  async function dashboard() {
+  function isCurrentRouteLoad(loadContext) {
+    return Boolean(loadContext &&
+      loadContext.serial === state.routeLoadSerial &&
+      loadContext.route === state.route);
+  }
+
+  async function dashboard(loadContext) {
     const data = await api("/admin/api/dashboard");
+    if (!isCurrentRouteLoad(loadContext)) return;
     const metrics = '<section class="metric-grid">' + metricLabels.map((item) =>
       '<article class="metric-card"><span>' + item[1] + "</span><strong>" +
       formatNumber(data[item[0]]) + "</strong><small>" + item[2] + "</small></article>"
@@ -184,10 +568,16 @@
     content.innerHTML = metrics + architecture;
   }
 
-  async function users() {
-    const result = await Promise.all([api("/admin/api/users?page_size=100"), api("/admin/api/teams")]);
+  async function users(loadContext) {
+    const result = await Promise.all([
+      remoteTableData("users", "/admin/api/users"),
+      remoteTableData("teams", "/admin/api/teams")
+    ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.users = result[0].items;
     state.cache.teams = result[1].items;
+    state.cache.teamOptions = null;
+    state.cache.teamOptionsPromise = null;
     if (has("users.write")) {
       actions.insertAdjacentHTML("afterbegin",
         '<button class="layui-btn" data-action="team-create">新建团队</button>');
@@ -203,25 +593,45 @@
       }) },
       { label: "注册时间", render: (row) => formatTime(row.created_at) },
       { label: "操作", render: userActionButtons }
-    ], result[0].items);
+    ], result[0].items, {
+      key: "users",
+      page: result[0].page,
+      pageSize: result[0].page_size,
+      total: result[0].total,
+      hasMore: result[0].has_more,
+      remote: { path: "/admin/api/users", cacheName: "users" }
+    });
     const teamTable = table([
       { label: "代码", render: (row) => "<strong>" + esc(row.code) + "</strong>" },
       { label: "名称", key: "name" }, { label: "成员", render: (row) => formatNumber(row.member_count) },
-      { label: "负责人", render: (row) => row.owner_user_id || "—" },
-      { label: "状态", render: (row) => statusTag(row.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) }
-    ], result[1].items);
+      { label: "负责人", render: (row) =>
+        String(row.owner_user_id || "0") === "0" ? "—" : esc(row.owner_user_id) },
+      { label: "状态", render: (row) => statusTag(row.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) },
+      { label: "操作", render: (row) => has("users.write") ?
+        button("编辑", "team-edit", row.id, "layui-btn-normal") : "—" }
+    ], result[1].items, {
+      key: "teams",
+      page: result[1].page,
+      pageSize: result[1].page_size,
+      total: result[1].total,
+      hasMore: result[1].has_more,
+      remote: { path: "/admin/api/teams", cacheName: "teams" }
+    });
     content.innerHTML = panel("用户列表", "余额、团队和账号状态", userTable) +
       panel("团队列表", "邀请码前三位即团队代码", teamTable);
   }
 
-  async function walletView() {
+  async function walletView(loadContext) {
     const result = await Promise.all([
-      api("/admin/api/wallet/ledger?page_size=30"),
-      api("/admin/api/wallet/recharges?page_size=20"),
-      api("/admin/api/wallet/withdrawals?page_size=20"),
-      api("/admin/api/wallet/adjustments?page_size=20")
+      remoteTableData("wallet-ledger", "/admin/api/wallet/ledger"),
+      remoteTableData("wallet-recharges", "/admin/api/wallet/recharges"),
+      remoteTableData("wallet-withdrawals", "/admin/api/wallet/withdrawals"),
+      remoteTableData("wallet-adjustments", "/admin/api/wallet/adjustments")
     ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.adjustments = result[3].items;
+    state.cache.recharges = result[1].items;
+    state.cache.withdrawals = result[2].items;
     if (has("wallet.review")) {
       actions.insertAdjacentHTML("afterbegin",
         '<button class="layui-btn" data-action="adjustment-create">发起调账</button>');
@@ -234,7 +644,14 @@
       { label: "业务", render: (row) => esc(row.business_type + " / " + row.business_id), className: "wrap" },
       { label: "游戏局", render: (row) => esc([row.game_code, row.venue_code, row.table_no, row.round_no].filter(Boolean).join(" · ") || "—") },
       { label: "时间", render: (row) => formatTime(row.created_at) }
-    ], result[0].items);
+    ], result[0].items, {
+      key: "wallet-ledger",
+      page: result[0].page,
+      pageSize: result[0].page_size,
+      total: result[0].total,
+      hasMore: result[0].has_more,
+      remote: { path: "/admin/api/wallet/ledger" }
+    });
     const adjustments = table([
       { label: "申请号", key: "adjustment_no" }, { label: "用户", key: "user_id" },
       { label: "金额", render: (row) => (Number(row.amount) > 0 ? "+" : "") + formatNumber(row.amount) },
@@ -245,15 +662,31 @@
       { label: "操作", render: (row) => has("wallet.review") && Number(row.status) === 0 ?
         '<div class="row-actions">' + button("通过", "adjustment-approve", row.id) +
         button("驳回", "adjustment-reject", row.id, "layui-btn-danger") + "</div>" : "—" }
-    ], result[3].items);
+    ], result[3].items, {
+      key: "wallet-adjustments",
+      page: result[3].page,
+      pageSize: result[3].page_size,
+      total: result[3].total,
+      hasMore: result[3].has_more,
+      remote: { path: "/admin/api/wallet/adjustments", cacheName: "adjustments" }
+    });
     const recharge = table([
       { label: "订单", key: "order_no" }, { label: "用户", key: "user_id" },
       { label: "金额(分)", render: (row) => formatNumber(row.amount_minor) },
       { label: "星币", render: (row) => formatNumber(row.coin_amount) },
       { label: "状态", render: (row) => statusTag(row.status, {
         0: ["已创建", "warn"], 1: ["支付中", "warn"], 2: ["已支付", "ok"], 3: ["失败", "bad"]
-      }) }
-    ], result[1].items);
+      }) },
+      { label: "操作", render: (row) => has("wallet.review") && [0, 1].includes(Number(row.status)) ?
+        button("确认入账", "recharge-mark-paid", row.id, "layui-btn-normal") : "—" }
+    ], result[1].items, {
+      key: "wallet-recharges",
+      page: result[1].page,
+      pageSize: result[1].page_size,
+      total: result[1].total,
+      hasMore: result[1].has_more,
+      remote: { path: "/admin/api/wallet/recharges", cacheName: "recharges" }
+    });
     const withdrawal = table([
       { label: "订单", key: "order_no" }, { label: "用户", key: "user_id" },
       { label: "提现星币", render: (row) => formatNumber(row.coin_amount) },
@@ -264,14 +697,22 @@
       }) },
       { label: "操作", render: (row) => has("wallet.review") && [0, 1, 2].includes(Number(row.status)) ?
         button("审核", "withdraw-review", row.id) : "—" }
-    ], result[2].items);
+    ], result[2].items, {
+      key: "wallet-withdrawals",
+      page: result[2].page,
+      pageSize: result[2].page_size,
+      total: result[2].total,
+      hasMore: result[2].has_more,
+      remote: { path: "/admin/api/wallet/withdrawals", cacheName: "withdrawals" }
+    });
     content.innerHTML = panel("资金流水", "账本不可修改；游戏流水精确到场、桌和局", ledger) +
       panel("后台调账", "申请人与审核人必须为不同管理员", adjustments) +
       '<div class="subgrid">' + panel("充值订单", "", recharge) + panel("提现订单", "", withdrawal) + "</div>";
   }
 
-  async function games() {
+  async function games(loadContext) {
     const data = await api("/admin/api/games");
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.games = data.items;
     state.cache.venues = data.venues;
     const gameTable = table([
@@ -295,8 +736,9 @@
       panel("深海猎手场次", "固定 300 桌、每桌 4 座，随机分配空座", venueTable);
   }
 
-  async function liveView() {
-    const data = await api("/admin/api/live/rooms?page_size=100");
+  async function liveView(loadContext) {
+    const data = await remoteTableData("live-rooms", "/admin/api/live/rooms");
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.live = data.items;
     if (has("live.write")) {
       actions.insertAdjacentHTML("afterbegin",
@@ -305,7 +747,12 @@
     const roomTable = table([
       { label: "直播间", render: (row) => "<strong>" + esc(row.title) + "</strong><br><small>" + esc(row.room_no) + "</small>", className: "wrap" },
       { label: "主播", render: (row) => esc(row.nickname || row.host_name) + "<br><small>ID " + esc(row.host_user_id) + "</small>" },
-      { label: "抖音房间", render: (row) => '<a href="' + esc(row.provider_page) + '" target="_blank" rel="noreferrer">' + esc(row.provider_room_id) + "</a>" },
+      { label: "抖音房间", render: (row) => {
+        const providerPage = safeHTTPURL(row.provider_page);
+        const label = row.provider_room_id || row.provider_page || "—";
+        return providerPage ? '<a href="' + esc(providerPage) +
+          '" target="_blank" rel="noopener noreferrer">' + esc(label) + "</a>" : esc(label);
+      } },
       { label: "解析", render: (row) => statusTag(row.last_resolve_status, {
         0: ["未解析", ""], 1: ["正常", "ok"], 2: ["失败", "bad"]
       }) },
@@ -313,18 +760,31 @@
         0: ["离线", "warn"], 1: ["在线", "ok"], 2: ["停用", "bad"]
       }) },
       { label: "操作", render: (row) => has("live.write") ? button("编辑", "live-edit", row.id) : "—" }
-    ], data.items);
+    ], data.items, {
+      key: "live-rooms",
+      page: data.page,
+      pageSize: data.page_size,
+      total: data.total,
+      hasMore: data.has_more,
+      remote: { path: "/admin/api/live/rooms", cacheName: "live" }
+    });
     content.innerHTML = panel("直播间列表", "数据库和接口双重限制 provider=douyin", roomTable);
   }
 
-  async function lotteryView() {
-    const data = await api("/admin/api/lottery/catalog");
+  async function lotteryView(loadContext) {
+    const result = await Promise.all([
+      api("/admin/api/lottery/catalog"),
+      remoteTableData("lottery-issues", "/admin/api/lottery/issues")
+    ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
+    const data = result[0];
+    const issueData = result[1];
     state.cache.lottery = data;
     state.cache.lotteryGames = data.games || [];
     state.cache.lotteryCategories = data.categories || [];
     state.cache.lotteryPlays = data.plays || [];
     state.cache.lotteryOptions = data.options || [];
-    state.cache.lotteryIssues = data.issues || [];
+    state.cache.lotteryIssues = issueData.items || [];
     const activeTab = state.cache.lotteryTab || "games";
     if (has("lottery.write")) {
       const actionByTab = {
@@ -339,13 +799,19 @@
       { label: "分类", key: "category_name" },
       { label: "周期", render: (row) => esc(row.issue_interval_seconds) + " 秒" },
       { label: "单注范围", render: (row) => formatNumber(row.min_bet) + " - " + formatNumber(row.max_bet) },
+      { label: "状态", render: (row) => statusTag(row.status, {
+        1: ["启用", "ok"], 0: ["停用", "bad"]
+      }) },
       { label: "最新期号", render: (row) => row.latest_issue ?
         esc(row.latest_issue.issue_no) + "<br><small>" + formatTime(row.latest_issue.draw_at) + "</small>" : "—" },
       { label: "玩法", render: (row) => formatNumber((data.plays || []).filter((play) =>
         String(play.game_id) === String(row.id)).length) + " 个" },
       { label: "操作", render: (row) => has("lottery.write") ?
         '<div class="row-actions">' + button("玩法配置", "lottery-config", row.id) +
-        button("编辑", "lottery-game-edit", row.id, "layui-btn-normal") + "</div>" :
+        button("编辑", "lottery-game-edit", row.id, "layui-btn-normal") +
+        button(Number(row.status) === 1 ? "停用" : "恢复",
+          "lottery-game-status", row.id,
+          Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-warm") + "</div>" :
         button("查看玩法", "lottery-config", row.id) }
     ], data.games);
     const categoryTable = table([
@@ -373,7 +839,14 @@
         ([0, 1].includes(Number(row.status)) ? button("封盘", "lottery-close", row.id) : "") +
         (Number(row.status) === 2 ? button("开奖", "lottery-draw", row.id, "layui-btn-warm") : "") +
         "</div>" : "—" }
-    ], data.issues);
+    ], issueData.items, {
+      key: "lottery-issues",
+      page: issueData.page,
+      pageSize: issueData.page_size,
+      total: issueData.total,
+      hasMore: issueData.has_more,
+      remote: { path: "/admin/api/lottery/issues", cacheName: "lotteryIssues" }
+    });
     const tabs = '<div class="admin-tabs" role="tablist">' + [
       ["games", "彩种列表"], ["categories", "彩票分类"], ["issues", "期号管理"]
     ].map((item) => '<button class="admin-tab ' + (activeTab === item[0] ? "active" : "") +
@@ -386,11 +859,12 @@
     content.innerHTML = tabs + (bodyByTab[activeTab] || bodyByTab.games);
   }
 
-  async function sportsView() {
+  async function sportsView(loadContext) {
     const results = await Promise.all([
-      api("/admin/api/sports/matches?page_size=100"),
+      remoteTableData("sports-matches", "/admin/api/sports/matches"),
       api("/admin/api/sports/sync")
     ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
     const data = results[0];
     const sync = results[1];
     state.cache.sports = data.items;
@@ -420,7 +894,14 @@
         (has("sports.write") ? button("编辑", "sports-edit", row.id) +
           ([ "FT", "CANCELLED" ].includes(row.match_status) && Number(row.settle_status) !== 2 ?
             button("提交结算", "sports-settle", row.id, "layui-btn-warm") : "") : "") + "</div>" }
-    ], data.items);
+    ], data.items, {
+      key: "sports-matches",
+      page: data.page,
+      pageSize: data.page_size,
+      total: data.total,
+      hasMore: data.has_more,
+      remote: { path: "/admin/api/sports/matches", cacheName: "sports" }
+    });
     const syncTable = table([
       { label: "状态", render: () => statusTag(sync.state, {
         "同步正常": ["同步正常", "ok"],
@@ -440,7 +921,7 @@
       panel("体育赛事", "后台维护赛事、封盘、赛果和结算状态", matchTable);
   }
 
-  function betOrderTable(rows, statusLabels) {
+  function betOrderTable(rows, statusLabels, options) {
     return table([
       { label: "订单", render: (row) => "<strong>" + esc(row.order_no) +
         "</strong><br><small>ID " + esc(row.id) + "</small>", className: "wrap" },
@@ -455,11 +936,21 @@
       } },
       { label: "状态", render: (row) => statusTag(row.status, statusLabels) },
       { label: "时间", render: (row) => formatTime(row.created_at) }
-    ], rows);
+    ], rows, options);
   }
 
-  async function betsView() {
-    const data = await api("/admin/api/bets/dashboard?page_size=50");
+  async function betsView(loadContext) {
+    const result = await Promise.all([
+      api("/admin/api/bets/dashboard?page_size=1"),
+      remoteTableData("bets-lottery", "/admin/api/bets/lottery"),
+      remoteTableData("bets-sports", "/admin/api/bets/sports"),
+      remoteTableData("bets-game", "/admin/api/bets/game")
+    ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
+    const data = result[0];
+    const lotteryOrders = result[1];
+    const sportsOrders = result[2];
+    const gameOrders = result[3];
     const groups = [
       ["lottery", "彩票投注"], ["sports", "体育投注"], ["games", "游戏结算"]
     ];
@@ -478,13 +969,38 @@
       0: ["处理中", "warn"], 1: ["已结算", "ok"], 2: ["失败", "bad"]
     };
     content.innerHTML = metrics +
-      panel("彩票投注订单", "按期号记录投注和派彩", betOrderTable(data.lottery_orders, betLabels)) +
-      panel("体育投注订单", "按赛事记录投注和派彩", betOrderTable(data.sports_orders, betLabels)) +
-      panel("游戏逐场结算", "精确到游戏、场次、桌号与会话", betOrderTable(data.game_orders, gameLabels));
+      panel("彩票投注订单", "按期号记录投注和派彩", betOrderTable(
+        lotteryOrders.items, betLabels, {
+          key: "bets-lottery",
+          page: lotteryOrders.page,
+          pageSize: lotteryOrders.page_size,
+          total: lotteryOrders.total,
+          hasMore: lotteryOrders.has_more,
+          remote: { path: "/admin/api/bets/lottery" }
+        })) +
+      panel("体育投注订单", "按赛事记录投注和派彩", betOrderTable(
+        sportsOrders.items, betLabels, {
+          key: "bets-sports",
+          page: sportsOrders.page,
+          pageSize: sportsOrders.page_size,
+          total: sportsOrders.total,
+          hasMore: sportsOrders.has_more,
+          remote: { path: "/admin/api/bets/sports" }
+        })) +
+      panel("游戏逐场结算", "精确到游戏、场次、桌号与会话", betOrderTable(
+        gameOrders.items, gameLabels, {
+          key: "bets-game",
+          page: gameOrders.page,
+          pageSize: gameOrders.page_size,
+          total: gameOrders.total,
+          hasMore: gameOrders.has_more,
+          remote: { path: "/admin/api/bets/game" }
+        }));
   }
 
-  async function imView() {
-    const data = await api("/admin/api/im/conversations?page_size=100");
+  async function imView(loadContext) {
+    const data = await remoteTableData("im-conversations", "/admin/api/im/conversations");
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.im = data.items;
     const conversationTable = table([
       { label: "会话", render: (row) => "<strong>" + esc(row.title || row.group_no || row.id) +
@@ -498,12 +1014,21 @@
         button("成员", "im-members", row.id) +
         (has("im.moderate") && Number(row.conversation_type) === 2 ?
           button(row.all_muted ? "解除禁言" : "全员禁言", "im-all-mute", row.id) : "") + "</div>" }
-    ], data.items);
+    ], data.items, {
+      key: "im-conversations",
+      page: data.page,
+      pageSize: data.page_size,
+      total: data.total,
+      hasMore: data.has_more,
+      remote: { path: "/admin/api/im/conversations", cacheName: "im" }
+    });
     content.innerHTML = panel("会话列表", "消息记录可追溯，管理员操作全部审计", conversationTable);
   }
 
-  async function appView() {
-    const data = await api("/admin/api/app/releases?page_size=100");
+  async function appView(loadContext) {
+    const data = await remoteTableData("app-releases", "/admin/api/app/releases");
+    if (!isCurrentRouteLoad(loadContext)) return;
+    state.cache.appReleases = data.items;
     if (has("app.write")) {
       actions.insertAdjacentHTML("afterbegin",
         '<button class="layui-btn" data-action="app-create">上传新版本</button>');
@@ -519,14 +1044,41 @@
         0: ["草稿", "warn"], 1: ["已发布", "ok"], 2: ["暂停", "warn"], 3: ["已归档", ""]
       }) },
       { label: "发布时间", render: (row) => formatTime(row.published_at) },
-      { label: "操作", render: (row) => has("app.write") && Number(row.status) === 0 ?
-        button("发布", "app-publish", row.id) : "—" }
-    ], data.items);
+      { label: "操作", render: (row) => {
+        if (!has("app.write")) return "—";
+        const status = Number(row.status);
+        if (status === 0) {
+          return '<div class="row-actions">' +
+            button("编辑", "app-edit", row.id, "layui-btn-normal") +
+            button("发布", "app-publish", row.id) +
+            button("归档", "app-archive", row.id, "layui-btn-danger") + "</div>";
+        }
+        if (status === 1) {
+          return '<div class="row-actions">' +
+            button("暂停", "app-pause", row.id, "layui-btn-warm") +
+            button("归档", "app-archive", row.id, "layui-btn-danger") + "</div>";
+        }
+        if (status === 2) {
+          return '<div class="row-actions">' +
+            button("恢复", "app-resume", row.id) +
+            button("归档", "app-archive", row.id, "layui-btn-danger") + "</div>";
+        }
+        return "—";
+      } }
+    ], data.items, {
+      key: "app-releases",
+      page: data.page,
+      pageSize: data.page_size,
+      total: data.total,
+      hasMore: data.has_more,
+      remote: { path: "/admin/api/app/releases", cacheName: "appReleases" }
+    });
     content.innerHTML = panel("版本记录", "安装包保存在 MinIO，发布前校验 SHA-256", releaseTable);
   }
 
-  async function rbacView() {
+  async function rbacView(loadContext) {
     const data = await api("/admin/api/rbac");
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.rbac = data;
     if (has("rbac.write")) {
       actions.insertAdjacentHTML("afterbegin",
@@ -539,22 +1091,39 @@
       { label: "邮箱", render: (row) => esc(row.email || "—") },
       { label: "角色", render: (row) => esc((row.roles || []).join("、") || "未授权"), className: "wrap" },
       { label: "状态", render: (row) => statusTag(row.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) },
-      { label: "最后登录", render: (row) => formatTime(row.last_login_at) }
+      { label: "最后登录", render: (row) => formatTime(row.last_login_at) },
+      { label: "操作", render: (row) => has("rbac.write") ?
+        '<div class="row-actions">' +
+        button("编辑授权", "admin-edit", row.id, "layui-btn-normal") +
+        button("重置密码", "admin-password", row.id, "layui-btn-warm") + "</div>" : "—" }
     ], data.admins);
     const roleTable = table([
       { label: "角色", render: (row) => "<strong>" + esc(row.name) + "</strong><br><small>" + esc(row.role_key) + "</small>" },
       { label: "数据范围", render: (row) => ({ 1: "全部", 2: "团队", 3: "本人" }[row.data_scope] || row.data_scope) },
       { label: "权限", render: (row) => esc((row.permissions || []).join("、")), className: "wrap" },
-      { label: "状态", render: (row) => statusTag(row.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) }
+      { label: "状态", render: (row) => statusTag(row.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) },
+      { label: "操作", render: (row) => has("rbac.write") &&
+        !["super_admin", "support_agent", "support_supervisor"].includes(row.role_key) ?
+        button("权限配置", "role-edit", row.id, "layui-btn-normal") : "—" }
     ], data.roles);
+    const permissionTable = table([
+      { label: "权限 ID", key: "id" },
+      { label: "权限标识", render: (row) => "<strong>" + esc(row.permission_key) + "</strong>" },
+      { label: "名称", key: "name" },
+      { label: "模块 / 动作", render: (row) => esc(row.module + " / " + row.action) },
+      { label: "说明", render: (row) => esc(row.description || "—"), className: "wrap" }
+    ], data.permissions);
     content.innerHTML = panel("管理员", "管理员会话 12 小时过期，变更权限立即生效", adminTable) +
-      panel("角色", "超级管理员角色不可降权", roleTable);
+      panel("角色", "超级管理员及客服系统角色受保护，其他角色可配置权限", roleTable) +
+      panel("权限字典", "角色授权时可按权限 ID 选择", permissionTable);
   }
 
-  async function systemView() {
+  async function systemView(loadContext) {
     const result = await Promise.all([
-      api("/admin/api/system/settings"), api("/admin/api/system/audit?page_size=50")
+      api("/admin/api/system/settings"),
+      remoteTableData("system-audit", "/admin/api/system/audit")
     ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.settings = result[0].items;
     const settingTable = table([
       { label: "设置项", render: (row) => "<strong>" + esc(row.key) + "</strong>" },
@@ -567,7 +1136,14 @@
       { label: "管理员", render: (row) => esc(row.actor_name || row.actor_id) },
       { label: "动作", key: "action" }, { label: "资源", render: (row) => esc(row.resource_type + " / " + row.resource_id) },
       { label: "请求", key: "request_id" }, { label: "IP", key: "ip" }
-    ], result[1].items);
+    ], result[1].items, {
+      key: "system-audit",
+      page: result[1].page,
+      pageSize: result[1].page_size,
+      total: result[1].total,
+      hasMore: result[1].has_more,
+      remote: { path: "/admin/api/system/audit" }
+    });
     content.innerHTML = panel("系统设置", "密钥只显示是否已配置，不回传明文", settingTable) +
       panel("审计日志", "后台重要操作不可静默执行", auditTable);
   }
@@ -578,15 +1154,32 @@
     im: imView, app: appView, rbac: rbacView, system: systemView
   };
 
+  function resetTableRegistry() {
+    Object.values(state.tables).forEach((model) => {
+      if (model.searchTimer) window.clearTimeout(model.searchTimer);
+      model.requestSerial += 1;
+    });
+    state.tables = {};
+    state.tableSequence = 0;
+  }
+
   async function loadRoute() {
-    const route = (window.location.hash || "#dashboard").slice(1);
-    state.route = pages[route] ? route : "dashboard";
-    setHeader(state.route);
+    const requestedRoute = (window.location.hash || "#dashboard").slice(1);
+    const route = pages[requestedRoute] ? requestedRoute : "dashboard";
+    const loadContext = { route, serial: ++state.routeLoadSerial };
+    state.route = route;
+    if (layer) layer.closeAll("page");
+    resetTableRegistry();
+    setHeader(route);
     content.innerHTML = '<div class="empty-state">正在加载…</div>';
     try {
-      await loaders[state.route]();
+      await loaders[route](loadContext);
+      if (!isCurrentRouteLoad(loadContext)) return true;
+      return true;
     } catch (error) {
+      if (!isCurrentRouteLoad(loadContext)) return true;
       errorPanel(error);
+      return false;
     }
   }
 
@@ -595,32 +1188,66 @@
     const formID = "modal-form-" + Date.now();
     const html = '<form id="' + formID + '" class="modal-form"><div class="form-grid">' +
       fields.map((field) => {
-        const options = field.options ? '<select name="' + esc(field.name) + '">' +
+        const selectedValues = Array.isArray(field.value) ?
+          field.value.map(String) : [String(field.value ?? "")];
+        const options = field.type === "checkboxes" ?
+          '<div class="form-check-grid">' + (field.options || []).map((item) =>
+            '<label class="form-check-option"><input type="checkbox" name="' +
+            esc(field.name) + '" value="' + esc(item[0]) + '"' +
+            (selectedValues.includes(String(item[0])) ? " checked" : "") +
+            '><span>' + esc(item[1]) + "</span></label>").join("") + "</div>" :
+          field.options ? '<select name="' + esc(field.name) + '">' +
           field.options.map((item) => '<option value="' + esc(item[0]) + '"' +
-            (String(item[0]) === String(field.value) ? " selected" : "") + ">" + esc(item[1]) + "</option>").join("") +
+            (selectedValues.includes(String(item[0])) ? " selected" : "") + ">" + esc(item[1]) + "</option>").join("") +
           "</select>" : field.type === "textarea" ?
           '<textarea name="' + esc(field.name) + '">' + esc(field.value || "") + "</textarea>" :
           field.type === "file" ?
           '<input name="' + esc(field.name) + '" type="file" accept="' + esc(field.accept || "") + '">' :
           '<input name="' + esc(field.name) + '" type="' + esc(field.type || "text") +
-          '" value="' + esc(field.value || "") + '" placeholder="' + esc(field.placeholder || "") + '">';
-        return '<label class="' + (field.wide ? "wide" : "") + '">' + esc(field.label) + options + "</label>";
+          '" value="' + esc(field.value || "") + '" placeholder="' + esc(field.placeholder || "") + '"' +
+          (field.inputmode ? ' inputmode="' + esc(field.inputmode) + '"' : "") +
+          (field.readonly ? " readonly" : "") + ">";
+        if (field.type === "checkboxes") {
+          return '<div class="form-check-field ' + (field.wide ? "wide" : "") +
+            '"><span class="form-check-label">' + esc(field.label) + "</span>" + options + "</div>";
+        }
+        return '<label class="' + (field.wide ? "wide" : "") + '">' +
+          esc(field.label) + options + "</label>";
       }).join("") + "</div></form>";
     layer.open({
-      type: 1, title, area: ["620px", "auto"], content: html, btn: ["保存", "取消"],
+      type: 1, title: esc(title), area: ["620px", "auto"], content: html, btn: ["保存", "取消"],
       yes: async function (index) {
         const form = document.getElementById(formID);
         const values = {};
         new FormData(form).forEach((value, key) => {
-          values[key] = value instanceof File ? value : String(value);
+          const normalized = value instanceof File ? value : String(value);
+          if (Object.prototype.hasOwnProperty.call(values, key)) {
+            values[key] = Array.isArray(values[key]) ?
+              values[key].concat([normalized]) : [values[key], normalized];
+            return;
+          }
+          values[key] = normalized;
         });
+        let outcome;
         try {
-          await submit(values);
-          layer.close(index);
-          notify("操作成功");
-          await loadRoute();
+          outcome = await submit(values);
         } catch (error) {
           notify(error.message || "操作失败", true);
+          return;
+        }
+        layer.close(index);
+        notify(outcome && outcome.__formMessage ? outcome.__formMessage : "操作成功");
+        if (outcome && outcome.__skipRefresh) {
+          if (outcome.__redirect) window.location.replace(outcome.__redirect);
+          return;
+        }
+        try {
+          const refreshed = await loadRoute();
+          if (!refreshed) {
+            notify("操作已成功，但列表刷新失败，请点击“刷新数据”重试", true);
+          }
+        } catch (_) {
+          notify("操作已成功，但列表刷新失败，请点击“刷新数据”重试", true);
         }
       }
     });
@@ -786,7 +1413,10 @@
               notify(directionText + "成功" + (latestBalance !== undefined ?
                 "，最新可用余额：" + formatNumber(latestBalance) + " 星币" : "，用户余额已更新"));
               try {
-                await loadRoute();
+                const refreshed = await loadRoute();
+                if (!refreshed) {
+                  notify("调账已成功，但列表刷新失败，请点击“刷新数据”重试", true);
+                }
               } catch (refreshError) {
                 notify("调账已成功，但列表刷新失败，请点击“刷新数据”重试", true);
               }
@@ -1012,7 +1642,10 @@
           });
           layer.close(index);
           notify(editing ? "直播间已更新" : "直播间已通过流探测并上线");
-          void loadRoute().catch(errorPanel);
+          const refreshed = await loadRoute();
+          if (!refreshed) {
+            notify("操作已成功，但列表刷新失败，请点击“刷新数据”重试", true);
+          }
         } catch (error) {
           notify(error.message || (editing ? "更新直播间失败" : "创建直播间失败"), true);
         } finally {
@@ -1033,11 +1666,145 @@
     return (state.cache[name] || []).find((item) => String(item.id ?? item.key) === String(id));
   }
 
-  async function handleAction(action, id) {
+  function decimalFormIDs(value) {
+    const values = Array.isArray(value) ? value : String(value || "").split(",");
+    const result = [];
+    const seen = new Set();
+    values.map((item) => String(item).trim()).filter(Boolean).forEach((item) => {
+      const id = requireDecimalEntityID(item, "编号");
+      if (!seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+    });
+    return result;
+  }
+
+  async function handleAction(action, id, target) {
+    if (action === "table-view") {
+      return openTableRowDetails(target?.dataset.tableId || "", target?.dataset.rowIndex || "");
+    }
+    if (action === "table-page") {
+      const model = state.tables[target?.dataset.tableId || ""];
+      const page = Number(target?.dataset.page || 1);
+      if (!model || !Number.isInteger(page)) return;
+      if (model.searchTimer) {
+        window.clearTimeout(model.searchTimer);
+        model.searchTimer = null;
+      }
+      model.page = page;
+      state.tablePreferences[model.preferenceKey] = {
+        query: model.query,
+        page: model.page,
+        pageSize: model.pageSize
+      };
+      if (model.remote) {
+        void loadRemoteTable(model, false);
+        return;
+      }
+      refreshTable(model.id, false);
+      return;
+    }
     if (action === "refresh") return loadRoute();
     if (action === "lottery-tab") {
       state.cache.lotteryTab = id || "games";
       return loadRoute();
+    }
+    if (action === "user-edit") {
+      const row = cached("users", id);
+      if (!row) {
+        notify("用户数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("编辑用户资料", [
+        { name: "username", label: "登录账号（必填）", value: row.username, wide: true },
+        { name: "nickname", label: "昵称", value: row.nickname },
+        { name: "country_code", label: "国家区号", value: row.country_code || "86" },
+        { name: "mobile", label: "手机号", value: row.mobile || "" },
+        { name: "email", label: "邮箱", type: "email", value: row.email || "", wide: true }
+      ], (values) => {
+        const username = String(values.username || "").trim();
+        const nickname = String(values.nickname || "").trim();
+        const countryCode = String(values.country_code || "").trim();
+        const mobile = String(values.mobile || "").trim();
+        const email = String(values.email || "").trim();
+        const controlCharacters = /[\u0000-\u001f\u007f-\u009f]/;
+        if (!username || [...username].length > 120 ||
+            /\s/.test(username) || controlCharacters.test(username)) {
+          throw new Error("登录账号必填、最多 120 个字，且不能包含空白或控制字符");
+        }
+        if ([...nickname].length > 100 || controlCharacters.test(nickname)) {
+          throw new Error("昵称最多 100 个字，且不能包含控制字符");
+        }
+        if (!/^\d{1,8}$/.test(countryCode)) {
+          throw new Error("国家区号必须是 1 到 8 位数字");
+        }
+        if (mobile && !/^\d{5,20}$/.test(mobile)) {
+          throw new Error("手机号必须是 5 到 20 位数字");
+        }
+        if (email && (!/^[^\s<>@]+@[^\s<>@]+$/.test(email) ||
+            utf8ByteLength(email) > 190)) {
+          throw new Error("请输入有效且不超过 190 字节的邮箱");
+        }
+        return api("/admin/api/users/" + encodeURIComponent(id), {
+          method: "POST",
+          body: {
+            username,
+            nickname,
+            country_code: countryCode,
+            mobile,
+            email
+          }
+        });
+      });
+    }
+    if (action === "user-password") {
+      const row = cached("users", id);
+      if (!row) {
+        notify("用户数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("重置用户密码", [
+        {
+          name: "password",
+          label: "新密码（12–128 个字符）",
+          type: "password",
+          placeholder: "请输入新密码",
+          wide: true
+        },
+        {
+          name: "password_confirm",
+          label: "再次输入新密码",
+          type: "password",
+          placeholder: "请再次输入新密码",
+          wide: true
+        },
+        {
+          name: "reason",
+          label: "重置原因（必填；保存后该用户现有登录会话会全部注销）",
+          type: "textarea",
+          placeholder: "请填写管理员重置密码的原因",
+          wide: true
+        }
+      ], (values) => {
+        const password = String(values.password || "");
+        const confirmation = String(values.password_confirm || "");
+        const reason = String(values.reason || "").trim();
+        const passwordLength = [...password].length;
+        if (passwordLength < 12 || passwordLength > 128 || utf8ByteLength(password) > 512) {
+          throw new Error("新密码长度必须为 12 到 128 个字符");
+        }
+        if (password !== confirmation) {
+          throw new Error("两次输入的新密码不一致");
+        }
+        if (!reason || reason.length > 500) {
+          throw new Error("重置原因必填，且不能超过 500 个字");
+        }
+        return api("/admin/api/users/" + encodeURIComponent(id) + "/password", {
+          method: "POST",
+          body: { password, reason }
+        });
+      });
     }
     if (action === "user-status") {
       return openForm("修改用户状态", [
@@ -1048,14 +1815,38 @@
       }));
     }
     if (action === "user-team") {
-      const options = (state.cache.teams || []).filter((team) => Number(team.status) === 1)
+      if (!state.cache.teamOptionsPromise) {
+        state.cache.teamOptionsPromise = fetchAllRemoteItems("/admin/api/teams")
+          .then((items) => {
+            state.cache.teamOptions = items;
+            return items;
+          })
+          .catch((error) => {
+            state.cache.teamOptionsPromise = null;
+            throw error;
+          });
+      }
+      const allTeams = state.cache.teamOptions ||
+        await state.cache.teamOptionsPromise;
+      const options = allTeams.filter((team) => Number(team.status) === 1)
         .map((team) => [team.id, team.code + " · " + team.name]);
+      if (!options.length) {
+        notify("没有可分配的启用团队，请先创建或启用团队", true);
+        return;
+      }
       return openForm("调整用户团队", [
         { name: "team_id", label: "目标团队", options },
-        { name: "reason", label: "原因", wide: true }
-      ], (values) => api("/admin/api/users/" + id + "/team", {
-        method: "POST", body: { team_id: Number(values.team_id), reason: values.reason }
-      }));
+        { name: "reason", label: "调整原因（必填）", type: "textarea", wide: true }
+      ], (values) => {
+        const reason = String(values.reason || "").trim();
+        if (!reason || reason.length > 500) {
+          throw new Error("调整原因必填，且不能超过 500 个字");
+        }
+        return api("/admin/api/users/" + id + "/team", {
+          method: "POST",
+          body: { team_id: requireDecimalEntityID(values.team_id, "团队编号"), reason }
+        });
+      });
     }
     if (action === "user-wallet-adjustment") {
       return openUserWalletAdjustment(cached("users", id));
@@ -1064,27 +1855,105 @@
       return openForm("新建团队", [
         { name: "code", label: "三位团队代码", placeholder: "0-9 / a-z" },
         { name: "name", label: "团队名称" }, { name: "owner_user_id", label: "负责人用户 ID", value: "0" }
-      ], (values) => api("/admin/api/teams", {
-        method: "POST", body: {
-          code: values.code, name: values.name, owner_user_id: Number(values.owner_user_id || 0)
+      ], (values) => {
+        const ownerUserID = String(values.owner_user_id || "0").trim();
+        if (!/^(0|[1-9]\d*)$/.test(ownerUserID)) {
+          throw new Error("请填写有效的负责人用户 ID");
         }
-      }));
+        return api("/admin/api/teams", {
+          method: "POST", body: {
+            code: values.code, name: values.name, owner_user_id: ownerUserID
+          }
+        });
+      });
+    }
+    if (action === "team-edit") {
+      const row = cached("teams", id);
+      if (!row) {
+        notify("团队数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("编辑团队 " + row.code, [
+        { name: "name", label: "团队名称", value: row.name, wide: true },
+        { name: "owner_user_id", label: "负责人用户 ID（0 表示不设置）",
+          value: row.owner_user_id || "0", inputmode: "numeric" },
+        { name: "status", label: "状态", options: [[1, "启用"], [0, "停用"]], value: row.status }
+      ], (values) => {
+        const name = String(values.name || "").trim();
+        const ownerUserID = String(values.owner_user_id || "0").trim();
+        if (!name || name.length > 100 || !/^(0|[1-9]\d*)$/.test(ownerUserID)) {
+          throw new Error("请填写有效的团队名称和负责人用户 ID");
+        }
+        return api("/admin/api/teams/" + encodeURIComponent(id), {
+          method: "POST",
+          body: {
+            name,
+            owner_user_id: ownerUserID,
+            status: Number(values.status)
+          }
+        });
+      });
+    }
+    if (action === "recharge-mark-paid") {
+      const row = cached("recharges", id);
+      if (!row) {
+        notify("充值订单数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("人工确认充值入账", [
+        {
+          name: "order_no",
+          label: "平台订单（不可修改）",
+          value: row.order_no,
+          readonly: true,
+          wide: true
+        },
+        { name: "provider_order_no", label: "渠道订单号（必填）", wide: true },
+        {
+          name: "reason",
+          label: "确认原因（必填；保存后立即给用户入账）",
+          type: "textarea",
+          wide: true
+        }
+      ], (values) => {
+        const providerOrderNo = String(values.provider_order_no || "").trim();
+        const reason = String(values.reason || "").trim();
+        if (!providerOrderNo || providerOrderNo.length > 190) {
+          throw new Error("渠道订单号必填，且不能超过 190 个字符");
+        }
+        if (!reason || reason.length > 500) {
+          throw new Error("确认原因必填，且不能超过 500 个字");
+        }
+        return api("/admin/api/wallet/recharges/" + encodeURIComponent(id) + "/mark-paid", {
+          method: "POST",
+          body: { provider_order_no: providerOrderNo, reason }
+        });
+      });
     }
     if (action === "adjustment-create") {
       return openForm("发起调账", [
-        { name: "user_id", label: "用户 ID", type: "number" },
+        { name: "user_id", label: "用户 ID", inputmode: "numeric" },
         { name: "amount", label: "星币变动（可为负）", type: "number" },
         { name: "reason", label: "调账原因", type: "textarea", wide: true }
-      ], (values) => api("/admin/api/wallet/adjustments", {
-        method: "POST", body: {
-          user_id: Number(values.user_id), amount: Number(values.amount),
-          reason: values.reason, evidence_asset_id: 0
+      ], (values) => {
+        const userID = String(values.user_id || "").trim();
+        if (!/^[1-9]\d*$/.test(userID)) {
+          throw new Error("请填写有效的用户 ID");
         }
-      }));
+        return api("/admin/api/wallet/adjustments", {
+          method: "POST", body: {
+            user_id: userID, amount: Number(values.amount),
+            reason: values.reason, evidence_asset_id: 0
+          }
+        });
+      });
     }
     if (action === "adjustment-approve") {
-      return api("/admin/api/wallet/adjustments/" + id + "/approve", { method: "POST", body: {} })
-        .then(() => { notify("调账已入账"); return loadRoute(); }).catch((error) => notify(error.message, true));
+      return mutateAndRefresh(
+        "/admin/api/wallet/adjustments/" + encodeURIComponent(id) + "/approve",
+        { method: "POST", body: {} },
+        "调账已入账"
+      ).catch((error) => notify(error.message, true));
     }
     if (action === "adjustment-reject") {
       return openForm("驳回调账", [{ name: "reason", label: "驳回原因", type: "textarea", wide: true }],
@@ -1170,7 +2039,8 @@
         { name: "max_bet", label: "最高投注", type: "number", value: "1000000" }
       ], (values) => api("/admin/api/lottery/games", {
         method: "POST", body: {
-          category_id: Number(values.category_id), game_code: values.game_code, name: values.name,
+          category_id: requireDecimalEntityID(values.category_id, "彩票分类编号"),
+          game_code: values.game_code, name: values.name,
           issue_interval_seconds: Number(values.issue_interval_seconds),
           sale_close_seconds: Number(values.sale_close_seconds), min_bet: Number(values.min_bet),
           max_bet: Number(values.max_bet), status: 1, sort_order: 0, config: {}
@@ -1191,13 +2061,26 @@
         { name: "sort_order", label: "排序", type: "number", value: row.sort_order }
       ], (values) => api("/admin/api/lottery/games/" + id, {
         method: "POST", body: {
-          category_id: Number(values.category_id), game_code: values.game_code,
+          category_id: requireDecimalEntityID(values.category_id, "彩票分类编号"),
+          game_code: values.game_code,
           name: values.name, issue_interval_seconds: Number(values.issue_interval_seconds),
           sale_close_seconds: Number(values.sale_close_seconds),
           min_bet: Number(values.min_bet), max_bet: Number(values.max_bet),
           sort_order: Number(values.sort_order)
         }
       }));
+    }
+    if (action === "lottery-game-status") {
+      const row = cached("lotteryGames", id);
+      if (!row) {
+        notify("彩票数据已刷新，请重试", true);
+        return;
+      }
+      const status = Number(row.status) === 1 ? 0 : 1;
+      return mutateAndRefresh("/admin/api/lottery/games/" + encodeURIComponent(id) + "/status", {
+        method: "POST",
+        body: { status }
+      }, status === 1 ? "彩票已恢复" : "彩票已停用");
     }
     if (action === "lottery-config") {
       const row = cached("lotteryGames", id);
@@ -1226,7 +2109,13 @@
       return;
     }
     if (action === "lottery-issue") {
-      const options = (state.cache.lottery.games || []).map((item) => [item.id, item.name]);
+      const options = (state.cache.lottery.games || [])
+        .filter((item) => Number(item.status) === 1)
+        .map((item) => [item.id, item.name]);
+      if (!options.length) {
+        notify("没有可创建期号的启用彩票，请先恢复彩票", true);
+        return;
+      }
       const now = Math.floor(Date.now() / 1000);
       return openForm("新建彩票期号", [
         { name: "game_id", label: "彩票游戏", options },
@@ -1236,7 +2125,8 @@
         { name: "draw_at", label: "开奖 Unix 秒", type: "number", value: now + 310 }
       ], (values) => api("/admin/api/lottery/issues", {
         method: "POST", body: {
-          game_id: Number(values.game_id), issue_no: values.issue_no,
+          game_id: requireDecimalEntityID(values.game_id, "彩票游戏编号"),
+          issue_no: values.issue_no,
           sale_open_at: Number(values.sale_open_at), sale_close_at: Number(values.sale_close_at),
           draw_at: Number(values.draw_at)
         }
@@ -1252,7 +2142,8 @@
         { name: "sort_order", label: "排序", type: "number", value: "0" }
       ], (values) => api("/admin/api/lottery/plays", {
         method: "POST", body: {
-          game_id: Number(id), play_code: values.play_code,
+          game_id: requireDecimalEntityID(id, "彩票游戏编号"),
+          play_code: values.play_code,
           name: values.name, settlement_rule: values.settlement_rule,
           status: 1, sort_order: Number(values.sort_order), config: {}
         }
@@ -1304,7 +2195,8 @@
         { name: "sort_order", label: "排序", type: "number", value: "0" }
       ], (values) => api("/admin/api/lottery/options", {
         method: "POST", body: {
-          play_id: Number(id), option_code: values.option_code,
+          play_id: requireDecimalEntityID(id, "彩票玩法编号"),
+          option_code: values.option_code,
           name: values.name, odds_scaled: Math.round(Number(values.odds) * 1000000),
           status: 1, sort_order: Number(values.sort_order), config: {}
         }
@@ -1325,8 +2217,11 @@
       }));
     }
     if (action === "lottery-close") {
-      return api("/admin/api/lottery/issues/" + id + "/close", { method: "POST", body: {} })
-        .then(() => { notify("期号已封盘"); return loadRoute(); }).catch((error) => notify(error.message, true));
+      return mutateAndRefresh(
+        "/admin/api/lottery/issues/" + encodeURIComponent(id) + "/close",
+        { method: "POST", body: {} },
+        "期号已封盘"
+      ).catch((error) => notify(error.message, true));
     }
     if (action === "lottery-draw") {
       return openForm("录入开奖结果", [
@@ -1334,7 +2229,7 @@
         { name: "source", label: "结果来源", value: "manual_reviewed" }
       ], (values) => api("/admin/api/lottery/issues/" + id + "/draw", {
         method: "POST", body: {
-          result: { winner_option_ids: values.winner_option_ids.split(",").map(Number).filter(Boolean) },
+          result: { winner_option_ids: decimalFormIDs(values.winner_option_ids) },
           source: values.source
         }
       }));
@@ -1390,14 +2285,31 @@
     }
     if (action === "sports-markets") {
       const data = await api("/admin/api/sports/matches/" + id + "/markets");
-      const rows = [];
-      (data.items || []).forEach((market) => {
-        (market.options || []).forEach((marketOption) => rows.push({
-          ...marketOption, market_name: market.name, market_code: market.market_code
+      const markets = data.items || [];
+      const options = [];
+      markets.forEach((market) => {
+        (market.options || []).forEach((marketOption) => options.push({
+          ...marketOption,
+          market_id: market.id,
+          market_name: market.name,
+          market_code: market.market_code
         }));
       });
-      state.cache.sportsOptions = rows;
+      state.cache.sportsMarkets = markets;
+      state.cache.sportsOptions = options;
       const marketTable = table([
+        { label: "盘口", render: (row) => "<strong>" + esc(row.name) +
+          "</strong><br><small>" + esc(row.market_code) + "</small>" },
+        { label: "结算规则", render: (row) => esc(row.settlement_rule) },
+        { label: "状态", render: (row) => statusTag(row.status, {
+          1: ["启用", "ok"], 0: ["停用", "bad"]
+        }) },
+        { label: "排序", key: "sort_order" },
+        { label: "选项数", render: (row) => formatNumber((row.options || []).length) },
+        { label: "操作", render: (row) => has("sports.write") ?
+          button("编辑盘口", "sports-market-edit", row.id, "layui-btn-normal") : "—" }
+      ], markets);
+      const optionTable = table([
         { label: "盘口", render: (row) => "<strong>" + esc(row.market_name) +
           "</strong><br><small>" + esc(row.market_code) + "</small>" },
         { label: "选项", render: (row) => esc(row.name) + "<br><small>" + esc(row.option_code) + "</small>" },
@@ -1408,13 +2320,15 @@
         { label: "状态", render: (row) => Number(row.status) === 1 ? "启用" : "停用" },
         { label: "操作", render: (row) => has("sports.write") ?
           button("赔率/赛果", "sports-option-edit", row.id) : "—" }
-      ], rows);
+      ], options);
       const addButton = has("sports.write") ?
         '<div class="modal-toolbar"><button class="layui-btn" data-action="sports-market-create" data-id="' +
         esc(id) + '">新增盘口</button></div>' : "";
       layer.open({
         type: 1, title: "赛事盘口", area: ["900px", "620px"],
-        content: '<div class="modal-content">' + addButton + marketTable + "</div>"
+        content: '<div class="modal-content">' + addButton +
+          panel("盘口列表", "可维护盘口标识、结算规则、状态与排序", marketTable) +
+          panel("盘口选项", "赔率、赛果与选项启停保持独立维护", optionTable) + "</div>"
       });
       return;
     }
@@ -1433,9 +2347,33 @@
         }
       ], (values) => api("/admin/api/sports/markets", {
         method: "POST", body: {
-          match_id: Number(id), market_code: values.market_code, name: values.name,
+          match_id: requireDecimalEntityID(id, "体育赛事编号"),
+          market_code: values.market_code, name: values.name,
           settlement_rule: values.settlement_rule, status: 1, sort_order: 0,
           options: JSON.parse(values.options)
+        }
+      }));
+    }
+    if (action === "sports-market-edit") {
+      const row = cached("sportsMarkets", id);
+      if (!row) {
+        notify("盘口数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("编辑体育盘口", [
+        { name: "market_code", label: "盘口标识", value: row.market_code },
+        { name: "name", label: "盘口名称", value: row.name },
+        { name: "settlement_rule", label: "结算规则", value: row.settlement_rule },
+        { name: "status", label: "状态", options: [[1, "启用"], [0, "停用"]], value: row.status },
+        { name: "sort_order", label: "排序", type: "number", value: row.sort_order }
+      ], (values) => api("/admin/api/sports/markets/" + encodeURIComponent(id), {
+        method: "POST",
+        body: {
+          market_code: String(values.market_code || "").trim(),
+          name: String(values.name || "").trim(),
+          settlement_rule: String(values.settlement_rule || "").trim(),
+          status: Number(values.status),
+          sort_order: Number(values.sort_order || 0)
         }
       }));
     }
@@ -1453,25 +2391,141 @@
       }));
     }
     if (action === "sports-settle") {
-      return api("/admin/api/sports/matches/" + id + "/settle", { method: "POST", body: {} })
-        .then(() => { notify("赛事已提交结算队列"); return loadRoute(); })
-        .catch((error) => notify(error.message, true));
+      return mutateAndRefresh(
+        "/admin/api/sports/matches/" + encodeURIComponent(id) + "/settle",
+        { method: "POST", body: {} },
+        "赛事已提交结算队列"
+      ).catch((error) => notify(error.message, true));
     }
     if (action === "im-members") {
-      const data = await api("/admin/api/im/conversations/" + encodeURIComponent(id) + "/members");
+      const messageKey = "im-messages-" + id;
+      const messagePath = "/admin/api/im/conversations/" + encodeURIComponent(id) + "/messages";
+      const result = await Promise.all([
+        api("/admin/api/im/conversations/" + encodeURIComponent(id) + "/members"),
+        remoteTableData(messageKey, messagePath)
+      ]);
+      const data = result[0];
+      const messages = result[1];
+      state.cache.imMembers = data.items || [];
+      state.cache.imMessages = messages.items || [];
+      state.cache.imModalConversation = id;
       const memberTable = table([
         { label: "用户", render: (row) => esc(row.nickname + " (" + row.user_id + ")") },
-        { label: "角色", key: "role" }, { label: "状态", key: "member_status" },
-        { label: "禁言至", render: (row) => formatTime(row.mute_until) }
+        { label: "角色", render: (row) => ({ 100: "群主", 50: "管理员", 1: "成员" }[row.role] || row.role) },
+        { label: "状态", render: (row) => statusTag(row.member_status, {
+          1: ["有效", "ok"], 2: ["退出", "warn"], 3: ["已移出", "bad"]
+        }) },
+        { label: "禁言至", render: (row) => formatTime(row.mute_until) },
+        { label: "加入时间", render: (row) => formatTime(row.joined_at) },
+        { label: "操作", render: (row) => {
+          if (!has("im.moderate") || Number(row.member_status) !== 1) return "—";
+          const payload = encodeURIComponent(id) + "~" + row.user_id;
+          const muted = Number(row.mute_until || 0) > Math.floor(Date.now() / 1000);
+          return '<div class="row-actions">' +
+            button(muted ? "解除禁言" : "禁言", muted ? "im-member-unmute" : "im-member-mute", payload) +
+            (Number(row.role) < 100 ?
+              button("移出", "im-member-remove", payload, "layui-btn-danger") : "") + "</div>";
+        } }
       ], data.items);
-      layer.open({ type: 1, title: "群组成员", area: ["760px", "560px"], content: memberTable });
+      const messageTable = table([
+        { label: "序号", key: "sequence" },
+        { label: "发送人", render: (row) => esc(row.sender_name) +
+          "<br><small>ID " + esc(row.sender_user_id) + "</small>", className: "wrap" },
+        { label: "类型", render: (row) => ({
+          1: "文字", 2: "图片", 3: "语音", 4: "视频", 5: "文件", 100: "系统"
+        }[row.message_type] || ("类型 " + row.message_type)) },
+        { label: "内容", render: (row) => esc(row.text_content || "资源 ID " + row.asset_id), className: "wrap" },
+        { label: "状态", render: (row) => statusTag(row.status, {
+          1: ["正常", "ok"], 2: ["撤回", "warn"], 3: ["已删除", "bad"]
+        }) },
+        { label: "时间", render: (row) => formatTime(row.created_at) },
+        { label: "操作", render: (row) => has("im.moderate") && Number(row.status) !== 3 ?
+          button("删除消息", "im-message-delete", row.id, "layui-btn-danger") : "—" }
+      ], messages.items, {
+        key: messageKey,
+        page: messages.page,
+        pageSize: messages.page_size,
+        total: messages.total,
+        hasMore: messages.has_more,
+        remote: { path: messagePath, cacheName: "imMessages" }
+      });
+      layer.open({
+        type: 1,
+        title: "会话成员与消息",
+        skin: "im-management-layer",
+        area: ["min(1120px, calc(100vw - 36px))", "min(820px, calc(100vh - 48px))"],
+        content: '<div class="modal-content">' +
+          panel("成员列表", "可对有效成员禁言、解除禁言或移出群组", memberTable) +
+          panel("消息列表", "管理员删除消息必须填写处置原因", messageTable) + "</div>"
+      });
       return;
+    }
+    if (["im-member-mute", "im-member-unmute", "im-member-remove"].includes(action)) {
+      const separator = id.lastIndexOf("~");
+      const conversationID = decodeURIComponent(id.slice(0, separator));
+      const userID = id.slice(separator + 1);
+      if (separator < 1 || !conversationID || !userID) {
+        notify("群成员数据无效，请刷新后重试", true);
+        return;
+      }
+      const moderationAction = action === "im-member-mute" ? "mute" :
+        action === "im-member-unmute" ? "unmute" : "remove";
+      const fields = moderationAction === "mute" ? [
+        { name: "duration_minutes", label: "禁言时长（分钟）", type: "number", value: "60" },
+        { name: "reason", label: "管理原因（必填）", type: "textarea", wide: true }
+      ] : [
+        { name: "reason", label: moderationAction === "remove" ? "移出原因（必填）" : "解除原因（必填）",
+          type: "textarea", wide: true }
+      ];
+      return openForm({
+        mute: "禁言群成员", unmute: "解除成员禁言", remove: "移出群成员"
+      }[moderationAction], fields, async (values) => {
+        const minutes = moderationAction === "mute" ? Number(values.duration_minutes) : 0;
+        if (moderationAction === "mute" &&
+            (!Number.isInteger(minutes) || minutes < 1 || minutes > 525600)) {
+          throw new Error("禁言时长必须是 1 到 525600 分钟");
+        }
+        const reason = String(values.reason || "").trim();
+        if (!reason || reason.length > 500) {
+          throw new Error("管理原因必填，且不能超过 500 个字");
+        }
+        await api("/admin/api/im/conversations/" + encodeURIComponent(conversationID) +
+          "/members/" + encodeURIComponent(userID), {
+          method: "POST",
+          body: {
+            action: moderationAction,
+            duration_seconds: minutes * 60,
+            reason
+          }
+        });
+        layer.closeAll("page");
+      });
+    }
+    if (action === "im-message-delete") {
+      return openForm("删除 IM 消息", [
+        { name: "reason", label: "删除原因（必填）", type: "textarea", wide: true }
+      ], async (values) => {
+        const reason = String(values.reason || "").trim();
+        if (!reason || reason.length > 500) {
+          throw new Error("删除原因必填，且不能超过 500 个字");
+        }
+        await api("/admin/api/im/messages/" + encodeURIComponent(id) + "/delete", {
+          method: "POST",
+          body: { reason }
+        });
+        layer.closeAll("page");
+      });
     }
     if (action === "im-all-mute") {
       const row = cached("im", id);
-      return api("/admin/api/im/conversations/" + encodeURIComponent(id), {
-        method: "POST", body: { action: "all_mute", value: !row.all_muted, reason: "后台管理操作" }
-      }).then(() => { notify("群组状态已更新"); return loadRoute(); }).catch((error) => notify(error.message, true));
+      return mutateAndRefresh(
+        "/admin/api/im/conversations/" + encodeURIComponent(id),
+        {
+          method: "POST",
+          body: { action: "all_mute", value: !row.all_muted, reason: "后台管理操作" }
+        },
+        "群组状态已更新"
+      ).catch((error) => notify(error.message, true));
     }
     if (action === "app-create") {
       return openForm("上传 App 新版本", [
@@ -1573,7 +2627,7 @@
               force_update: String(values.force_update) === "1",
               silent_update: releaseType === "wgt" && String(values.silent_update) === "1",
               rollout_percent: rollout,
-              asset_id: Number(finalized.asset_id),
+              asset_id: requireDecimalEntityID(finalized.asset_id, "安装包素材编号"),
               release_notes: String(values.release_notes || "").trim()
             }
           });
@@ -1587,9 +2641,94 @@
         }
       });
     }
-    if (action === "app-publish") {
-      return api("/admin/api/app/releases/" + id + "/publish", { method: "POST", body: {} })
-        .then(() => { notify("版本已发布"); return loadRoute(); }).catch((error) => notify(error.message, true));
+    if (action === "app-edit") {
+      const row = cached("appReleases", id);
+      if (!row) {
+        notify("版本数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("编辑草稿版本 · " + row.version_name, [
+        { name: "version_name", label: "版本名称", value: row.version_name },
+        { name: "version_code", label: "版本号", type: "number", value: row.version_code },
+        {
+          name: "min_native_code",
+          label: "最低原生版本",
+          type: "number",
+          value: row.min_native_code
+        },
+        {
+          name: "force_update",
+          label: "更新方式",
+          options: [[0, "用户可选"], [1, "强制更新"]],
+          value: row.force_update ? 1 : 0
+        },
+        {
+          name: "silent_update",
+          label: "安装提示",
+          options: [[0, "显示提示"], [1, "静默更新"]],
+          value: row.silent_update ? 1 : 0
+        },
+        {
+          name: "rollout_percent",
+          label: "灰度比例（0–100）",
+          type: "number",
+          value: row.rollout_percent
+        },
+        {
+          name: "release_notes",
+          label: "更新说明",
+          type: "textarea",
+          value: row.release_notes || "",
+          wide: true
+        }
+      ], (values) => {
+        const versionName = String(values.version_name || "").trim();
+        const versionCode = Number(values.version_code);
+        const minNativeCode = Number(values.min_native_code);
+        const rolloutPercent = Number(values.rollout_percent);
+        const releaseNotes = String(values.release_notes || "").trim();
+        if (!versionName || utf8ByteLength(versionName) > 40) {
+          throw new Error("版本名称必填，且不能超过 40 字节");
+        }
+        if (!Number.isInteger(versionCode) || versionCode < 1) {
+          throw new Error("版本号必须是大于 0 的整数");
+        }
+        if (!Number.isInteger(minNativeCode) || minNativeCode < 0) {
+          throw new Error("最低原生版本必须是大于或等于 0 的整数");
+        }
+        if (!Number.isInteger(rolloutPercent) || rolloutPercent < 0 || rolloutPercent > 100) {
+          throw new Error("灰度比例必须是 0 到 100 的整数");
+        }
+        if (utf8ByteLength(releaseNotes) > 2000) {
+          throw new Error("更新说明不能超过 2000 字节");
+        }
+        return api("/admin/api/app/releases/" + encodeURIComponent(id), {
+          method: "PATCH",
+          body: {
+            version_name: versionName,
+            version_code: versionCode,
+            min_native_code: minNativeCode,
+            force_update: String(values.force_update) === "1",
+            silent_update: row.release_type === "wgt" &&
+              String(values.silent_update) === "1",
+            rollout_percent: rolloutPercent,
+            release_notes: releaseNotes
+          }
+        });
+      });
+    }
+    if (["app-publish", "app-pause", "app-resume", "app-archive"].includes(action)) {
+      const lifecycle = {
+        "app-publish": ["publish", "版本已发布"],
+        "app-pause": ["pause", "版本已暂停"],
+        "app-resume": ["resume", "版本已恢复"],
+        "app-archive": ["archive", "版本已归档"]
+      }[action];
+      return mutateAndRefresh(
+        "/admin/api/app/releases/" + encodeURIComponent(id) + "/" + lifecycle[0],
+        { method: "POST", body: {} },
+        lifecycle[1]
+      ).catch((error) => notify(error.message, true));
     }
     if (action === "setting-edit") {
       const row = cached("settings", id);
@@ -1609,18 +2748,154 @@
         }
       }));
     }
+    if (action === "role-edit") {
+      const row = (state.cache.rbac.roles || []).find((item) => String(item.id) === String(id));
+      if (!row) {
+        notify("角色数据已刷新，请重试", true);
+        return;
+      }
+      const permissionIDs = (state.cache.rbac.permissions || [])
+        .filter((permission) => (row.permissions || []).includes(permission.permission_key))
+        .map((permission) => permission.id);
+      return openForm("配置角色权限 · " + row.name, [
+        {
+          name: "permission_ids",
+          label: "勾选角色权限",
+          type: "checkboxes",
+          options: (state.cache.rbac.permissions || []).map((permission) => [
+            permission.id,
+            permission.module + " · " + permission.name + "（" + permission.permission_key + "）"
+          ]),
+          value: permissionIDs,
+          wide: true
+        },
+        { name: "status", label: "角色状态", options: [[1, "启用"], [0, "停用"]], value: row.status }
+      ], (values) => {
+        const uniqueIDs = decimalFormIDs(values.permission_ids);
+        if (uniqueIDs.length > 100) throw new Error("角色权限不能超过 100 项");
+        return api("/admin/api/rbac/roles/" + encodeURIComponent(id), {
+          method: "POST",
+          body: { permission_ids: uniqueIDs, status: Number(values.status) }
+        });
+      });
+    }
+    if (action === "admin-edit") {
+      const row = (state.cache.rbac.admins || []).find((item) => String(item.id) === String(id));
+      if (!row) {
+        notify("管理员数据已刷新，请重试", true);
+        return;
+      }
+      const roleIDs = (state.cache.rbac.roles || [])
+        .filter((role) => (row.roles || []).includes(role.role_key))
+        .map((role) => role.id);
+      return openForm("编辑管理员 · " + row.username, [
+        { name: "display_name", label: "显示名称", value: row.display_name, wide: true },
+        {
+          name: "role_ids",
+          label: "勾选管理员角色",
+          type: "checkboxes",
+          options: (state.cache.rbac.roles || []).map((role) => [
+            role.id, role.name + "（" + role.role_key + "）"
+          ]),
+          value: roleIDs,
+          wide: true
+        },
+        { name: "status", label: "账号状态", options: [[1, "启用"], [0, "停用"]], value: row.status }
+      ], (values) => {
+        const displayName = String(values.display_name || "").trim();
+        const roleIDsValue = decimalFormIDs(values.role_ids);
+        if (!displayName || displayName.length > 100) {
+          throw new Error("显示名称必填，且不能超过 100 个字");
+        }
+        if (!roleIDsValue.length || roleIDsValue.length > 20) {
+          throw new Error("请至少分配一个角色，且不能超过 20 个");
+        }
+        return api("/admin/api/rbac/admins/" + encodeURIComponent(id), {
+          method: "POST",
+          body: {
+            display_name: displayName,
+            role_ids: roleIDsValue,
+            status: Number(values.status)
+          }
+        });
+      });
+    }
+    if (action === "admin-password") {
+      const row = (state.cache.rbac.admins || []).find((item) => String(item.id) === String(id));
+      if (!row) {
+        notify("管理员数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("重置管理员密码 · " + row.username, [
+        {
+          name: "password",
+          label: "新密码（12–128 个字符）",
+          type: "password",
+          placeholder: "请输入新密码",
+          wide: true
+        },
+        {
+          name: "password_confirm",
+          label: "再次输入新密码",
+          type: "password",
+          placeholder: "请再次输入新密码",
+          wide: true
+        },
+        {
+          name: "reason",
+          label: "重置原因（必填；保存后撤销该管理员后台与客服座席全部登录会话）",
+          type: "textarea",
+          placeholder: "请填写管理员重置密码的原因",
+          wide: true
+        }
+      ], async (values) => {
+        const password = String(values.password || "");
+        const confirmation = String(values.password_confirm || "");
+        const reason = String(values.reason || "").trim();
+        const passwordLength = [...password].length;
+        if (passwordLength < 12 || passwordLength > 128 || utf8ByteLength(password) > 512) {
+          throw new Error("新密码长度必须为 12 到 128 个字符");
+        }
+        if (password !== confirmation) {
+          throw new Error("两次输入的新密码不一致");
+        }
+        if (!reason || utf8ByteLength(reason) > 500) {
+          throw new Error("重置原因必填，且不能超过 500 字节");
+        }
+        const result = await api(
+          "/admin/api/rbac/admins/" + encodeURIComponent(id) + "/password",
+          { method: "POST", body: { password, reason } }
+        );
+        const revokedSessions = Number(result.revoked_sessions || 0);
+        const isCurrentAdministrator = String(state.me && state.me.id || "") === String(id);
+        return {
+          __formMessage: "管理员密码已重置，已撤销 " + revokedSessions + " 个后台/客服会话",
+          __skipRefresh: true,
+          __redirect: isCurrentAdministrator ? "/admin/login" : ""
+        };
+      });
+    }
     if (action === "role-create") {
-      const permissions = (state.cache.rbac.permissions || []).map((item) => [item.id, item.permission_key]);
+      const permissions = (state.cache.rbac.permissions || []).map((item) => [
+        item.id, item.module + " · " + item.name + "（" + item.permission_key + "）"
+      ]);
       return openForm("新建角色", [
         { name: "role_key", label: "角色标识" }, { name: "name", label: "名称" },
         { name: "description", label: "说明", wide: true },
         { name: "data_scope", label: "数据范围", options: [[1, "全部"], [2, "团队"], [3, "本人"]] },
-        { name: "permission_ids", label: "权限 ID（逗号分隔）", value: permissions.map((item) => item[0]).join(","), wide: true }
+        {
+          name: "permission_ids",
+          label: "勾选角色权限",
+          type: "checkboxes",
+          options: permissions,
+          value: permissions.map((item) => item[0]),
+          wide: true
+        }
       ], (values) => api("/admin/api/rbac/roles", {
         method: "POST", body: {
           role_key: values.role_key, name: values.name, description: values.description,
           data_scope: Number(values.data_scope),
-          permission_ids: values.permission_ids.split(",").map(Number).filter(Boolean)
+          permission_ids: decimalFormIDs(values.permission_ids)
         }
       }));
     }
@@ -1630,11 +2905,18 @@
         { name: "username", label: "登录账号" }, { name: "display_name", label: "显示名称" },
         { name: "password", label: "初始密码（至少 12 位）", type: "password" },
         { name: "email", label: "邮箱" },
-        { name: "role_ids", label: "角色 ID（逗号分隔）", value: roles.map((item) => item.id).join(","), wide: true }
+        {
+          name: "role_ids",
+          label: "勾选管理员角色",
+          type: "checkboxes",
+          options: roles.map((item) => [item.id, item.name + "（" + item.role_key + "）"]),
+          value: roles.map((item) => item.id),
+          wide: true
+        }
       ], (values) => api("/admin/api/rbac/admins", {
         method: "POST", body: {
           username: values.username, display_name: values.display_name, password: values.password,
-          email: values.email, role_ids: values.role_ids.split(",").map(Number).filter(Boolean)
+          email: values.email, role_ids: decimalFormIDs(values.role_ids)
         }
       }));
     }
@@ -1644,7 +2926,57 @@
     const target = event.target.closest("[data-action]");
     if (!target) return;
     event.preventDefault();
-    void handleAction(target.dataset.action, target.dataset.id || "");
+    void handleAction(target.dataset.action, target.dataset.id || "", target)
+      .catch((error) => notify(error.message || "操作失败", true));
+  });
+
+  document.addEventListener("input", function (event) {
+    const input = event.target.closest("[data-table-search]");
+    if (!input) return;
+    const model = state.tables[input.dataset.tableSearch || ""];
+    if (!model) return;
+    model.query = input.value;
+    model.page = 1;
+    if (model.remote) model.requestSerial += 1;
+    state.tablePreferences[model.preferenceKey] = {
+      query: model.query,
+      page: model.page,
+      pageSize: model.pageSize
+    };
+    if (model.searchTimer) window.clearTimeout(model.searchTimer);
+    model.searchTimer = window.setTimeout(function () {
+      model.searchTimer = null;
+      if (model.remote) {
+        void loadRemoteTable(model, true);
+        return;
+      }
+      refreshTable(model.id, true);
+    }, 180);
+  });
+
+  document.addEventListener("change", function (event) {
+    const select = event.target.closest("[data-table-page-size]");
+    if (!select) return;
+    const model = state.tables[select.dataset.tablePageSize || ""];
+    const pageSize = Number(select.value);
+    if (!model || ![10, 20, 50, 100].includes(pageSize)) return;
+    if (model.searchTimer) {
+      window.clearTimeout(model.searchTimer);
+      model.searchTimer = null;
+    }
+    model.pageSize = pageSize;
+    model.page = 1;
+    state.tablePreferences[model.preferenceKey] = {
+      query: model.query,
+      page: model.page,
+      pageSize: model.pageSize
+    };
+    if (model.remote) {
+      model.requestSerial += 1;
+      void loadRemoteTable(model, false);
+      return;
+    }
+    refreshTable(model.id, false);
   });
 
   document.getElementById("logout").addEventListener("click", async function () {

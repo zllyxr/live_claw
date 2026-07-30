@@ -43,10 +43,9 @@ func (h *Handler) listGames(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取游戏失败")
 			return
 		}
-		var config any
-		_ = json.Unmarshal(configJSON, &config)
+		config := jsonOrNil(configJSON)
 		items = append(items, map[string]any{
-			"id": id, "game_code": gameCode, "name": name, "category": category,
+			"id": apiDecimalID(id), "game_code": gameCode, "name": name, "category": category,
 			"entry_path": entryPath, "min_players": minPlayers, "max_players": maxPlayers,
 			"orientation": orientation, "wallet_enabled": walletEnabled == 1,
 			"status": status, "sort_order": sortOrder, "config": config,
@@ -88,10 +87,10 @@ func (h *Handler) listGames(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取游戏场次失败")
 			return
 		}
-		var betLevels any
-		_ = json.Unmarshal(betLevelsJSON, &betLevels)
+		betLevels := jsonOrNil(betLevelsJSON)
 		venues = append(venues, map[string]any{
-			"id": id, "game_id": gameID, "venue_code": venueCode, "name": name,
+			"id": apiDecimalID(id), "game_id": apiDecimalID(gameID),
+			"venue_code": venueCode, "name": name,
 			"multiplier": multiplier, "table_count": tableCount, "seats_per_table": seatsPerTable,
 			"min_balance": minBalance, "escrow_amount": escrowAmount, "bet_levels": betLevels,
 			"target_rtp_ppm": targetRTP, "status": status, "sort_order": sortOrder,
@@ -161,7 +160,9 @@ func (h *Handler) updateGame(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新游戏失败")
 		return
 	}
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"id": gameID, "updated": true})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(gameID), "updated": true,
+	})
 }
 
 func (h *Handler) updateGameVenue(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +244,7 @@ func (h *Handler) updateGameVenue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"id": venueID, "venue_code": venueCode, "multiplier": multiplier,
+		"id": apiDecimalID(venueID), "venue_code": venueCode, "multiplier": multiplier,
 		"table_count": 300, "seats_per_table": 4,
 	})
 }
@@ -251,6 +252,34 @@ func (h *Handler) updateGameVenue(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listGameSettlements(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := pageParams(r)
 	userID, _ := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 64)
+	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+	status := -1
+	if rawStatus := strings.TrimSpace(r.URL.Query().Get("status")); rawStatus != "" {
+		status, _ = strconv.Atoi(rawStatus)
+	}
+	like := "%" + escapeLike(keyword) + "%"
+	filterArguments := []any{
+		userID, userID,
+		status, status,
+		keyword, like, like, like, like,
+	}
+	var total int64
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*)
+		FROM game_settlements settlement
+		JOIN games game ON game.id=settlement.game_id
+		JOIN game_venues venue ON venue.id=settlement.venue_id
+		JOIN game_settlement_items item ON item.settlement_id=settlement.id
+		WHERE (?=0 OR item.user_id=?)
+		  AND (? < 0 OR settlement.status=?)
+		  AND (?='' OR settlement.settlement_no LIKE ?
+		       OR settlement.session_id LIKE ? OR game.game_code LIKE ?
+		       OR venue.venue_code LIKE ?)`,
+		filterArguments...,
+	).Scan(&total); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取游戏输赢记录失败")
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT settlement.id,settlement.settlement_no,settlement.session_id,
 		       game.game_code,venue.venue_code,venue.multiplier,settlement.table_no,
@@ -261,9 +290,13 @@ func (h *Handler) listGameSettlements(w http.ResponseWriter, r *http.Request) {
 		JOIN game_venues venue ON venue.id=settlement.venue_id
 		JOIN game_settlement_items item ON item.settlement_id=settlement.id
 		WHERE (?=0 OR item.user_id=?)
+		  AND (? < 0 OR settlement.status=?)
+		  AND (?='' OR settlement.settlement_no LIKE ?
+		       OR settlement.session_id LIKE ? OR game.game_code LIKE ?
+		       OR venue.venue_code LIKE ?)
 		ORDER BY settlement.created_at DESC,settlement.id DESC
 		LIMIT ? OFFSET ?`,
-		userID, userID, pageSize, (page-1)*pageSize,
+		append(filterArguments, pageSize, (page-1)*pageSize)...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取游戏输赢记录失败")
@@ -285,9 +318,10 @@ func (h *Handler) listGameSettlements(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		items = append(items, map[string]any{
-			"id": id, "settlement_no": settlementNo, "session_id": sessionID.String,
-			"game_code": gameCode, "venue_code": venueCode, "multiplier": multiplier,
-			"table_no": tableNo, "user_id": rowUserID, "bet_amount": bet,
+			"id": apiDecimalID(id), "settlement_no": settlementNo,
+			"session_id": sessionID.String,
+			"game_code":  gameCode, "venue_code": venueCode, "multiplier": multiplier,
+			"table_no": tableNo, "user_id": apiDecimalID(rowUserID), "bet_amount": bet,
 			"payout_amount": payout, "fee_amount": fee, "net_amount": net,
 			"status": status, "created_at": createdAt.Unix(),
 		})
@@ -297,6 +331,7 @@ func (h *Handler) listGameSettlements(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
-		"page": page, "page_size": pageSize, "items": items,
+		"page": page, "page_size": pageSize, "total": total,
+		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
 }

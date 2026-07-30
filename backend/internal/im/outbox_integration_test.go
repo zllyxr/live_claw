@@ -29,7 +29,7 @@ func TestDispatcherRecoversStaleClaimIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	if err = migrations.Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,8 @@ func TestDispatcherRecoversStaleClaimIntegration(t *testing.T) {
 			(?,'im_conversation',?,'im.message.created',?,1,1,
 			 CURRENT_TIMESTAMP(3),CURRENT_TIMESTAMP(3)),
 			(?,'im_conversation',?,'im.message.created',?,1,1,
-			 CURRENT_TIMESTAMP(3),CURRENT_TIMESTAMP(3)-INTERVAL 1 MINUTE)`,
+			 CURRENT_TIMESTAMP(3)-INTERVAL 1 DAY,
+			 CURRENT_TIMESTAMP(3)-INTERVAL 1 MINUTE)`,
 		freshEventID, conversationID, payload,
 		staleEventID, conversationID, payload,
 	)
