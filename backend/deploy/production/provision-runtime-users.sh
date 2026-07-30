@@ -157,7 +157,9 @@ REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`users\` TO 'claw_scheduler'@'%';
 GRANT CREATE TEMPORARY TABLES ON \`${MYSQL_DATABASE}\`.* TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`game_settlements\` TO 'claw_scheduler'@'%';
-GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`lottery_games\` TO 'claw_scheduler'@'%';
+# MySQL locking reads over a joined table require a write-class privilege on
+# every locked table even when the statement does not modify that table.
+GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`lottery_games\` TO 'claw_scheduler'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`lottery_issues\` TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`lottery_plays\` TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`lottery_options\` TO 'claw_scheduler'@'%';
@@ -173,7 +175,7 @@ GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`sports_bet_orders\` TO 'claw_sch
 GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`sports_bet_items\` TO 'claw_scheduler'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON \`${MYSQL_DATABASE}\`.\`sports_settlement_runs\` TO 'claw_scheduler'@'%';
 GRANT INSERT ON \`${MYSQL_DATABASE}\`.\`sports_sync_logs\` TO 'claw_scheduler'@'%';
-GRANT INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`metric_daily\` TO 'claw_scheduler'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`metric_daily\` TO 'claw_scheduler'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`wallet_accounts\` TO 'claw_scheduler'@'%';
 GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`wallet_holds\` TO 'claw_scheduler'@'%';
 GRANT SELECT, INSERT ON \`${MYSQL_DATABASE}\`.\`wallet_ledger_entries\` TO 'claw_scheduler'@'%';
