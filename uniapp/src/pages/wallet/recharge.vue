@@ -46,15 +46,18 @@
       >
         <image class="pay-icon" :src="payIcon(pay)" mode="aspectFit" />
         <view class="pay-main">
-          <text>{{ pay.name || payName(pay.id) }}</text>
-          <text>{{ payDescription(pay) }}</text>
+          <text class="pay-name">{{ pay.name || payName(pay.id) }}</text>
+          <text class="pay-description">{{ payDescription(pay) }}</text>
+          <text v-if="!paymentAvailable(pay)" class="pay-preview-tag">
+            {{ pay.status_text || "配置中" }}
+          </text>
         </view>
         <view class="radio" />
       </view>
     </view>
     <view v-else class="pay-empty">当前没有可用支付方式</view>
 
-    <button class="primary-button charge-button" :disabled="!canCreateOrder" @tap="charge">
+    <button class="primary-button charge-button" :disabled="!canTapCharge" @tap="charge">
       {{ chargeButtonText }}
     </button>
 
@@ -85,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import {
@@ -96,7 +99,7 @@ import {
 } from "@/api/services";
 import type { RechargeOrder, WalletBalance, WalletPayMethod, WalletRule } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
-import { getSession, requireLogin } from "@/utils/session";
+import { getSession, onSessionChange, requireLogin } from "@/utils/session";
 import {
   clearForeignPendingPayments,
   clearPaymentCreateAttempt,
@@ -124,12 +127,13 @@ const checkingPending = ref(false);
 const pending = ref<PendingPayment>();
 const walletUID = ref("");
 let pendingRequestSequence = 0;
+let walletRequestSequence = 0;
 
 const rules = computed(() => parseList<WalletRule>(wallet.value?.rules));
 const payMethods = computed(() => parseList<WalletPayMethod>(wallet.value?.paylist));
 const selectedRule = computed(() => rules.value[selectedRuleIndex.value]);
 const selectedPay = computed(() => payMethods.value[selectedPayIndex.value]);
-const canCreateOrder = computed(
+const canTapCharge = computed(
   () =>
     !loading.value &&
     !submitting.value &&
@@ -141,6 +145,12 @@ const canCreateOrder = computed(
 const chargeButtonText = computed(() => {
   if (pending.value) {
     return "请先完成待支付订单";
+  }
+  if (selectedPay.value && !paymentAvailable(selectedPay.value)) {
+    return "支付通道配置中 · 点击查看";
+  }
+  if (selectedRule.value && !ruleAvailable(selectedRule.value)) {
+    return "充值档位预览 · 点击查看";
   }
   if (!selectedRule.value) {
     return "请选择充值金额";
@@ -162,6 +172,60 @@ function parseList<T>(value: unknown): T[] {
     }
   }
   return [];
+}
+
+function flagIsTrue(value: unknown) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  return ["1", "true", "yes", "enabled", "available"].includes(
+    String(value ?? "").trim().toLowerCase()
+  );
+}
+
+function statusAllowsUse(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return true;
+  }
+  return flagIsTrue(value);
+}
+
+function paymentAvailable(pay?: WalletPayMethod) {
+  if (!pay) {
+    return false;
+  }
+  const id = String(pay.id || "").trim().toLowerCase();
+  if (
+    !["ali", "wx", "paypal", "usdt"].includes(id) ||
+    id.startsWith("preview-") ||
+    flagIsTrue(pay.preview) ||
+    !statusAllowsUse(pay.status)
+  ) {
+    return false;
+  }
+  if (pay.available === undefined || pay.available === null || pay.available === "") {
+    return true;
+  }
+  return flagIsTrue(pay.available);
+}
+
+function ruleAvailable(rule?: WalletRule) {
+  if (!rule) {
+    return false;
+  }
+  const id = String(rule.id || "").trim();
+  if (
+    flagIsTrue(rule.preview) ||
+    id.toLowerCase().startsWith("preview-") ||
+    !/^[1-9]\d*$/.test(id) ||
+    !statusAllowsUse(rule.status)
+  ) {
+    return false;
+  }
+  if (rule.available === undefined || rule.available === null || rule.available === "") {
+    return true;
+  }
+  return flagIsTrue(rule.available);
 }
 
 function payName(id?: string) {
@@ -215,7 +279,17 @@ function coinOf(rule: WalletRule) {
 }
 
 function payIcon(pay: WalletPayMethod) {
-  return absolutizeUrl(String(pay.thumb || "")) || "/static/native/me_wallet.png";
+  const remote = absolutizeUrl(String(pay.thumb || ""));
+  if (remote) {
+    return remote;
+  }
+  const icons: Record<string, string> = {
+    ali: "/static/icons/payment-alipay.svg",
+    wx: "/static/icons/payment-wechat.svg",
+    paypal: "/static/icons/payment-paypal.svg",
+    usdt: "/static/icons/payment-usdt.svg"
+  };
+  return icons[String(pay.id || "").toLowerCase()] || "/static/native/me_wallet.png";
 }
 
 function currentUID() {
@@ -240,6 +314,7 @@ async function load() {
     return;
   }
   const uid = currentUID();
+  const requestSequence = ++walletRequestSequence;
   if (walletUID.value !== uid) {
     wallet.value = undefined;
     walletUID.value = "";
@@ -247,7 +322,7 @@ async function load() {
   loading.value = true;
   try {
     const nextWallet = await getWalletBalance();
-    if (currentUID() !== uid) {
+    if (currentUID() !== uid || requestSequence !== walletRequestSequence) {
       return;
     }
     wallet.value = nextWallet;
@@ -261,11 +336,13 @@ async function load() {
       Math.max(0, parseList(nextWallet?.paylist).length - 1)
     );
   } catch (error: any) {
-    if (currentUID() === uid) {
+    if (currentUID() === uid && requestSequence === walletRequestSequence) {
       uni.showToast({ title: error?.message || "充值配置加载失败", icon: "none" });
     }
   } finally {
-    loading.value = false;
+    if (requestSequence === walletRequestSequence) {
+      loading.value = false;
+    }
   }
 }
 
@@ -338,17 +415,29 @@ async function checkPendingOrder(silent = true) {
 }
 
 async function charge() {
-  if (
-    !requireLogin() ||
-    !canCreateOrder.value ||
-    !selectedRule.value ||
-    !selectedPay.value
-  ) {
+  if (!requireLogin()) {
+    return;
+  }
+  const rule = selectedRule.value;
+  const pay = selectedPay.value;
+  if (!canTapCharge.value || !rule || !pay) {
+    return;
+  }
+  // Preview and malformed catalog entries must stop before trace lookup,
+  // local storage writes, or any payment-order request.
+  if (!paymentAvailable(pay) || !ruleAvailable(rule)) {
+    uni.showModal({
+      title: "效果预览",
+      content:
+        "当前支付方式和充值档位已展示。配置收款钱包与 API Token 后即可真实下单；目前不会生成充值订单。",
+      showCancel: false,
+      confirmColor: "#ff5878"
+    });
     return;
   }
   const uid = currentUID();
-  const productId = String(selectedRule.value.id || "");
-  const payId = String(selectedPay.value.id || "");
+  const productId = String(rule.id || "");
+  const payId = String(pay.id || "");
   const previousAttempt = readPaymentCreateAttempt(uid);
   const clientTraceId =
     previousAttempt?.productId === productId && previousAttempt.payId === payId
@@ -366,8 +455,8 @@ async function charge() {
   submitting.value = true;
   try {
     const result = await createCoinOrder(
-      selectedRule.value,
-      selectedPay.value,
+      rule,
+      pay,
       clientTraceId
     );
     if (currentUID() !== uid) {
@@ -401,7 +490,7 @@ async function charge() {
       );
     }
     const paymentUrl = normalizePaymentUrl(rechargePaymentUrl(order));
-    if (paymentUrl && openPaymentUrl(paymentUrl, selectedPay.value.name || "支付")) {
+    if (paymentUrl && openPaymentUrl(paymentUrl, pay.name || "支付")) {
       return;
     }
     uni.showModal({
@@ -438,14 +527,34 @@ function openChargeDetail() {
   uni.navigateTo({ url: "/pages/wallet/detail?type=charge" });
 }
 
+function resetAccountState() {
+  walletRequestSequence += 1;
+  pendingRequestSequence += 1;
+  wallet.value = undefined;
+  walletUID.value = "";
+  pending.value = undefined;
+  loading.value = false;
+  checkingPending.value = false;
+  selectedRuleIndex.value = 0;
+  selectedPayIndex.value = 0;
+}
+
+const stopSessionChange = onSessionChange(() => {
+  // Clear account-bound data immediately, including while this page is hidden.
+  resetAccountState();
+});
+
+onBeforeUnmount(() => {
+  stopSessionChange();
+});
+
 onShow(() => {
-  if (!requireLogin()) {
-    return;
-  }
   const uid = currentUID();
   if (walletUID.value !== uid) {
-    wallet.value = undefined;
-    walletUID.value = "";
+    resetAccountState();
+  }
+  if (!requireLogin()) {
+    return;
   }
   clearForeignPendingPayments(uid);
   pending.value = readPendingPayment(uid);
@@ -642,25 +751,52 @@ onPullDownRefresh(() => {
 }
 
 .pay-main {
+  display: flex !important;
   flex: 0 1 auto;
+  flex-direction: column !important;
   min-width: 0;
+  align-items: center !important;
+  justify-content: center !important;
   text-align: center !important;
 }
 
-.pay-main text:first-child {
-  display: block;
+.pay-name {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   color: var(--ink);
   font-size: 28rpx;
   font-weight: 900;
+  line-height: 1.2 !important;
   text-align: center !important;
 }
 
-.pay-main text:last-child {
-  display: block;
+.pay-description {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   margin-top: 10rpx;
   color: var(--ink-3);
   font-size: 23rpx;
+  line-height: 1.2 !important;
   text-align: center !important;
+}
+
+.pay-preview-tag {
+  display: inline-flex !important;
+  min-width: 88rpx;
+  height: 36rpx;
+  margin-top: 12rpx;
+  padding: 0 12rpx;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 18rpx;
+  color: #9a6700;
+  font-size: 20rpx;
+  font-weight: 800;
+  line-height: 1 !important;
+  text-align: center !important;
+  background: #fff4ce;
 }
 
 .radio {

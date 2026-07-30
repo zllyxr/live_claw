@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="USDT TRC20">
+  <rect width="64" height="64" rx="16" fill="#26a17b"/>
+  <path d="M15 13h34v9H37v7c11 .5 19 2.6 19 5.5S45 40 32 40 8 37.5 8 34.5 16 29.5 27 29v-7H15v-9z" fill="#fff"/>
+  <path d="M27 33v19h10V33c-1.6.2-3.3.3-5 .3s-3.4-.1-5-.3z" fill="#fff"/>
+  <path d="M13 34.5c3 3 10 5 19 5s16-2 19-5" fill="none" stroke="#26a17b" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

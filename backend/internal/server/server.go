@@ -565,10 +565,74 @@ func (s *Server) compatWalletBalance(ctx context.Context, userID int64) (map[str
 			"currency_scale": scale, "give": bonus,
 		})
 	}
+	if err = productRows.Err(); err != nil {
+		return nil, err
+	}
+	payList, rules = rechargeCatalogWithPreview(payList, rules)
 	return map[string]any{
 		"coin": strconv.FormatInt(coin, 10), "score": "0", "votes": "0",
 		"paylist": payList, "rules": rules,
-	}, productRows.Err()
+	}, nil
+}
+
+var rechargePreviewAmounts = [...]int64{10, 100, 3000, 9800, 38800, 58800}
+
+var rechargePreviewPayments = [...]map[string]any{
+	{
+		"id": "ali", "name": "支付宝", "thumb": "", "href": "",
+		"provider": "alipay", "mode": "cashier",
+		"available": false, "preview": true, "status": 0, "status_text": "待接入",
+		"description": "支付宝收银台效果预览",
+	},
+	{
+		"id": "wx", "name": "微信支付", "thumb": "", "href": "",
+		"provider": "wechatpay", "mode": "cashier",
+		"available": false, "preview": true, "status": 0, "status_text": "待接入",
+		"description": "微信支付收银台效果预览",
+	},
+	{
+		"id": "paypal", "name": "PayPal", "thumb": "", "href": "",
+		"provider": "paypal", "mode": "cashier",
+		"available": false, "preview": true, "status": 0, "status_text": "待接入",
+		"description": "PayPal 收银台效果预览",
+	},
+	{
+		"id": "usdt", "name": "USDT.TRC20", "thumb": "", "href": "",
+		"provider": "bepusdt", "trade_type": "usdt.trc20", "network": "tron",
+		"available": false, "preview": true, "status": 0, "status_text": "配置中",
+		"description": "BEpusdt · USDT TRC20 通道配置中",
+	},
+}
+
+func rechargeCatalogWithPreview(
+	payList []map[string]any,
+	rules []map[string]any,
+) ([]map[string]any, []map[string]any) {
+	// Visibility is deliberately separate from payment_channels.status. The
+	// preview lets clients render the recharge experience while the real
+	// channel remains disabled and CreateRecharge continues to fail closed.
+	if len(payList) == 0 {
+		payList = make([]map[string]any, len(rechargePreviewPayments))
+		copy(payList, rechargePreviewPayments[:])
+	}
+	if len(rules) == 0 {
+		rules = make([]map[string]any, 0, len(rechargePreviewAmounts))
+		for _, amount := range rechargePreviewAmounts {
+			rules = append(rules, map[string]any{
+				"id":             "preview-" + strconv.FormatInt(amount, 10),
+				"coin":           amount,
+				"money_minor":    amount * 100,
+				"money":          formatMinorAmount(amount*100, 2),
+				"currency_scale": 2,
+				"give":           int64(0),
+				"available":      false,
+				"preview":        true,
+				"status":         0,
+				"status_text":    "配置中",
+			})
+		}
+	}
+	return payList, rules
 }
 
 func compatCountries(field string) []map[string]any {

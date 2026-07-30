@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="支付宝">
+  <rect width="64" height="64" rx="16" fill="#1677ff"/>
+  <path d="M18 18h28M32 12v12c0 14-6 23-17 28M22 30c7 10 16 17 27 21" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15 38c10-3 23-3 36 1" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+</svg>

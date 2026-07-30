@@ -1,1 +1,0 @@
-import{M as t,N as n,Y as s}from"./index-mVTxCe0-.js";const a="/h5/static/native/back.png",o="xingyu_auth_country_selection";function i(t){s(o,t)}function c(s){const a=t(o);if(a&&a.from===s&&a.tel)return n(o),a}export{a as _,i as s,c as t};

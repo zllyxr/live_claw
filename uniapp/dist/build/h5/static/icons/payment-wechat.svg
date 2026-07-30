@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="微信支付">
+  <rect width="64" height="64" rx="16" fill="#07c160"/>
+  <path d="M11 29c0-9 9-16 20-16s20 7 20 16-9 16-20 16c-3 0-6-.5-8.5-1.5L15 48l2-7c-3.8-3-6-7.2-6-12z" fill="#fff"/>
+  <path d="M28 38c0-7 7-13 16-13s16 6 16 13-7 13-16 13c-2 0-4-.3-6-1l-6 3 1.6-5.5A12 12 0 0 1 28 38z" fill="#e8fff2" stroke="#07c160" stroke-width="2"/>
+  <circle cx="24" cy="27" r="2.4" fill="#07c160"/>
+  <circle cx="38" cy="27" r="2.4" fill="#07c160"/>
+  <circle cx="39" cy="37" r="2" fill="#07c160"/>
+  <circle cx="49" cy="37" r="2" fill="#07c160"/>
+</svg>

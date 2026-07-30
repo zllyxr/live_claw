@@ -55,6 +55,10 @@ export interface WalletRule {
   money?: string | number;
   give?: string | number;
   coin_paypal?: string | number;
+  available?: boolean | string | number;
+  preview?: boolean | string | number;
+  status?: string | number;
+  status_text?: string;
   checked?: boolean;
   [key: string]: unknown;
 }
@@ -69,6 +73,10 @@ export interface WalletPayMethod {
   description?: string;
   trade_type?: string;
   network?: string;
+  available?: boolean | string | number;
+  preview?: boolean | string | number;
+  status?: string | number;
+  status_text?: string;
   checked?: boolean;
   [key: string]: unknown;
 }
