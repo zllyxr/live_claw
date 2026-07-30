@@ -61,6 +61,8 @@ import type {
   UploadResult,
   RedPackItem,
   RedPackRobBundle,
+  RechargeOrder,
+  RechargeOrderBundle,
   VideoItem,
   WalletBalance,
   WalletPayMethod,
@@ -393,7 +395,7 @@ export function getWalletLedger(page = 1) {
 }
 
 export function getRechargeOrders(page = 1) {
-  return firstInfo<Record<string, unknown>>("Charge.orderList", { p: page });
+  return firstInfo<RechargeOrderBundle>("Charge.orderList", { p: page });
 }
 
 export function getWithdrawalOrders(page = 1) {
@@ -414,16 +416,43 @@ function payServiceOf(payId?: string) {
   return map[String(payId || "")] || "";
 }
 
-export function createCoinOrder(rule: WalletRule, pay: WalletPayMethod) {
+export function createPaymentTraceId() {
+  const uid = String(getSession().uid || "anonymous").replace(/[^0-9A-Za-z_-]/g, "").slice(0, 32);
+  let random = "";
+  try {
+    random = globalThis.crypto?.randomUUID?.().replace(/-/g, "") || "";
+  } catch {
+    // Some older App WebViews do not expose Web Crypto.
+  }
+  if (!random) {
+    random = `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  }
+  return `PAY_${uid || "anonymous"}_${Date.now()}_${random.slice(0, 24)}`;
+}
+
+export function createCoinOrder(
+  rule: WalletRule,
+  pay: WalletPayMethod,
+  clientTraceId = createPaymentTraceId()
+) {
   const service = payServiceOf(String(pay.id || ""));
   if (!service) {
     throw new Error("请选择可用支付方式");
   }
-  return firstInfo<Record<string, unknown>>(service, {
+  return firstInfo<RechargeOrder>(service, {
     money: rule.money || "",
     changeid: rule.id || "",
-    coin: rule.coin || ""
+    coin: rule.coin || "",
+    client_trace_id: clientTraceId
   });
+}
+
+export function getRechargeOrderStatus(orderNo: string) {
+  const normalized = String(orderNo || "").trim();
+  if (!normalized) {
+    throw new Error("充值订单号无效");
+  }
+  return firstInfo<RechargeOrder>("Charge.orderStatus", { order_no: normalized });
 }
 
 export function getProfit() {

@@ -64,6 +64,11 @@ export interface WalletPayMethod {
   name?: string;
   thumb?: string;
   href?: string;
+  provider?: string;
+  mode?: string;
+  description?: string;
+  trade_type?: string;
+  network?: string;
   checked?: boolean;
   [key: string]: unknown;
 }
@@ -78,6 +83,52 @@ export interface WalletBalance {
   aliapp_seller_id?: string;
   aliapp_key_android?: string;
   wx_appid?: string;
+  [key: string]: unknown;
+}
+
+export interface RechargeOrder {
+  id?: string | number;
+  orderid?: string;
+  order_no?: string;
+  client_trace_id?: string;
+  provider_trade_id?: string;
+  provider_order_no?: string;
+  payment_url?: string;
+  payurl?: string;
+  url?: string;
+  href?: string;
+  qrcode?: string;
+  status?: string | number;
+  status_text?: string;
+  channel?: string;
+  channel_name?: string;
+  fiat_currency?: string;
+  currency?: string;
+  money?: string | number;
+  amount?: string | number;
+  coin?: string | number;
+  coin_amount?: string | number;
+  give?: string | number;
+  bonus_coin?: string | number;
+  crypto_currency?: string;
+  actual_amount?: string | number;
+  network?: string;
+  trade_type?: string;
+  token?: string;
+  expires_at?: string | number;
+  expiration_time?: string | number;
+  block_transaction_id?: string;
+  addtime?: string | number;
+  datetime?: string;
+  paid_at?: string | number;
+  [key: string]: unknown;
+}
+
+export interface RechargeOrderBundle {
+  list?: RechargeOrder[];
+  items?: RechargeOrder[];
+  total?: string | number;
+  page?: string | number;
   [key: string]: unknown;
 }
 

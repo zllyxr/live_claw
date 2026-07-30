@@ -39,7 +39,14 @@ function parseEnvelope<T>(payload: unknown): ApiEnvelope<T> {
   };
 }
 
-function handleLoginInvalid(msg: string) {
+function handleLoginInvalid(msg: string, requestUID: unknown, requestToken: unknown) {
+  const current = getSession();
+  if (
+    String(current.uid ?? "") !== String(requestUID ?? "") ||
+    String(current.token ?? "") !== String(requestToken ?? "")
+  ) {
+    return;
+  }
   clearSession();
   uni.showToast({ title: msg || "登录已失效", icon: "none" });
   setTimeout(() => {
@@ -107,7 +114,7 @@ function requestOnce<T = Record<string, unknown>>(
         try {
           const envelope = parseEnvelope<T>(response.data);
           if (envelope.code === 700) {
-            handleLoginInvalid(envelope.msg);
+            handleLoginInvalid(envelope.msg, data.uid, data.token);
           }
           if (options.throwOnError !== false && envelope.code !== 0) {
             reject(new ApiError<T>(envelope.code, envelope.msg, envelope.info));
@@ -135,10 +142,19 @@ export async function request<T = Record<string, unknown>>(
   options: ApiRequestOptions = {}
 ): Promise<ApiEnvelope<T>> {
   const maxRetry = Math.max(0, options.retry ?? DEFAULT_RETRY);
+  let stableParams = params;
+  if (options.auth !== false) {
+    const session = getSession();
+    stableParams = {
+      ...params,
+      uid: params.uid ?? session.uid,
+      token: params.token ?? session.token
+    };
+  }
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetry; attempt++) {
     try {
-      return await requestOnce<T>(service, params, options);
+      return await requestOnce<T>(service, stableParams, options);
     } catch (error) {
       lastError = error;
       if (attempt >= maxRetry || !isRetryable(error)) {

@@ -36,6 +36,10 @@ type ObjectInfo struct {
 }
 
 func New(cfg config.Config) (*Service, error) {
+	if strings.TrimSpace(cfg.MinIOAccessKey) == "" ||
+		strings.TrimSpace(cfg.MinIOSecretKey) == "" {
+		return nil, errors.New("minio access key and secret key are required")
+	}
 	region := strings.TrimSpace(cfg.MinIORegion)
 	if region == "" {
 		region = "us-east-1"

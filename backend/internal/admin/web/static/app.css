@@ -223,6 +223,24 @@ button > strong,
 .tag.ok { color: #087d50; background: #e8f8f1; }
 .tag.warn { color: #9a6600; background: #fff6dc; }
 .tag.bad { color: #b4233a; background: #ffecef; }
+.payment-config-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 150px;
+  text-align: center;
+}
+.payment-config-state span,
+.payment-config-state tag,
+.payment-config-state button,
+.payment-config-state .tag {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
 .row-actions {
   display: flex;
   align-items: center;

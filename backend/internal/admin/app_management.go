@@ -762,6 +762,9 @@ func pageParams(r *http.Request) (int, int) {
 	if page < 1 {
 		page = 1
 	}
+	if page > 10_000 {
+		page = 10_000
+	}
 	if pageSize < 1 {
 		pageSize = 20
 	}

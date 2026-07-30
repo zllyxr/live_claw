@@ -7,13 +7,13 @@
       </view>
       <view class="balance-side">
         <text>积分 {{ wallet?.score || "0" }}</text>
-        <button @tap="load">刷新</button>
+        <button class="function-button" :disabled="loading || checkingPending" @tap="refreshAll">刷新</button>
       </view>
     </view>
 
     <view class="section-head">
-      <text>充值金额</text>
-      <button @tap="openChargeDetail">充值明细</button>
+      <text class="section-title">充值金额</text>
+      <button class="function-button" @tap="openChargeDetail">充值明细</button>
     </view>
 
     <view v-if="rules.length" class="rule-grid">
@@ -33,7 +33,7 @@
 
     <view class="section-head pay-head">
       <text class="section-head-start">支付方式</text>
-      <text class="section-head-end" @tap="openAgreement">充值协议</text>
+      <button class="agreement-button" @tap="openAgreement">充值协议</button>
     </view>
 
     <view v-if="payMethods.length" class="pay-list">
@@ -47,16 +47,40 @@
         <image class="pay-icon" :src="payIcon(pay)" mode="aspectFit" />
         <view class="pay-main">
           <text>{{ pay.name || payName(pay.id) }}</text>
-          <text>{{ pay.href ? "H5/外部收银台" : "App 原生支付" }}</text>
+          <text>{{ payDescription(pay) }}</text>
         </view>
         <view class="radio" />
       </view>
     </view>
     <view v-else class="pay-empty">当前没有可用支付方式</view>
 
-    <button class="primary-button charge-button" :disabled="submitting || !selectedRule || !selectedPay" @tap="charge">
+    <button class="primary-button charge-button" :disabled="!canCreateOrder" @tap="charge">
       {{ chargeButtonText }}
     </button>
+
+    <view v-if="pending" class="pending-card">
+      <view class="pending-copy">
+        <text class="pending-title">待处理充值订单</text>
+        <text class="pending-number">{{ pending.orderNo }}</text>
+      </view>
+      <view class="pending-actions">
+        <button
+          v-if="pending.paymentUrl"
+          class="pending-continue-button"
+          :disabled="checkingPending"
+          @tap="resumePendingPayment"
+        >
+          继续支付
+        </button>
+        <button
+          class="pending-refresh-button"
+          :disabled="checkingPending"
+          @tap="checkPendingOrder(false)"
+        >
+          {{ checkingPending ? "查询中" : "刷新状态" }}
+        </button>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -64,24 +88,60 @@
 import { computed, ref } from "vue";
 import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
-import { createCoinOrder, getWalletBalance } from "@/api/services";
-import type { WalletBalance, WalletPayMethod, WalletRule } from "@/types/api";
+import {
+  createCoinOrder,
+  createPaymentTraceId,
+  getRechargeOrderStatus,
+  getWalletBalance
+} from "@/api/services";
+import type { RechargeOrder, WalletBalance, WalletPayMethod, WalletRule } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
-import { requireLogin } from "@/utils/session";
-import { openWebView } from "@/utils/navigation";
-import { API_HOST } from "@/constants/config";
+import { getSession, requireLogin } from "@/utils/session";
+import {
+  clearForeignPendingPayments,
+  clearPaymentCreateAttempt,
+  clearPendingPayment,
+  normalizePaymentUrl,
+  openPaymentCashier,
+  readPaymentCreateAttempt,
+  readPendingPayment,
+  rechargeIsExpired,
+  rechargeIsPaid,
+  rechargeIsTerminal,
+  rechargePaymentUrl,
+  rechargeStatusText,
+  savePaymentCreateAttempt,
+  savePendingPayment,
+  type PendingPayment
+} from "@/utils/payment";
 
 const wallet = ref<WalletBalance>();
 const selectedRuleIndex = ref(0);
 const selectedPayIndex = ref(0);
 const loading = ref(false);
 const submitting = ref(false);
+const checkingPending = ref(false);
+const pending = ref<PendingPayment>();
+const walletUID = ref("");
+let pendingRequestSequence = 0;
 
 const rules = computed(() => parseList<WalletRule>(wallet.value?.rules));
 const payMethods = computed(() => parseList<WalletPayMethod>(wallet.value?.paylist));
 const selectedRule = computed(() => rules.value[selectedRuleIndex.value]);
 const selectedPay = computed(() => payMethods.value[selectedPayIndex.value]);
+const canCreateOrder = computed(
+  () =>
+    !loading.value &&
+    !submitting.value &&
+    !pending.value &&
+    walletUID.value === currentUID() &&
+    Boolean(selectedRule.value) &&
+    Boolean(selectedPay.value)
+);
 const chargeButtonText = computed(() => {
+  if (pending.value) {
+    return "请先完成待支付订单";
+  }
   if (!selectedRule.value) {
     return "请选择充值金额";
   }
@@ -114,6 +174,39 @@ function payName(id?: string) {
   return map[String(id || "")] || "支付方式";
 }
 
+function payDescription(pay: WalletPayMethod) {
+  const custom = firstText(pay.description);
+  const id = String(pay.id || "").toLowerCase();
+  const provider = String(pay.provider || "").toLowerCase();
+  const mode = String(pay.mode || "").toLowerCase();
+  const tradeType = String(pay.trade_type || "").toLowerCase();
+  const network = String(pay.network || "").toLowerCase();
+  const descriptor = `${provider} ${mode} ${custom}`.toLowerCase();
+  if (
+    id === "usdt" ||
+    descriptor.includes("bepusdt") ||
+    descriptor.includes("usdt") ||
+    tradeType.startsWith("usdt.")
+  ) {
+    const networkLabel =
+      tradeType.includes("trc20") || network === "tron"
+        ? "TRC20"
+        : tradeType.includes("erc20") || network === "ethereum"
+          ? "ERC20"
+          : tradeType.includes("bep20") || network === "bsc"
+            ? "BEP20"
+            : String(pay.network || "TRC20").toUpperCase();
+    return `USDT · ${networkLabel} 链上收银台`;
+  }
+  if (custom) {
+    return custom;
+  }
+  if (["cashier", "web", "h5", "external"].includes(mode)) {
+    return "安全外部收银台";
+  }
+  return provider ? `${String(pay.provider)} 在线收银台` : "安全在线支付";
+}
+
 function coinOf(rule: WalletRule) {
   if (String(selectedPay.value?.id || "") === "paypal") {
     return firstText(rule.coin_paypal, rule.coin, "0");
@@ -125,77 +218,195 @@ function payIcon(pay: WalletPayMethod) {
   return absolutizeUrl(String(pay.thumb || "")) || "/static/native/me_wallet.png";
 }
 
-function normalizeHref(href: string) {
-  const raw = href.trim();
-  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
-    return raw;
-  }
-  if (raw.startsWith("//")) {
-    return `https:${raw}`;
-  }
-  if (raw.startsWith("/")) {
-    return `${API_HOST}${raw}`;
-  }
-  return raw;
+function currentUID() {
+  return String(getSession().uid || "");
 }
 
 function openPaymentUrl(url: string, title = "支付") {
-  const normalized = normalizeHref(url);
-  if (/^https?:\/\//i.test(normalized)) {
-    openWebView(normalized, title);
-    return;
-  }
-  const plusRuntime = (globalThis as any).plus?.runtime;
-  if (plusRuntime?.openURL) {
-    plusRuntime.openURL(normalized);
-    return;
+  if (openPaymentCashier(url, title)) {
+    return true;
   }
   uni.showModal({
-    title: "支付链接",
-    content: normalized,
+    title: "支付链接无效",
+    content: "支付通道没有返回本站安全收银台地址，请稍后重试。",
     showCancel: false,
     confirmColor: "#ff5878"
   });
+  return false;
 }
 
 async function load() {
   if (!requireLogin()) {
-    uni.stopPullDownRefresh();
     return;
+  }
+  const uid = currentUID();
+  if (walletUID.value !== uid) {
+    wallet.value = undefined;
+    walletUID.value = "";
   }
   loading.value = true;
   try {
-    wallet.value = await getWalletBalance();
-    selectedRuleIndex.value = 0;
-    selectedPayIndex.value = 0;
+    const nextWallet = await getWalletBalance();
+    if (currentUID() !== uid) {
+      return;
+    }
+    wallet.value = nextWallet;
+    walletUID.value = uid;
+    selectedRuleIndex.value = Math.min(
+      selectedRuleIndex.value,
+      Math.max(0, parseList(nextWallet?.rules).length - 1)
+    );
+    selectedPayIndex.value = Math.min(
+      selectedPayIndex.value,
+      Math.max(0, parseList(nextWallet?.paylist).length - 1)
+    );
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "充值配置加载失败", icon: "none" });
+    if (currentUID() === uid) {
+      uni.showToast({ title: error?.message || "充值配置加载失败", icon: "none" });
+    }
   } finally {
     loading.value = false;
-    uni.stopPullDownRefresh();
+  }
+}
+
+function mergedPendingOrder(order: RechargeOrder, stored: PendingPayment): RechargeOrder {
+  return {
+    ...order,
+    order_no: firstText(order.order_no, order.orderid, stored.orderNo),
+    payment_url: firstText(rechargePaymentUrl(order), stored.paymentUrl),
+    provider_trade_id: firstText(
+      order.provider_trade_id,
+      order.provider_order_no,
+      stored.providerTradeId
+    ),
+    status: firstText(order.status, stored.status, "0"),
+    expires_at: firstText(order.expires_at, stored.expiresAt)
+  };
+}
+
+async function checkPendingOrder(silent = true) {
+  const uid = currentUID();
+  const requestSequence = ++pendingRequestSequence;
+  clearForeignPendingPayments(uid);
+  const stored = readPendingPayment(uid);
+  pending.value = stored;
+  if (!stored) {
+    checkingPending.value = false;
+    return;
+  }
+  checkingPending.value = true;
+  try {
+    const result = await getRechargeOrderStatus(stored.orderNo);
+    if (currentUID() !== uid || requestSequence !== pendingRequestSequence) {
+      return;
+    }
+    if (!result) {
+      throw new Error("充值订单不存在");
+    }
+    const order = mergedPendingOrder(result, stored);
+    if (rechargeIsPaid(order)) {
+      clearPendingPayment(uid);
+      pending.value = undefined;
+      await load();
+      uni.showToast({ title: "充值已到账", icon: "success" });
+      return;
+    }
+    if (rechargeIsTerminal(order) || rechargeIsExpired(order)) {
+      clearPendingPayment(uid);
+      pending.value = undefined;
+      if (!silent) {
+        uni.showToast({
+          title: rechargeIsExpired(order) ? "充值订单已过期" : rechargeStatusText(order),
+          icon: "none"
+        });
+      }
+      return;
+    }
+    pending.value = savePendingPayment(uid, order);
+    if (!silent) {
+      uni.showToast({ title: rechargeStatusText(order), icon: "none" });
+    }
+  } catch (error: any) {
+    if (!silent && currentUID() === uid && requestSequence === pendingRequestSequence) {
+      uni.showToast({ title: error?.message || "支付状态查询失败", icon: "none" });
+    }
+  } finally {
+    if (requestSequence === pendingRequestSequence) {
+      checkingPending.value = false;
+    }
   }
 }
 
 async function charge() {
-  if (!requireLogin() || !selectedRule.value || !selectedPay.value || submitting.value) {
+  if (
+    !requireLogin() ||
+    !canCreateOrder.value ||
+    !selectedRule.value ||
+    !selectedPay.value
+  ) {
     return;
   }
-  const href = String(selectedPay.value.href || "");
-  if (href) {
-    openPaymentUrl(href, selectedPay.value.name || "支付");
-    return;
-  }
+  const uid = currentUID();
+  const productId = String(selectedRule.value.id || "");
+  const payId = String(selectedPay.value.id || "");
+  const previousAttempt = readPaymentCreateAttempt(uid);
+  const clientTraceId =
+    previousAttempt?.productId === productId && previousAttempt.payId === payId
+      ? previousAttempt.traceId
+      : createPaymentTraceId();
+  savePaymentCreateAttempt({
+    uid,
+    productId,
+    payId,
+    traceId: clientTraceId,
+    createdAt: previousAttempt?.traceId === clientTraceId
+      ? previousAttempt.createdAt
+      : Date.now()
+  });
   submitting.value = true;
   try {
-    const order = await createCoinOrder(selectedRule.value, selectedPay.value);
-    const paymentUrl = firstText(order?.payment_url, order?.payurl, order?.url, order?.href, order?.qrcode);
-    if (paymentUrl) {
-      openPaymentUrl(paymentUrl, selectedPay.value.name || "支付");
+    const result = await createCoinOrder(
+      selectedRule.value,
+      selectedPay.value,
+      clientTraceId
+    );
+    if (currentUID() !== uid) {
+      throw new Error("账号已切换，请在当前账号重新发起充值");
+    }
+    if (!result) {
+      throw new Error("支付通道未返回充值订单");
+    }
+    const order: RechargeOrder = {
+      ...result,
+      client_trace_id: firstText(result.client_trace_id, clientTraceId)
+    };
+    const saved = savePendingPayment(uid, order);
+    if (!saved) {
+      throw new Error("支付通道返回的订单号无效");
+    }
+    clearPaymentCreateAttempt(uid, clientTraceId);
+    pending.value = saved;
+    if (rechargeIsPaid(order)) {
+      clearPendingPayment(uid);
+      pending.value = undefined;
+      await load();
+      uni.showToast({ title: "充值已到账", icon: "success" });
+      return;
+    }
+    if (rechargeIsTerminal(order) || rechargeIsExpired(order)) {
+      clearPendingPayment(uid);
+      pending.value = undefined;
+      throw new Error(
+        rechargeIsExpired(order) ? "充值订单已过期，请重新发起" : rechargeStatusText(order)
+      );
+    }
+    const paymentUrl = normalizePaymentUrl(rechargePaymentUrl(order));
+    if (paymentUrl && openPaymentUrl(paymentUrl, selectedPay.value.name || "支付")) {
       return;
     }
     uni.showModal({
       title: "支付暂不可用",
-      content: "支付通道未返回可用收银台，请稍后重试或更换支付方式。",
+      content: "订单已经创建，但支付通道未返回可用收银台。可在充值明细中刷新或继续支付。",
       showCancel: false,
       confirmColor: "#ff5878"
     });
@@ -204,6 +415,19 @@ async function charge() {
   } finally {
     submitting.value = false;
   }
+}
+
+function resumePendingPayment() {
+  const uid = currentUID();
+  const stored = pending.value;
+  if (!stored || stored.uid !== uid || !openPaymentUrl(stored.paymentUrl, "支付")) {
+    void checkPendingOrder(false);
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([load(), checkPendingOrder(false)]);
+  uni.stopPullDownRefresh();
 }
 
 function openAgreement() {
@@ -215,11 +439,21 @@ function openChargeDetail() {
 }
 
 onShow(() => {
-  void load();
+  if (!requireLogin()) {
+    return;
+  }
+  const uid = currentUID();
+  if (walletUID.value !== uid) {
+    wallet.value = undefined;
+    walletUID.value = "";
+  }
+  clearForeignPendingPayments(uid);
+  pending.value = readPendingPayment(uid);
+  void Promise.all([load(), checkPendingOrder(true)]);
 });
 
 onPullDownRefresh(() => {
-  void load();
+  void refreshAll();
 });
 </script>
 
@@ -263,15 +497,17 @@ onPullDownRefresh(() => {
 
 .balance-side button,
 .section-head button {
-  display: flex;
+  display: flex !important;
   min-width: 116rpx;
   height: 52rpx;
-  align-items: center;
-  justify-content: center;
+  align-items: center !important;
+  justify-content: center !important;
   border-radius: 26rpx;
   color: var(--brand);
   font-size: 23rpx;
   font-weight: 800;
+  line-height: 1 !important;
+  text-align: center !important;
   background: #fff;
 }
 
@@ -281,14 +517,25 @@ onPullDownRefresh(() => {
   justify-content: space-between;
   margin: 38rpx 2rpx 20rpx;
 }
-.section-head-end{
-  color: #0a8f66;
-  font-size: 24rpx;
-
-}
-.section-head-start{
+.section-title,
+.section-head-start {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   font-size: 26rpx;
   font-weight: bold;
+  line-height: 1.2;
+  text-align: center !important;
+}
+
+.agreement-button {
+  display: inline-flex !important;
+  min-width: 126rpx !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-color: #d8eee6 !important;
+  color: #0a8f66 !important;
+  text-align: center !important;
 }
 
 .section-head button {
@@ -304,11 +551,15 @@ onPullDownRefresh(() => {
 
 .rule-card {
   position: relative;
+  display: flex !important;
+  flex-direction: column !important;
   min-height: 148rpx;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 24rpx 12rpx;
   border: 2rpx solid #edf0f5;
   border-radius: 18rpx;
-  text-align: center;
+  text-align: center !important;
   background: #fff;
 }
 
@@ -322,6 +573,7 @@ onPullDownRefresh(() => {
   color: var(--ink);
   font-size: 27rpx;
   font-weight: 900;
+  text-align: center !important;
 }
 
 .rule-money {
@@ -330,19 +582,24 @@ onPullDownRefresh(() => {
   color: var(--brand);
   font-size: 25rpx;
   font-weight: 900;
+  text-align: center !important;
 }
 
 .give {
   position: absolute;
   top: -1rpx;
   right: -1rpx;
+  display: inline-flex !important;
   min-width: 72rpx;
   height: 34rpx;
   padding: 0 10rpx;
+  align-items: center !important;
+  justify-content: center !important;
   border-radius: 0 16rpx 0 16rpx;
   color: #fff;
   font-size: 19rpx;
-  line-height: 34rpx;
+  line-height: 1 !important;
+  text-align: center !important;
   background: #8b5cf6;
 }
 
@@ -358,11 +615,14 @@ onPullDownRefresh(() => {
 }
 
 .pay-row {
-  display: flex;
-  align-items: center;
+  position: relative;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   min-height: 112rpx;
   padding: 20rpx 24rpx;
   border-bottom: 1rpx solid #f0f2f6;
+  text-align: center !important;
 }
 
 .pay-row:last-child {
@@ -382,8 +642,9 @@ onPullDownRefresh(() => {
 }
 
 .pay-main {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  text-align: center !important;
 }
 
 .pay-main text:first-child {
@@ -391,6 +652,7 @@ onPullDownRefresh(() => {
   color: var(--ink);
   font-size: 28rpx;
   font-weight: 900;
+  text-align: center !important;
 }
 
 .pay-main text:last-child {
@@ -398,9 +660,12 @@ onPullDownRefresh(() => {
   margin-top: 10rpx;
   color: var(--ink-3);
   font-size: 23rpx;
+  text-align: center !important;
 }
 
 .radio {
+  position: absolute;
+  right: 24rpx;
   width: 36rpx;
   height: 36rpx;
   border: 3rpx solid #cbd2df;
@@ -418,5 +683,80 @@ onPullDownRefresh(() => {
 
 .charge-button {
   margin-top: 48rpx;
+}
+
+.pending-card {
+  display: flex;
+  min-height: 112rpx;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 22rpx 24rpx;
+  margin-top: 20rpx;
+  border: 1rpx solid #e9edf4;
+  border-radius: 18rpx;
+  background: #fff;
+}
+
+.pending-copy {
+  min-width: 0;
+}
+
+.pending-title,
+.pending-number {
+  display: block;
+}
+
+.pending-title {
+  color: var(--ink);
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.pending-number {
+  margin-top: 9rpx;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 21rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+}
+
+.pending-continue-button,
+.pending-refresh-button {
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  min-width: 126rpx;
+  height: 58rpx;
+  padding: 0 16rpx;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1rpx solid #f1d7de;
+  border-radius: 29rpx;
+  color: var(--brand);
+  font-size: 23rpx;
+  font-weight: 800;
+  line-height: 1 !important;
+  text-align: center !important;
+  background: #fff5f7;
+}
+
+.pending-continue-button {
+  border-color: #ccecdf;
+  color: #087b59;
+  background: #effbf7;
+}
+
+.pending-continue-button[disabled],
+.pending-refresh-button[disabled] {
+  opacity: 0.5;
 }
 </style>

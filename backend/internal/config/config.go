@@ -56,13 +56,14 @@ func Load() (Config, error) {
 	environment := env("V2_ENV", "development")
 	minioAccessKey := env("V2_MINIO_ACCESS_KEY", "clawlocal")
 	minioSecretKey := env("V2_MINIO_SECRET_KEY", "claw-local-minio-password")
-	if environment == "production" &&
-		(os.Getenv("V2_MINIO_ACCESS_KEY") == "" || os.Getenv("V2_MINIO_SECRET_KEY") == "") {
-		return Config{}, fmt.Errorf("V2_MINIO_ACCESS_KEY and V2_MINIO_SECRET_KEY are required in production")
-	}
 	dataEncryptionKey := env("V2_DATA_ENCRYPTION_KEY", "claw-local-data-encryption-key")
-	if environment == "production" && strings.TrimSpace(os.Getenv("V2_DATA_ENCRYPTION_KEY")) == "" {
-		return Config{}, fmt.Errorf("V2_DATA_ENCRYPTION_KEY is required in production")
+	if environment == "production" {
+		// Credentials are injected only into services that use them. Consumers
+		// such as paymentconfig.NewCipher and storage.New reject empty values;
+		// unrelated services can start without receiving these secrets.
+		minioAccessKey = strings.TrimSpace(os.Getenv("V2_MINIO_ACCESS_KEY"))
+		minioSecretKey = strings.TrimSpace(os.Getenv("V2_MINIO_SECRET_KEY"))
+		dataEncryptionKey = strings.TrimSpace(os.Getenv("V2_DATA_ENCRYPTION_KEY"))
 	}
 	sportsLiveInterval, err := durationEnv("V2_SPORTS_LIVE_INTERVAL", 5*time.Minute)
 	if err != nil {

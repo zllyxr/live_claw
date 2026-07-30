@@ -16,6 +16,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/invite"
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/lottery"
+	"github.com/zllyxr/live_claw/backend/internal/payment"
 	"github.com/zllyxr/live_claw/backend/internal/server"
 	"github.com/zllyxr/live_claw/backend/internal/servicehost"
 	"github.com/zllyxr/live_claw/backend/internal/sports"
@@ -55,6 +56,14 @@ func main() {
 		LegacyAuthCode: cfg.LegacyAuthCode, LegacyTablePrefix: cfg.LegacyTablePrefix,
 	})
 	walletService := wallet.New(dependencies.DB)
+	paymentService, err := payment.New(
+		dependencies.DB, walletService, cfg.DataEncryptionKey, cfg.PublicURL,
+		payment.Options{},
+	)
+	if err != nil {
+		logger.Error("initialize payment service", "error", err)
+		os.Exit(1)
+	}
 	imService := im.New(dependencies.DB, dependencies.Redis)
 	imService.SetMediaBaseURL(cfg.MediaBaseURL)
 	apiServer := server.New(
@@ -65,7 +74,7 @@ func main() {
 		sports.New(dependencies.DB, walletService),
 		live.New(dependencies.DB, dependencies.Redis),
 		invite.New(dependencies.DB),
-		storageService, walletService, imService, cfg.MediaBaseURL, cfg.PublicURL,
+		storageService, walletService, paymentService, imService, cfg.MediaBaseURL, cfg.PublicURL,
 		cfg.Environment, cfg.DataEncryptionKey, logger,
 	)
 	err = servicehost.Serve(

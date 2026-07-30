@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zllyxr/live_claw/backend/internal/idgen"
+	"github.com/zllyxr/live_claw/backend/internal/payment"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
 )
 
@@ -19,6 +20,8 @@ func (s *Server) compatFinance(w http.ResponseWriter, r *http.Request, service s
 	switch service {
 	case "Charge.getAliOrder", "Charge.getWxOrder", "Charge.getBraintreePaypalOrder", "Charge.getUsdtOrder":
 		s.compatCreateRechargeOrder(w, r, service)
+	case "Charge.orderStatus", "Charge.getOrderStatus":
+		s.compatRechargeOrderStatus(w, r)
 	case "User.getProfit":
 		s.compatGetProfit(w, r)
 	case "User.getUserAccountList":
@@ -61,6 +64,10 @@ func formatMinorAmount(amount int64, scale int) string {
 func (s *Server) compatCreateRechargeOrder(w http.ResponseWriter, r *http.Request, service string) {
 	userID, ok := s.requireCompatUser(w, r)
 	if !ok {
+		return
+	}
+	if service == "Charge.getUsdtOrder" {
+		s.compatCreateBEpusdtOrder(w, r, userID)
 		return
 	}
 	channelKey := map[string]string{
@@ -126,6 +133,170 @@ func (s *Server) compatCreateRechargeOrder(w http.ResponseWriter, r *http.Reques
 		"channel": channelKey, "money": formatMinorAmount(amountMinor, currencyScale),
 		"coin": coinAmount, "give": bonusCoin,
 	})
+}
+
+func (s *Server) compatCreateBEpusdtOrder(
+	w http.ResponseWriter,
+	r *http.Request,
+	userID int64,
+) {
+	if s.payments == nil {
+		writeCompat(w, 503, "支付服务未配置", nil)
+		return
+	}
+	traceID := strings.TrimSpace(r.FormValue("client_trace_id"))
+	if traceID == "" {
+		traceID = strings.TrimSpace(r.FormValue("trace_id"))
+	}
+	order, err := s.payments.CreateRecharge(r.Context(), payment.CreateRequest{
+		UserID: userID, ProductID: compatInt64(r.FormValue("changeid")),
+		ClientTraceID: traceID, ClientIP: requestIP(r),
+	})
+	if err != nil {
+		s.writeCompatPaymentError(w, r, "创建 BEpusdt 充值订单", err)
+		return
+	}
+	writeCompat(w, 0, "充值订单已创建", compatPaymentOrder(order))
+}
+
+func (s *Server) compatRechargeOrderStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireCompatUser(w, r)
+	if !ok {
+		return
+	}
+	if s.payments == nil {
+		writeCompat(w, 503, "支付服务未配置", nil)
+		return
+	}
+	reference := strings.TrimSpace(r.FormValue("order_no"))
+	if reference == "" {
+		reference = strings.TrimSpace(r.FormValue("orderid"))
+	}
+	if reference == "" {
+		reference = strings.TrimSpace(r.FormValue("client_trace_id"))
+	}
+	order, err := s.payments.OrderStatus(r.Context(), userID, reference)
+	if err != nil {
+		s.writeCompatPaymentError(w, r, "读取 BEpusdt 充值订单", err)
+		return
+	}
+	writeCompat(w, 0, "", compatPaymentOrder(order))
+}
+
+func (s *Server) writeCompatPaymentError(
+	w http.ResponseWriter,
+	r *http.Request,
+	operation string,
+	err error,
+) {
+	switch {
+	case errors.Is(err, payment.ErrInvalidRequest):
+		writeCompat(w, 400, "充值参数无效", nil)
+	case errors.Is(err, payment.ErrIdempotencyReuse):
+		writeCompat(w, 409, "充值请求标识已用于其他档位", nil)
+	case errors.Is(err, payment.ErrProductNotFound):
+		writeCompat(w, 404, "充值档位不存在", nil)
+	case errors.Is(err, payment.ErrOrderNotFound):
+		writeCompat(w, 404, "充值订单不存在", nil)
+	case errors.Is(err, payment.ErrChannelDisabled),
+		errors.Is(err, payment.ErrChannelNotReady):
+		writeCompat(w, 503, "支付通道未启用，请在后台完成配置", nil)
+	case errors.Is(err, payment.ErrProvider):
+		writeCompat(w, 502, "支付服务暂不可用，请稍后重试", nil)
+	default:
+		if s.logger != nil {
+			s.logger.Error(
+				operation,
+				"request_id", r.Header.Get("X-Request-ID"),
+				"error", err,
+			)
+		}
+		writeCompat(w, 500, "支付服务暂不可用", nil)
+	}
+}
+
+func compatPaymentOrder(order payment.Order) map[string]any {
+	expiresAt := ""
+	expiresAtUnix := ""
+	if order.ExpiresAt != nil {
+		expiresAt = order.ExpiresAt.Format(time.RFC3339)
+		expiresAtUnix = strconv.FormatInt(order.ExpiresAt.Unix(), 10)
+	}
+	paidAt := ""
+	if order.PaidAt != nil {
+		paidAt = strconv.FormatInt(order.PaidAt.Unix(), 10)
+	}
+	createdAt := ""
+	createdAtUnix := ""
+	if !order.CreatedAt.IsZero() {
+		createdAt = order.CreatedAt.Format("2006-01-02 15:04:05")
+		createdAtUnix = strconv.FormatInt(order.CreatedAt.Unix(), 10)
+	}
+	lastCallbackAt := ""
+	if order.LastCallbackAt != nil {
+		lastCallbackAt = strconv.FormatInt(order.LastCallbackAt.Unix(), 10)
+	}
+	cryptoCurrency, network := paymentAssetMeta(order.TradeType)
+	return map[string]any{
+		"id":                   strconv.FormatInt(order.ID, 10),
+		"orderid":              order.OrderNo,
+		"order_no":             order.OrderNo,
+		"product_id":           strconv.FormatInt(order.ProductID, 10),
+		"client_trace_id":      order.ClientTraceID,
+		"provider_order_no":    order.ProviderOrderNo,
+		"provider_trade_id":    order.ProviderOrderNo,
+		"status":               strconv.Itoa(order.Status),
+		"status_text":          rechargeStatusText(order.Status),
+		"channel":              payment.USDTChannelKey,
+		"currency":             order.FiatCurrency,
+		"fiat_currency":        order.FiatCurrency,
+		"money":                formatMinorAmount(order.AmountMinor, order.CurrencyScale),
+		"amount":               formatMinorAmount(order.AmountMinor, order.CurrencyScale),
+		"coin":                 strconv.FormatInt(order.CoinAmount, 10),
+		"coin_amount":          strconv.FormatInt(order.CoinAmount, 10),
+		"give":                 strconv.FormatInt(order.BonusCoin, 10),
+		"bonus_coin":           strconv.FormatInt(order.BonusCoin, 10),
+		"payment_url":          order.PaymentURL,
+		"payurl":               order.PaymentURL,
+		"url":                  order.PaymentURL,
+		"actual_amount":        order.ActualAmount,
+		"trade_type":           order.TradeType,
+		"crypto_currency":      cryptoCurrency,
+		"network":              network,
+		"payment_address":      order.PaymentAddress,
+		"token_address":        order.PaymentAddress,
+		"token":                order.PaymentAddress,
+		"block_transaction_id": order.BlockTransactionID,
+		"expires_at":           expiresAt,
+		"expires_at_unix":      expiresAtUnix,
+		"expiration_time":      expiresAtUnix,
+		"callback_count":       strconv.FormatUint(order.CallbackCount, 10),
+		"last_callback_status": strconv.Itoa(order.LastCallbackStatus),
+		"last_callback_at":     lastCallbackAt,
+		"failure_reason":       order.FailureReason,
+		"paid_at":              paidAt,
+		"addtime":              createdAtUnix,
+		"datetime":             createdAt,
+	}
+}
+
+func paymentAssetMeta(tradeType string) (string, string) {
+	tradeType = strings.ToLower(strings.TrimSpace(tradeType))
+	parts := strings.Split(tradeType, ".")
+	cryptoCurrency := ""
+	if len(parts) > 0 {
+		cryptoCurrency = strings.ToUpper(parts[0])
+	}
+	switch {
+	case strings.HasSuffix(tradeType, ".trc20"):
+		return cryptoCurrency, "tron"
+	case strings.HasSuffix(tradeType, ".erc20"):
+		return cryptoCurrency, "ethereum"
+	case strings.HasSuffix(tradeType, ".bep20"):
+		return cryptoCurrency, "bsc"
+	default:
+		return cryptoCurrency, ""
+	}
 }
 
 func (s *Server) compatGetProfit(w http.ResponseWriter, r *http.Request) {
@@ -585,7 +756,14 @@ func (s *Server) compatRechargeOrders(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT recharge.id,recharge.order_no,recharge.fiat_currency,recharge.currency_scale,
 		       recharge.amount_minor,recharge.coin_amount,recharge.bonus_coin,recharge.status,
-		       channel.name,recharge.paid_at,recharge.created_at
+		       channel.channel_key,channel.name,recharge.client_trace_id,
+		       recharge.provider_order_no,
+		       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(
+		           recharge.provider_payload,'$.create.trade_type')),''),
+		       recharge.payment_url,recharge.actual_amount,
+		       recharge.payment_address,recharge.block_transaction_id,recharge.expires_at,
+		       recharge.callback_count,recharge.last_callback_status,recharge.last_callback_at,
+		       recharge.failure_reason,recharge.paid_at,recharge.created_at
 		FROM recharge_orders recharge
 		LEFT JOIN payment_channels channel ON channel.id=recharge.channel_id
 		WHERE recharge.user_id=?
@@ -602,26 +780,51 @@ func (s *Server) compatRechargeOrders(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, amountMinor, coinAmount, bonusCoin int64
 		var orderNo, currency string
-		var currencyScale, status int
-		var channelName sql.NullString
-		var paidAt sql.NullTime
+		var currencyScale, status, lastCallbackStatus int
+		var callbackCount uint64
+		var channelKey, channelName, clientTraceID, providerOrderNo sql.NullString
+		var tradeType, paymentURL, actualAmount, paymentAddress, blockTransactionID string
+		var failureReason string
+		var expiresAt, lastCallbackAt, paidAt sql.NullTime
 		var createdAt time.Time
 		if err = rows.Scan(
 			&id, &orderNo, &currency, &currencyScale, &amountMinor, &coinAmount,
-			&bonusCoin, &status, &channelName, &paidAt, &createdAt,
+			&bonusCoin, &status, &channelKey, &channelName, &clientTraceID,
+			&providerOrderNo, &tradeType, &paymentURL, &actualAmount, &paymentAddress,
+			&blockTransactionID, &expiresAt, &callbackCount, &lastCallbackStatus,
+			&lastCallbackAt, &failureReason, &paidAt, &createdAt,
 		); err != nil {
 			break
 		}
+		cryptoCurrency, network := paymentAssetMeta(tradeType)
 		items = append(items, map[string]any{
 			"id": strconv.FormatInt(id, 10), "orderid": orderNo, "order_no": orderNo,
-			"currency": currency, "money": formatMinorAmount(amountMinor, currencyScale),
-			"coin":   strconv.FormatInt(coinAmount, 10),
-			"give":   strconv.FormatInt(bonusCoin, 10),
-			"status": strconv.Itoa(status), "status_text": rechargeStatusText(status),
+			"client_trace_id":   scanNullableString(clientTraceID),
+			"provider_order_no": scanNullableString(providerOrderNo),
+			"provider_trade_id": scanNullableString(providerOrderNo),
+			"currency":          currency, "money": formatMinorAmount(amountMinor, currencyScale),
+			"fiat_currency": currency, "amount": formatMinorAmount(amountMinor, currencyScale),
+			"coin":        strconv.FormatInt(coinAmount, 10),
+			"coin_amount": strconv.FormatInt(coinAmount, 10),
+			"give":        strconv.FormatInt(bonusCoin, 10),
+			"bonus_coin":  strconv.FormatInt(bonusCoin, 10),
+			"status":      strconv.Itoa(status), "status_text": rechargeStatusText(status),
+			"channel":      scanNullableString(channelKey),
 			"channel_name": scanNullableString(channelName),
-			"addtime":      strconv.FormatInt(createdAt.Unix(), 10),
-			"datetime":     createdAt.Format("2006-01-02 15:04:05"),
-			"paid_at":      compatNullableUnix(paidAt),
+			"payment_url":  paymentURL, "payurl": paymentURL, "url": paymentURL,
+			"actual_amount": actualAmount, "payment_address": paymentAddress,
+			"token_address": paymentAddress, "token": paymentAddress,
+			"trade_type": tradeType, "crypto_currency": cryptoCurrency, "network": network,
+			"block_transaction_id": blockTransactionID,
+			"expires_at":           compatNullableUnix(expiresAt),
+			"expiration_time":      compatNullableUnix(expiresAt),
+			"callback_count":       strconv.FormatUint(callbackCount, 10),
+			"last_callback_status": strconv.Itoa(lastCallbackStatus),
+			"last_callback_at":     compatNullableUnix(lastCallbackAt),
+			"failure_reason":       failureReason,
+			"addtime":              strconv.FormatInt(createdAt.Unix(), 10),
+			"datetime":             createdAt.Format("2006-01-02 15:04:05"),
+			"paid_at":              compatNullableUnix(paidAt),
 		})
 	}
 	if err != nil || rows.Err() != nil {

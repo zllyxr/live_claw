@@ -47,7 +47,7 @@ func main() {
 	adminHandler, err := admin.New(
 		dependencies.DB, adminauth.New(dependencies.DB), storageService,
 		wallet.New(dependencies.DB), live.New(dependencies.DB, dependencies.Redis),
-		cfg.MediaBaseURL, cfg.Environment,
+		cfg.MediaBaseURL, cfg.PublicURL, cfg.Environment, cfg.DataEncryptionKey,
 	)
 	if err != nil {
 		logger.Error("initialize admin", "error", err)

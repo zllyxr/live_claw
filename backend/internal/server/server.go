@@ -22,6 +22,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/invite"
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/lottery"
+	"github.com/zllyxr/live_claw/backend/internal/payment"
 	"github.com/zllyxr/live_claw/backend/internal/sports"
 	"github.com/zllyxr/live_claw/backend/internal/storage"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
@@ -39,6 +40,7 @@ type Server struct {
 	invite       *invite.Service
 	storage      *storage.Service
 	wallet       *wallet.Service
+	payments     *payment.Service
 	im           *im.Service
 	logger       *slog.Logger
 	mediaBaseURL string
@@ -59,6 +61,7 @@ func New(
 	inviteService *invite.Service,
 	storageService *storage.Service,
 	walletService *wallet.Service,
+	paymentService *payment.Service,
 	imService *im.Service,
 	mediaBaseURL string,
 	publicURL string,
@@ -72,6 +75,7 @@ func New(
 		live: liveService, invite: inviteService,
 		storage:      storageService,
 		wallet:       walletService,
+		payments:     paymentService,
 		im:           imService,
 		mediaBaseURL: strings.TrimRight(mediaBaseURL, "/"),
 		publicURL:    strings.TrimRight(publicURL, "/"),
@@ -87,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.health)
 	mux.HandleFunc("GET /api/v2/home", s.homeV2)
 	mux.HandleFunc("GET /api/v2/app/update", s.appUpdateV2)
+	mux.HandleFunc("POST /api/v2/payments/bepusdt/notify", s.bepusdtNotify)
 	mux.HandleFunc("GET /api/v2/", s.notFound)
 	mux.HandleFunc("POST /api/v2/", s.notFound)
 	mux.HandleFunc("GET /appapi/", s.compat)
@@ -527,8 +532,22 @@ func (s *Server) compatWalletBalance(ctx context.Context, userID int64) (map[str
 		return nil, err
 	}
 	productRows, err := s.db.QueryContext(ctx, `
-		SELECT id,coin_amount,amount_minor,bonus_coin,currency_scale
-		FROM recharge_products WHERE status=1 ORDER BY sort_order DESC,id`)
+		SELECT product.id,product.coin_amount,product.amount_minor,
+		       product.bonus_coin,product.currency_scale
+		FROM recharge_products product
+		WHERE product.status=1
+		  AND EXISTS (
+		      SELECT 1
+		      FROM payment_channels channel
+		      WHERE channel.status=1
+		        AND channel.currency=product.fiat_currency
+		        AND channel.currency_scale=product.currency_scale
+		        AND (channel.min_amount_minor=0
+		             OR product.amount_minor>=channel.min_amount_minor)
+		        AND (channel.max_amount_minor=0
+		             OR product.amount_minor<=channel.max_amount_minor)
+		  )
+		ORDER BY product.sort_order DESC,product.id`)
 	if err != nil {
 		return nil, err
 	}

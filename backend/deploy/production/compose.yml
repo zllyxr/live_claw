@@ -10,27 +10,9 @@ x-service-environment: &service-environment
   TZ: Asia/Shanghai
   V2_ENV: production
   V2_LISTEN_ADDR: :8080
-  V2_MYSQL_DSN: "${V2_MYSQL_USER:?set V2_MYSQL_USER}:${V2_MYSQL_PASSWORD:?set V2_MYSQL_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&multiStatements=true&loc=Asia%2FShanghai"
-  V2_REDIS_ADDR: redis:6379
-  V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
-  V2_REDIS_DB: "0"
-  V2_MINIO_ENDPOINT: minio:9000
-  V2_MINIO_PUBLIC_ENDPOINT: ${V2_MINIO_PUBLIC_ENDPOINT:?set V2_MINIO_PUBLIC_ENDPOINT}
-  V2_MINIO_REGION: ${V2_MINIO_REGION:-us-east-1}
-  V2_MINIO_ACCESS_KEY: ${V2_MINIO_ACCESS_KEY:?set V2_MINIO_ACCESS_KEY}
-  V2_MINIO_SECRET_KEY: ${V2_MINIO_SECRET_KEY:?set V2_MINIO_SECRET_KEY}
-  V2_MINIO_USE_TLS: "false"
-  V2_MINIO_PUBLIC_USE_TLS: ${V2_MINIO_PUBLIC_USE_TLS:-false}
   V2_PUBLIC_URL: ${V2_PUBLIC_URL:?set V2_PUBLIC_URL}
   V2_MEDIA_BASE_URL: /claw-public
-  V2_DATA_ENCRYPTION_KEY: ${V2_DATA_ENCRYPTION_KEY:?set V2_DATA_ENCRYPTION_KEY}
-  V2_LEGACY_AUTHCODE: ${V2_LEGACY_AUTHCODE:?set V2_LEGACY_AUTHCODE}
   V2_SHUTDOWN_GRACE_SECONDS: "30"
-  V2_SPORTS_API_BASE_URL: ${V2_SPORTS_API_BASE_URL:-https://v3.football.api-sports.io}
-  V2_SPORTS_API_KEY: ${V2_SPORTS_API_KEY:-}
-  V2_SPORTS_LIVE_INTERVAL: ${V2_SPORTS_LIVE_INTERVAL:-5m}
-  V2_SPORTS_CATALOG_INTERVAL: ${V2_SPORTS_CATALOG_INTERVAL:-6h}
-  V2_SPORTS_ODDS_INTERVAL: ${V2_SPORTS_ODDS_INTERVAL:-3h}
 
 x-app-service: &app-service
   build:
@@ -108,12 +90,54 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
+  bepusdt:
+    # Stable v1.24.1 release image (commit b321da7), pinned to its
+    # multi-architecture manifest. BEpusdt stays a separate GPL process and is
+    # integrated only through its HTTP API.
+    image: v03413/bepusdt:b321da7@sha256:4395c070f482e7ed51a89fc7380c0b3b19322635fc999b5fd12850ee9a45310c
+    environment:
+      TZ: Asia/Shanghai
+      SQLITE: /var/lib/bepusdt/sqlite.db
+      LOG: /var/log/bepusdt
+      LISTEN: :8080
+    ports:
+      # Loopback-only maintenance access for an SSH tunnel. The public Nginx
+      # server still exposes only checkout paths, never the gateway admin UI.
+      - "127.0.0.1:${V2_BEPUSDT_ADMIN_PORT:-29002}:8080"
+    volumes:
+      - bepusdt_data:/var/lib/bepusdt
+      - bepusdt_logs:/var/log/bepusdt
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Never probe /. The first BEpusdt page view contains one-time
+      # initialization credentials; a TCP probe verifies readiness safely.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    # Initial administrator credentials and the API token are printed to
+    # stdout by upstream on first boot. Disable Docker log persistence for this
+    # container and capture the one-time loopback-only install page directly
+    # into a root-owned file during deployment.
+    logging:
+      driver: "none"
+    restart: unless-stopped
+
   migrate:
     <<: *app-service
     build:
       context: ../..
       args:
         TARGET: migrate
+    environment:
+      <<: *service-environment
+      V2_MYSQL_DSN: "${V2_MYSQL_USER:?set V2_MYSQL_USER}:${V2_MYSQL_PASSWORD:?set V2_MYSQL_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&multiStatements=true&loc=Asia%2FShanghai"
     restart: "no"
     depends_on:
       mysql:
@@ -142,14 +166,57 @@ services:
     logging: *default-logging
     restart: "no"
 
+  db-runtime-users:
+    image: mysql:8.0.40
+    entrypoint: ["/bin/sh", "/provision/provision-runtime-users.sh"]
+    environment:
+      MYSQL_DATABASE: ${V2_MYSQL_DATABASE:-claw_v2}
+      MYSQL_PWD: ${V2_MYSQL_ROOT_PASSWORD:?set V2_MYSQL_ROOT_PASSWORD}
+      MYSQL_API_PASSWORD: ${V2_MYSQL_API_PASSWORD:?set V2_MYSQL_API_PASSWORD}
+      MYSQL_ADMIN_PASSWORD: ${V2_MYSQL_ADMIN_PASSWORD:?set V2_MYSQL_ADMIN_PASSWORD}
+      MYSQL_IM_PASSWORD: ${V2_MYSQL_IM_PASSWORD:?set V2_MYSQL_IM_PASSWORD}
+      MYSQL_GAME_PASSWORD: ${V2_MYSQL_GAME_PASSWORD:?set V2_MYSQL_GAME_PASSWORD}
+      MYSQL_SCHEDULER_PASSWORD: ${V2_MYSQL_SCHEDULER_PASSWORD:?set V2_MYSQL_SCHEDULER_PASSWORD}
+      MYSQL_SUPPORT_PASSWORD: ${V2_MYSQL_SUPPORT_PASSWORD:?set V2_MYSQL_SUPPORT_PASSWORD}
+      MYSQL_VIRTUAL_PASSWORD: ${V2_MYSQL_VIRTUAL_PASSWORD:?set V2_MYSQL_VIRTUAL_PASSWORD}
+    volumes:
+      - ./provision-runtime-users.sh:/provision/provision-runtime-users.sh:ro
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    restart: "no"
+
   api:
     <<: *app-service
     build:
       context: ../..
       args:
         TARGET: api
+    environment:
+      <<: *service-environment
+      V2_MYSQL_DSN: "claw_api:${V2_MYSQL_API_PASSWORD:?set V2_MYSQL_API_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+      V2_REDIS_ADDR: redis:6379
+      V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
+      V2_REDIS_DB: "0"
+      V2_MINIO_ENDPOINT: minio:9000
+      V2_MINIO_PUBLIC_ENDPOINT: ${V2_MINIO_PUBLIC_ENDPOINT:?set V2_MINIO_PUBLIC_ENDPOINT}
+      V2_MINIO_REGION: ${V2_MINIO_REGION:-us-east-1}
+      V2_MINIO_ACCESS_KEY: ${V2_MINIO_ACCESS_KEY:?set V2_MINIO_ACCESS_KEY}
+      V2_MINIO_SECRET_KEY: ${V2_MINIO_SECRET_KEY:?set V2_MINIO_SECRET_KEY}
+      V2_MINIO_USE_TLS: "false"
+      V2_MINIO_PUBLIC_USE_TLS: ${V2_MINIO_PUBLIC_USE_TLS:-false}
+      V2_DATA_ENCRYPTION_KEY: ${V2_DATA_ENCRYPTION_KEY:?set V2_DATA_ENCRYPTION_KEY}
+      V2_LEGACY_AUTHCODE: ${V2_LEGACY_AUTHCODE:?set V2_LEGACY_AUTHCODE}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -169,11 +236,20 @@ services:
         TARGET: admin
     environment:
       <<: *service-environment
+      V2_MYSQL_DSN: "claw_admin:${V2_MYSQL_ADMIN_PASSWORD:?set V2_MYSQL_ADMIN_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
       # Current Go handlers derive the Secure cookie flag from V2_ENV.
       # Keep the safe production default; see env.example before using plain HTTP.
       V2_ENV: ${V2_ADMIN_RUNTIME_ENV:-production}
+      V2_MINIO_ENDPOINT: minio:9000
+      V2_MINIO_PUBLIC_ENDPOINT: ${V2_MINIO_PUBLIC_ENDPOINT:?set V2_MINIO_PUBLIC_ENDPOINT}
+      V2_MINIO_REGION: ${V2_MINIO_REGION:-us-east-1}
+      V2_MINIO_ACCESS_KEY: ${V2_MINIO_ACCESS_KEY:?set V2_MINIO_ACCESS_KEY}
+      V2_MINIO_SECRET_KEY: ${V2_MINIO_SECRET_KEY:?set V2_MINIO_SECRET_KEY}
+      V2_MINIO_USE_TLS: "false"
+      V2_MINIO_PUBLIC_USE_TLS: ${V2_MINIO_PUBLIC_USE_TLS:-false}
+      V2_DATA_ENCRYPTION_KEY: ${V2_DATA_ENCRYPTION_KEY:?set V2_DATA_ENCRYPTION_KEY}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
@@ -189,8 +265,15 @@ services:
       context: ../..
       args:
         TARGET: im
+    environment:
+      <<: *service-environment
+      V2_MYSQL_DSN: "claw_im:${V2_MYSQL_IM_PASSWORD:?set V2_MYSQL_IM_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+      V2_REDIS_ADDR: redis:6379
+      V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
+      V2_REDIS_DB: "0"
+      V2_LEGACY_AUTHCODE: ${V2_LEGACY_AUTHCODE:?set V2_LEGACY_AUTHCODE}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -206,8 +289,19 @@ services:
       context: ../..
       args:
         TARGET: scheduler
+    environment:
+      <<: *service-environment
+      V2_MYSQL_DSN: "claw_scheduler:${V2_MYSQL_SCHEDULER_PASSWORD:?set V2_MYSQL_SCHEDULER_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+      V2_REDIS_ADDR: redis:6379
+      V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
+      V2_REDIS_DB: "0"
+      V2_SPORTS_API_BASE_URL: ${V2_SPORTS_API_BASE_URL:-https://v3.football.api-sports.io}
+      V2_SPORTS_API_KEY: ${V2_SPORTS_API_KEY:-}
+      V2_SPORTS_LIVE_INTERVAL: ${V2_SPORTS_LIVE_INTERVAL:-5m}
+      V2_SPORTS_CATALOG_INTERVAL: ${V2_SPORTS_CATALOG_INTERVAL:-6h}
+      V2_SPORTS_ODDS_INTERVAL: ${V2_SPORTS_ODDS_INTERVAL:-3h}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -223,8 +317,15 @@ services:
       context: ../..
       args:
         TARGET: game
+    environment:
+      <<: *service-environment
+      V2_MYSQL_DSN: "claw_game:${V2_MYSQL_GAME_PASSWORD:?set V2_MYSQL_GAME_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+      V2_REDIS_ADDR: redis:6379
+      V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
+      V2_REDIS_DB: "0"
+      V2_LEGACY_AUTHCODE: ${V2_LEGACY_AUTHCODE:?set V2_LEGACY_AUTHCODE}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -242,9 +343,11 @@ services:
         TARGET: support
     environment:
       <<: *service-environment
+      V2_MYSQL_DSN: "claw_support:${V2_MYSQL_SUPPORT_PASSWORD:?set V2_MYSQL_SUPPORT_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
       V2_ENV: ${V2_SUPPORT_RUNTIME_ENV:-production}
+      V2_LEGACY_AUTHCODE: ${V2_LEGACY_AUTHCODE:?set V2_LEGACY_AUTHCODE}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
@@ -261,13 +364,14 @@ services:
         TARGET: admin-bootstrap
     environment:
       <<: *service-environment
+      V2_MYSQL_DSN: "claw_admin:${V2_MYSQL_ADMIN_PASSWORD:?set V2_MYSQL_ADMIN_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
       # Optional during normal deploy; the bootstrap binary validates them when
       # the profile is explicitly run.
       V2_ADMIN_USERNAME: ${V2_ADMIN_USERNAME:-}
       V2_ADMIN_PASSWORD: ${V2_ADMIN_PASSWORD:-}
       V2_ADMIN_DISPLAY_NAME: ${V2_ADMIN_DISPLAY_NAME:-系统管理员}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
     restart: "no"
 
@@ -280,12 +384,15 @@ services:
         TARGET: support-agent-bootstrap
     environment:
       <<: *service-environment
+      # This one-time bootstrap creates an administrator login and role
+      # assignment; never expand the long-lived support runtime account for it.
+      V2_MYSQL_DSN: "claw_admin:${V2_MYSQL_ADMIN_PASSWORD:?set V2_MYSQL_ADMIN_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
       V2_SUPPORT_AGENT_USERNAME: ${V2_SUPPORT_AGENT_USERNAME:-}
       V2_SUPPORT_AGENT_PASSWORD: ${V2_SUPPORT_AGENT_PASSWORD:-}
       V2_SUPPORT_AGENT_DISPLAY_NAME: ${V2_SUPPORT_AGENT_DISPLAY_NAME:-客服一号}
       V2_SUPPORT_AGENT_ROLE: ${V2_SUPPORT_AGENT_ROLE:-support_supervisor}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
     restart: "no"
 
@@ -298,13 +405,14 @@ services:
         TARGET: user-bootstrap
     environment:
       <<: *service-environment
+      V2_MYSQL_DSN: "claw_admin:${V2_MYSQL_ADMIN_PASSWORD:?set V2_MYSQL_ADMIN_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
       V2_APP_USER_USERNAME: ${V2_APP_USER_USERNAME:-}
       V2_APP_USER_PASSWORD: ${V2_APP_USER_PASSWORD:-}
       V2_APP_USER_NICKNAME: ${V2_APP_USER_NICKNAME:-}
       V2_APP_USER_EMAIL: ${V2_APP_USER_EMAIL:-}
       V2_APP_USER_COUNTRY_CODE: ${V2_APP_USER_COUNTRY_CODE:-86}
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
     restart: "no"
 
@@ -326,10 +434,20 @@ services:
       - ${V2_VIRTUAL_LIVE_TITLE:-晚晚日记·轻松直播间}
       - -category
       - ${V2_VIRTUAL_LIVE_CATEGORY:-聊天}
+    environment:
+      <<: *service-environment
+      V2_MYSQL_DSN: "claw_virtual:${V2_MYSQL_VIRTUAL_PASSWORD:?set V2_MYSQL_VIRTUAL_PASSWORD}@tcp(mysql:3306)/${V2_MYSQL_DATABASE:-claw_v2}?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+      V2_MINIO_ENDPOINT: minio:9000
+      V2_MINIO_PUBLIC_ENDPOINT: ${V2_MINIO_PUBLIC_ENDPOINT:?set V2_MINIO_PUBLIC_ENDPOINT}
+      V2_MINIO_REGION: ${V2_MINIO_REGION:-us-east-1}
+      V2_MINIO_ACCESS_KEY: ${V2_MINIO_ACCESS_KEY:?set V2_MINIO_ACCESS_KEY}
+      V2_MINIO_SECRET_KEY: ${V2_MINIO_SECRET_KEY:?set V2_MINIO_SECRET_KEY}
+      V2_MINIO_USE_TLS: "false"
+      V2_MINIO_PUBLIC_USE_TLS: ${V2_MINIO_PUBLIC_USE_TLS:-false}
     volumes:
       - ../../../女生:/avatars:ro
     depends_on:
-      catalog-seed:
+      db-runtime-users:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
@@ -361,6 +479,8 @@ services:
         bind:
           create_host_path: false
     depends_on:
+      bepusdt:
+        condition: service_healthy
       api:
         condition: service_healthy
       admin:
@@ -393,3 +513,7 @@ volumes:
     name: claw-v2-production-redis-data
   minio_data:
     name: claw-v2-production-minio-data
+  bepusdt_data:
+    name: claw-v2-production-bepusdt-data
+  bepusdt_logs:
+    name: claw-v2-production-bepusdt-logs

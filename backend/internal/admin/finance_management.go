@@ -123,15 +123,32 @@ func (h *Handler) markRechargePaid(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	var orderNo string
+	var (
+		orderNo, provider, channelKey, fiat, tradeType string
+		actualAmount, paymentAddress                   string
+	)
 	var providerOrderNo sql.NullString
-	var userID, coinAmount, bonusCoin int64
-	var status int
+	var channelConfig []byte
+	var userID, amountMinor, coinAmount, bonusCoin int64
+	var status, currencyScale int
 	err = tx.QueryRowContext(r.Context(), `
-		SELECT order_no,user_id,coin_amount,bonus_coin,status,provider_order_no
-		FROM recharge_orders WHERE id=? FOR UPDATE`,
+		SELECT recharge.order_no,recharge.user_id,recharge.coin_amount,
+		       recharge.bonus_coin,recharge.status,recharge.provider_order_no,
+		       COALESCE(channel.provider,''),COALESCE(channel.channel_key,''),
+		       channel.config_ciphertext,recharge.fiat_currency,
+		       recharge.currency_scale,recharge.amount_minor,
+		       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(
+		           recharge.provider_payload,'$.create.trade_type')),''),
+		       recharge.actual_amount,recharge.payment_address
+		FROM recharge_orders recharge
+		LEFT JOIN payment_channels channel ON channel.id=recharge.channel_id
+		WHERE recharge.id=? FOR UPDATE`,
 		orderID,
-	).Scan(&orderNo, &userID, &coinAmount, &bonusCoin, &status, &providerOrderNo)
+	).Scan(
+		&orderNo, &userID, &coinAmount, &bonusCoin, &status,
+		&providerOrderNo, &provider, &channelKey, &channelConfig, &fiat,
+		&currencyScale, &amountMinor, &tradeType, &actualAmount, &paymentAddress,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "充值订单不存在")
 		return
@@ -144,10 +161,53 @@ func (h *Handler) markRechargePaid(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "充值订单状态不能确认")
 		return
 	}
-	if status == 2 && strings.TrimSpace(providerOrderNo.String) != "" &&
+	if strings.TrimSpace(providerOrderNo.String) != "" &&
 		providerOrderNo.String != request.ProviderOrderNo {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "充值订单已由其他渠道订单确认")
 		return
+	}
+	providerVerified := false
+	if provider == paymentProviderBEpusdt {
+		if strings.TrimSpace(providerOrderNo.String) == "" {
+			httpx.Error(
+				w, httpx.RequestID(r.Context()), http.StatusConflict, 409,
+				"BEpusdt 订单尚未绑定渠道交易号，禁止人工确认",
+			)
+			return
+		}
+		if h.paymentCipher == nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusServiceUnavailable, 503, "支付核验服务不可用")
+			return
+		}
+		config, configErr := h.paymentCipher.Decrypt(channelKey, channelConfig)
+		if configErr != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "BEpusdt 配置无法核验")
+			return
+		}
+		if h.environment == "production" &&
+			(config.APIBaseURL != "http://bepusdt:8080" ||
+				config.PublicBaseURL != h.publicURL) {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "BEpusdt 地址不受信任")
+			return
+		}
+		verifyErr := verifyBEpusdtPaidOrder(
+			r.Context(), h.paymentHTTPClient, config,
+			bepusdtPaidOrderExpectation{
+				TradeID: request.ProviderOrderNo, OrderID: orderNo,
+				Fiat: fiat, TradeType: strings.ToLower(strings.TrimSpace(tradeType)),
+				AmountMinor: amountMinor, CurrencyScale: currencyScale,
+				ActualAmount: actualAmount, PaymentAddress: paymentAddress,
+			},
+		)
+		switch {
+		case errors.Is(verifyErr, errBEpusdtVerificationUnavailable):
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadGateway, 502, "BEpusdt 支付状态暂时无法核验")
+			return
+		case verifyErr != nil:
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "BEpusdt 尚未确认该订单已支付")
+			return
+		}
+		providerVerified = true
 	}
 	if coinAmount < 0 || bonusCoin < 0 || coinAmount > math.MaxInt64-bonusCoin {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "充值金额异常")
@@ -159,7 +219,7 @@ func (h *Handler) markRechargePaid(w http.ResponseWriter, r *http.Request) {
 		Description: request.Reason,
 		Metadata: map[string]any{
 			"recharge_order_id": apiDecimalID(orderID), "provider_order_no": request.ProviderOrderNo,
-			"confirmed_by": apiDecimalID(adminID(r)),
+			"confirmed_by": apiDecimalID(adminID(r)), "provider_verified": providerVerified,
 		},
 	})
 	if err != nil {
@@ -170,18 +230,22 @@ func (h *Handler) markRechargePaid(w http.ResponseWriter, r *http.Request) {
 		UPDATE recharge_orders
 		SET status=2,provider_order_no=?,paid_at=COALESCE(paid_at,CURRENT_TIMESTAMP(3)),
 		    provider_payload=JSON_SET(COALESCE(provider_payload,JSON_OBJECT()),
-		                              '$.manual_reason',?,'$.confirmed_by',?)
+		                              '$.manual_exception',TRUE,
+		                              '$.manual_reason',?,'$.confirmed_by',?,
+		                              '$.provider_verified',?)
 		WHERE id=?`,
-		request.ProviderOrderNo, request.Reason, adminID(r), orderID,
+		request.ProviderOrderNo, request.Reason, adminID(r), providerVerified, orderID,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新充值订单失败")
 		return
 	}
 	if err = auditAdmin(
-		r.Context(), tx, r, "wallet.recharge.manual_paid", "recharge_order", orderID,
+		r.Context(), tx, r, "payment.recharge.manual_exception_paid", "recharge_order", orderID,
 		map[string]any{"status": status, "provider_order_no": providerOrderNo.String}, map[string]any{
-			"status": 2, "provider_order_no": request.ProviderOrderNo, "ledger_entry_no": entry.EntryNo,
+			"status": 2, "manual_exception": true,
+			"provider_order_no": request.ProviderOrderNo, "ledger_entry_no": entry.EntryNo,
+			"provider_verified": providerVerified,
 		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录资金审计失败")

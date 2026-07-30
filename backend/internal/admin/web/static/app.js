@@ -19,6 +19,7 @@
     dashboard: ["数据统计", "平台概览", "关键业务数据、资金与待处理事项"],
     users: ["用户管理", "用户与团队", "账号状态、团队归属和邀请码体系"],
     wallet: ["资金管理", "资金审核与流水", "充值、提现、调账及逐场游戏输赢"],
+    payments: ["支付管理", "支付通道与充值", "BEpusdt 通道、充值商品、回调订单与异常人工处置"],
     games: ["游戏管理", "游戏与捕鱼场", "固定 300 桌、每桌 4 座，倍率 1 / 5 / 10"],
     live: ["抖音直播", "抖音直播间", "v2 仅允许经过审核的抖音 PAGE 直播"],
     lottery: ["彩票管理", "彩种、玩法与期号", "开奖先封盘，所有变更写入审计日志"],
@@ -156,10 +157,11 @@
   }
 
   function notify(message, error) {
+    const text = String(message || "");
     if (layer) {
-      layer.msg(message, { icon: error ? 2 : 1 });
+      layer.msg(esc(text), { icon: error ? 2 : 1 });
     } else {
-      window.alert(message);
+      window.alert(text);
     }
   }
 
@@ -675,10 +677,11 @@
       { label: "金额(分)", render: (row) => formatNumber(row.amount_minor) },
       { label: "星币", render: (row) => formatNumber(row.coin_amount) },
       { label: "状态", render: (row) => statusTag(row.status, {
-        0: ["已创建", "warn"], 1: ["支付中", "warn"], 2: ["已支付", "ok"], 3: ["失败", "bad"]
+        0: ["已创建", "warn"], 1: ["支付中", "warn"], 2: ["已支付", "ok"],
+        3: ["失败", "bad"], 4: ["已关闭", "bad"], 5: ["已退款", "warn"]
       }) },
       { label: "操作", render: (row) => has("wallet.review") && [0, 1].includes(Number(row.status)) ?
-        button("确认入账", "recharge-mark-paid", row.id, "layui-btn-normal") : "—" }
+        button("异常人工入账", "recharge-mark-paid", row.id, "layui-btn-danger") : "—" }
     ], result[1].items, {
       key: "wallet-recharges",
       page: result[1].page,
@@ -708,6 +711,191 @@
     content.innerHTML = panel("资金流水", "账本不可修改；游戏流水精确到场、桌和局", ledger) +
       panel("后台调账", "申请人与审核人必须为不同管理员", adjustments) +
       '<div class="subgrid">' + panel("充值订单", "", recharge) + panel("提现订单", "", withdrawal) + "</div>";
+  }
+
+  async function paymentsView(loadContext) {
+    const result = await Promise.all([
+      remoteTableData("payment-channels", "/admin/api/payments/channels"),
+      remoteTableData("payment-products", "/admin/api/payments/products"),
+      remoteTableData("payment-recharges", "/admin/api/payments/recharges")
+    ]);
+    if (!isCurrentRouteLoad(loadContext)) return;
+    state.cache.paymentChannels = result[0].items;
+    state.cache.paymentProducts = result[1].items;
+    state.cache.paymentRecharges = result[2].items;
+    if (has("payments.write")) {
+      actions.insertAdjacentHTML("afterbegin",
+        '<button class="layui-btn" data-action="payment-product-create">新增充值商品</button>');
+    }
+
+    const channels = table([
+      {
+        label: "通道",
+        render: (row) => "<strong>" + esc(row.name) + "</strong><br><small>" +
+          esc(row.channel_key) + "</small>",
+        className: "wrap"
+      },
+      { label: "服务商", render: (row) => statusTag(row.provider, {
+        bepusdt: ["BEpusdt", "ok"]
+      }) },
+      {
+        label: "配置",
+        render: (row) => '<div class="payment-config-state">' +
+          statusTag(row.config_valid ? 1 : 0, {
+            1: ["配置有效", "ok"], 0: [row.config_error || "未配置", "bad"]
+          }) +
+          statusTag(row.token_configured ? 1 : 0, {
+            1: ["Token 已配置", "ok"], 0: ["Token 未配置", "warn"]
+          }) +
+          statusTag(row.config_verified ? 1 : 0, {
+            1: ["签名检查通过", "ok"], 0: ["待签名检查", "warn"]
+          }) + "</div>"
+      },
+      {
+        label: "接口 / 类型",
+        render: (row) => esc(row.api_base_url || "—") + "<br><small>" +
+          esc([row.trade_type, row.fiat].filter(Boolean).join(" · ") || "—") + "</small>",
+        className: "wrap"
+      },
+      {
+        label: "金额范围(最小单位)",
+        render: (row) => formatNumber(row.min_amount_minor) + " - " +
+          formatNumber(row.max_amount_minor)
+      },
+      { label: "排序", key: "sort_order" },
+      { label: "状态", render: (row) => statusTag(row.status, {
+        1: ["启用", "ok"], 0: ["停用", "bad"]
+      }) },
+      {
+        label: "操作",
+        render: (row) => {
+          if (!has("payments.write")) return "—";
+          const controls = [];
+          if (row.provider === "bepusdt") {
+            controls.push(button("编辑配置", "payment-channel-edit", row.id, "layui-btn-normal"));
+            if (row.config_valid) {
+              controls.push(button("协议检查", "payment-channel-check", row.id, "layui-btn-warm"));
+            }
+            if (Number(row.status) === 1 || row.config_verified) {
+              controls.push(button(Number(row.status) === 1 ? "停用" : "启用",
+                "payment-channel-status", row.id,
+                Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary"));
+            }
+          } else if (Number(row.status) === 1) {
+            controls.push(button("停用", "payment-channel-status", row.id, "layui-btn-danger"));
+          }
+          return controls.length ? '<div class="row-actions">' + controls.join("") + "</div>" : "—";
+        }
+      }
+    ], result[0].items, {
+      key: "payment-channels",
+      page: result[0].page,
+      pageSize: result[0].page_size,
+      total: result[0].total,
+      hasMore: result[0].has_more,
+      remote: { path: "/admin/api/payments/channels", cacheName: "paymentChannels" }
+    });
+
+    const products = table([
+      {
+        label: "商品",
+        render: (row) => "<strong>" + esc(row.name) + "</strong><br><small>ID " +
+          esc(row.id) + "</small>"
+      },
+      {
+        label: "支付金额",
+        render: (row) => formatNumber(row.amount_minor) + " " +
+          esc(row.fiat_currency) + "（精度 " + esc(row.currency_scale) + "）"
+      },
+      {
+        label: "到账星币",
+        render: (row) => formatNumber(row.coin_amount) +
+          (Number(row.bonus_coin) > 0 ? " +" + formatNumber(row.bonus_coin) : "")
+      },
+      { label: "排序", key: "sort_order" },
+      { label: "状态", render: (row) => statusTag(row.status, {
+        1: ["启用", "ok"], 0: ["停用", "bad"]
+      }) },
+      {
+        label: "操作",
+        render: (row) => has("payments.write") ?
+          '<div class="row-actions">' +
+          button("编辑", "payment-product-edit", row.id, "layui-btn-normal") +
+          button(Number(row.status) === 1 ? "停用" : "启用",
+            "payment-product-status", row.id,
+            Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary") +
+          "</div>" : "—"
+      }
+    ], result[1].items, {
+      key: "payment-products",
+      page: result[1].page,
+      pageSize: result[1].page_size,
+      total: result[1].total,
+      hasMore: result[1].has_more,
+      remote: { path: "/admin/api/payments/products", cacheName: "paymentProducts" }
+    });
+
+    const recharges = table([
+      {
+        label: "平台订单",
+        render: (row) => "<strong>" + esc(row.order_no) + "</strong><br><small>用户 " +
+          esc(row.user_id) + "</small>",
+        className: "wrap"
+      },
+      {
+        label: "通道 / 服务商订单",
+        render: (row) => esc(row.channel || row.channel_key || "—") +
+          "<br><small>" + esc(row.provider_trade_id || "尚未生成") + "</small>",
+        className: "wrap"
+      },
+      {
+        label: "应付 / 实付",
+        render: (row) => formatNumber(row.amount_minor) + " " + esc(row.fiat_currency) +
+          "<br><small>" + esc(row.actual_amount || "—") + "</small>"
+      },
+      {
+        label: "链上交易",
+        render: (row) => esc(row.block_transaction_id || "—"),
+        className: "wrap"
+      },
+      {
+        label: "支付链接 / 到期",
+        render: (row) => {
+          const paymentURL = safeHTTPURL(row.payment_url);
+          const link = paymentURL ? '<a href="' + esc(paymentURL) +
+            '" target="_blank" rel="noopener noreferrer">打开支付页</a>' : "—";
+          return link + "<br><small>" + formatTime(row.expires_at) + "</small>";
+        },
+        className: "wrap"
+      },
+      {
+        label: "回调",
+        render: (row) => formatNumber(row.callback_count) + " 次<br><small>" +
+          formatTime(row.last_callback_at) + "</small>"
+      },
+      { label: "状态", render: (row) => statusTag(row.status, {
+        0: ["已创建", "warn"], 1: ["支付中", "warn"], 2: ["已支付", "ok"],
+        3: ["失败", "bad"], 4: ["已关闭", "bad"], 5: ["已退款", "warn"]
+      }) },
+      {
+        label: "操作",
+        render: (row) => has("wallet.review") && row.provider === "bepusdt" &&
+          row.provider_trade_id && [0, 1].includes(Number(row.status)) ?
+          button("核验补账", "payment-recharge-mark-paid", row.id, "layui-btn-danger") : "—"
+      }
+    ], result[2].items, {
+      key: "payment-recharges",
+      page: result[2].page,
+      pageSize: result[2].page_size,
+      total: result[2].total,
+      hasMore: result[2].has_more,
+      remote: { path: "/admin/api/payments/recharges", cacheName: "paymentRecharges" }
+    });
+
+    content.innerHTML =
+      panel("支付通道", "密钥不回传；配置保存后会自动停用，必须通过签名与 Token 检查才可启用", channels) +
+      panel("充值商品", "前端只展示启用商品；金额按法币最小单位存储", products) +
+      panel("充值订单", "BEpusdt 回调自动入账；异常补账必须先由服务端核验 BEpusdt 已支付状态", recharges);
   }
 
   async function games(loadContext) {
@@ -1149,7 +1337,7 @@
   }
 
   const loaders = {
-    dashboard, users, wallet: walletView, games, live: liveView,
+    dashboard, users, wallet: walletView, payments: paymentsView, games, live: liveView,
     lottery: lotteryView, sports: sportsView, bets: betsView,
     im: imView, app: appView, rbac: rbacView, system: systemView
   };
@@ -1680,6 +1868,88 @@
     return result;
   }
 
+  function requirePaymentBaseURL(value, label) {
+    let parsed;
+    try {
+      parsed = new URL(String(value || "").trim());
+    } catch (_) {
+      throw new Error(label + "格式无效");
+    }
+    if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname ||
+        parsed.username || parsed.password || parsed.search || parsed.hash ||
+        (parsed.pathname !== "" && parsed.pathname !== "/")) {
+      throw new Error(label + "必须是无账号、查询参数和路径的 HTTP(S) 根地址");
+    }
+    return parsed.href.replace(/\/$/, "");
+  }
+
+  function paymentProductForm(product) {
+    const editing = Boolean(product);
+    return openForm(editing ? "编辑充值商品" : "新增充值商品", [
+      { name: "name", label: "商品名称", value: product?.name || "", wide: true },
+      {
+        name: "fiat_currency", label: "法币",
+        options: [["CNY", "CNY"], ["USD", "USD"], ["EUR", "EUR"], ["GBP", "GBP"], ["JPY", "JPY"]],
+        value: product?.fiat_currency || "CNY"
+      },
+      {
+        name: "currency_scale", label: "法币精度", type: "number",
+        value: product?.currency_scale ?? 2
+      },
+      {
+        name: "amount_minor", label: "支付金额（法币最小单位）", type: "number",
+        value: product?.amount_minor || ""
+      },
+      {
+        name: "coin_amount", label: "到账星币", type: "number",
+        value: product?.coin_amount || ""
+      },
+      {
+        name: "bonus_coin", label: "赠送星币", type: "number",
+        value: product?.bonus_coin ?? 0
+      },
+      { name: "sort_order", label: "排序", type: "number", value: product?.sort_order ?? 0 },
+      {
+        name: "status", label: "状态",
+        options: [[1, "启用"], [0, "停用"]], value: product?.status ?? 1
+      }
+    ], (values) => {
+      const name = String(values.name || "").trim();
+      const fiatCurrency = String(values.fiat_currency || "").trim().toUpperCase();
+      const currencyScale = Number(values.currency_scale);
+      const amountMinor = Number(values.amount_minor);
+      const coinAmount = Number(values.coin_amount);
+      const bonusCoin = Number(values.bonus_coin);
+      const sortOrder = Number(values.sort_order);
+      const status = Number(values.status);
+      const expectedScale = fiatCurrency === "JPY" ? 0 : 2;
+      if (!name || [...name].length > 100) {
+        throw new Error("商品名称必填且最多 100 个字");
+      }
+      if (!/^[A-Z][A-Z0-9]{2,7}$/.test(fiatCurrency) ||
+          !["CNY", "USD", "EUR", "GBP", "JPY"].includes(fiatCurrency) ||
+          !Number.isInteger(currencyScale) || currencyScale !== expectedScale ||
+          !Number.isSafeInteger(amountMinor) || amountMinor < 1 ||
+          !Number.isSafeInteger(coinAmount) || coinAmount < 1 ||
+          !Number.isSafeInteger(bonusCoin) || bonusCoin < 0 ||
+          !Number.isSafeInteger(sortOrder) || Math.abs(sortOrder) > 1000000 ||
+          ![0, 1].includes(status)) {
+        throw new Error("请检查法币、精度（CNY/USD/EUR/GBP 为 2，JPY 为 0）、金额、星币、排序和状态");
+      }
+      const path = editing ?
+        "/admin/api/payments/products/" + encodeURIComponent(product.id) :
+        "/admin/api/payments/products";
+      return api(path, {
+        method: "POST",
+        body: {
+          name, fiat_currency: fiatCurrency, currency_scale: currencyScale,
+          amount_minor: amountMinor, coin_amount: coinAmount, bonus_coin: bonusCoin,
+          sort_order: sortOrder, status
+        }
+      });
+    });
+  }
+
   async function handleAction(action, id, target) {
     if (action === "table-view") {
       return openTableRowDetails(target?.dataset.tableId || "", target?.dataset.rowIndex || "");
@@ -1894,13 +2164,204 @@
         });
       });
     }
+    if (action === "payment-channel-edit") {
+      const row = cached("paymentChannels", id);
+      if (!row) {
+        notify("支付通道数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("编辑 BEpusdt 通道", [
+        { name: "name", label: "通道名称", value: row.name, wide: true },
+        {
+          name: "api_base_url", label: "BEpusdt API 根地址",
+          value: row.api_base_url || "", placeholder: "http://bepusdt:8080", wide: true
+        },
+        {
+          name: "public_base_url", label: "用户可访问的支付根地址",
+          value: row.public_base_url || "", placeholder: "https://pay.example.com", wide: true
+        },
+        {
+          name: "api_token", label: row.token_configured ?
+            "API Token（留空保留原值）" : "API Token（首次配置必填）",
+          type: "password", placeholder: row.token_configured ? "留空不会覆盖" : "至少 8 个字符",
+          wide: true
+        },
+        {
+          name: "trade_type", label: "交易类型",
+          value: row.trade_type || "usdt.trc20", placeholder: "usdt.trc20"
+        },
+        {
+          name: "fiat", label: "法币",
+          options: [["CNY", "CNY"], ["USD", "USD"], ["EUR", "EUR"], ["GBP", "GBP"], ["JPY", "JPY"]],
+          value: row.fiat || "CNY"
+        },
+        {
+          name: "timeout_seconds", label: "订单超时（180–3600 秒）", type: "number",
+          value: row.timeout_seconds || 1200
+        },
+        {
+          name: "currency_scale", label: "法币精度", type: "number",
+          value: row.currency_scale ?? 2
+        },
+        {
+          name: "min_amount_minor", label: "最小金额（最小单位）", type: "number",
+          value: row.min_amount_minor || 1
+        },
+        {
+          name: "max_amount_minor", label: "最大金额（最小单位）", type: "number",
+          value: row.max_amount_minor || 1000000
+        },
+        { name: "sort_order", label: "排序", type: "number", value: row.sort_order ?? 0 }
+      ], (values) => {
+        const name = String(values.name || "").trim();
+        const apiBaseURL = requirePaymentBaseURL(values.api_base_url, "API 根地址");
+        const publicBaseURL = requirePaymentBaseURL(values.public_base_url, "支付根地址");
+        const apiToken = String(values.api_token || "").trim();
+        const tradeType = String(values.trade_type || "").trim().toLowerCase();
+        const fiat = String(values.fiat || "").trim().toUpperCase();
+        const timeoutSeconds = Number(values.timeout_seconds);
+        const currencyScale = Number(values.currency_scale);
+        const minAmountMinor = Number(values.min_amount_minor);
+        const maxAmountMinor = Number(values.max_amount_minor);
+        const sortOrder = Number(values.sort_order);
+        const expectedScale = fiat === "JPY" ? 0 : 2;
+        if (!name || [...name].length > 100) {
+          throw new Error("通道名称必填且最多 100 个字");
+        }
+        if ((!row.token_configured && apiToken.length < 8) || apiToken.length > 512) {
+          throw new Error("首次配置 Token 必须为 8–512 个字符；已配置时可留空保留");
+        }
+        if (!/^[a-z0-9][a-z0-9._-]{1,39}$/.test(tradeType) ||
+            !["CNY", "USD", "EUR", "GBP", "JPY"].includes(fiat) ||
+            !Number.isInteger(timeoutSeconds) || timeoutSeconds < 180 || timeoutSeconds > 3600 ||
+            !Number.isInteger(currencyScale) || currencyScale !== expectedScale ||
+            !Number.isSafeInteger(minAmountMinor) || minAmountMinor < 1 ||
+            !Number.isSafeInteger(maxAmountMinor) || maxAmountMinor < minAmountMinor ||
+            !Number.isSafeInteger(sortOrder) || Math.abs(sortOrder) > 1000000) {
+          throw new Error("请检查交易类型、法币、超时、法币精度（CNY 为 2）、金额范围和排序");
+        }
+        return api("/admin/api/payments/channels/" + encodeURIComponent(id), {
+          method: "POST",
+          body: {
+            name, api_base_url: apiBaseURL, public_base_url: publicBaseURL,
+            api_token: apiToken, trade_type: tradeType, fiat,
+            timeout_seconds: timeoutSeconds, currency_scale: currencyScale,
+            min_amount_minor: minAmountMinor, max_amount_minor: maxAmountMinor,
+            sort_order: sortOrder, status: 0
+          }
+        });
+      });
+    }
+    if (action === "payment-channel-check") {
+      const row = cached("paymentChannels", id);
+      if (!row) {
+        notify("支付通道数据已刷新，请重试", true);
+        return;
+      }
+      const result = await api(
+        "/admin/api/payments/channels/" + encodeURIComponent(id) + "/check",
+        { method: "POST", body: {} }
+      );
+      notify("签名与 Token 检查通过：" + (result.provider_message || "BEpusdt 响应正常"));
+      return loadRoute();
+    }
+    if (action === "payment-channel-status") {
+      const row = cached("paymentChannels", id);
+      if (!row) {
+        notify("支付通道数据已刷新，请重试", true);
+        return;
+      }
+      const status = Number(row.status) === 1 ? 0 : 1;
+      if (!window.confirm(status === 1 ?
+        "确认启用该支付通道？启用后会立即出现在客户端。" :
+        "确认停用该支付通道？停用后将不能创建新订单。")) {
+        return;
+      }
+      return mutateAndRefresh(
+        "/admin/api/payments/channels/" + encodeURIComponent(id) + "/status",
+        { method: "POST", body: { status } },
+        status === 1 ? "支付通道已启用" : "支付通道已停用"
+      );
+    }
+    if (action === "payment-product-create") {
+      return paymentProductForm(null);
+    }
+    if (action === "payment-product-edit") {
+      const row = cached("paymentProducts", id);
+      if (!row) {
+        notify("充值商品数据已刷新，请重试", true);
+        return;
+      }
+      return paymentProductForm(row);
+    }
+    if (action === "payment-product-status") {
+      const row = cached("paymentProducts", id);
+      if (!row) {
+        notify("充值商品数据已刷新，请重试", true);
+        return;
+      }
+      const status = Number(row.status) === 1 ? 0 : 1;
+      if (!window.confirm(status === 1 ?
+        "确认启用该充值商品？启用后会立即出现在客户端。" :
+        "确认停用该充值商品？已有订单不受影响。")) {
+        return;
+      }
+      return mutateAndRefresh(
+        "/admin/api/payments/products/" + encodeURIComponent(id) + "/status",
+        { method: "POST", body: { status } },
+        status === 1 ? "充值商品已启用" : "充值商品已停用"
+      );
+    }
+    if (action === "payment-recharge-mark-paid") {
+      const row = cached("paymentRecharges", id);
+      if (!row) {
+        notify("充值订单数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("BEpusdt 已支付订单核验补账", [
+        {
+          name: "order_no", label: "平台订单（不可修改）",
+          value: row.order_no, readonly: true, wide: true
+        },
+        {
+          name: "provider_order_no", label: "BEpusdt 交易号（必填）",
+          value: row.provider_trade_id || "", wide: true
+        },
+        {
+          name: "reason",
+          label: "异常核实说明（必填；服务端核验已支付后才会入账）",
+          type: "textarea", wide: true
+        }
+      ], (values) => {
+        const providerOrderNo = String(values.provider_order_no || "").trim();
+        const reason = String(values.reason || "").trim();
+        if (!providerOrderNo || providerOrderNo.length > 190) {
+          throw new Error("BEpusdt 交易号必填，且不能超过 190 个字符");
+        }
+        if (!reason || reason.length > 500) {
+          throw new Error("异常核实说明必填，且不能超过 500 个字");
+        }
+        const credited = Number(row.coin_amount || 0) + Number(row.bonus_coin || 0);
+        if (!window.confirm(
+          "二次确认：该操作会立即向用户 ID " + String(row.user_id || "—") +
+          " 入账 " + formatNumber(credited) +
+          " 星币；服务端将再次核验 BEpusdt 已支付状态。确认继续？"
+        )) {
+          throw new Error("操作已取消，本次未入账");
+        }
+        return api(
+          "/admin/api/payments/recharges/" + encodeURIComponent(id) + "/mark-paid",
+          { method: "POST", body: { provider_order_no: providerOrderNo, reason } }
+        );
+      });
+    }
     if (action === "recharge-mark-paid") {
       const row = cached("recharges", id);
       if (!row) {
         notify("充值订单数据已刷新，请重试", true);
         return;
       }
-      return openForm("人工确认充值入账", [
+      return openForm("异常订单人工入账", [
         {
           name: "order_no",
           label: "平台订单（不可修改）",
@@ -1908,10 +2369,10 @@
           readonly: true,
           wide: true
         },
-        { name: "provider_order_no", label: "渠道订单号（必填）", wide: true },
+        { name: "provider_order_no", label: "渠道交易号（必填）", value: row.provider_trade_id || "", wide: true },
         {
           name: "reason",
-          label: "确认原因（必填；保存后立即给用户入账）",
+          label: "异常核实说明（必填；立即入账并写入支付审计）",
           type: "textarea",
           wide: true
         }
@@ -1919,10 +2380,17 @@
         const providerOrderNo = String(values.provider_order_no || "").trim();
         const reason = String(values.reason || "").trim();
         if (!providerOrderNo || providerOrderNo.length > 190) {
-          throw new Error("渠道订单号必填，且不能超过 190 个字符");
+          throw new Error("渠道交易号必填，且不能超过 190 个字符");
         }
         if (!reason || reason.length > 500) {
-          throw new Error("确认原因必填，且不能超过 500 个字");
+          throw new Error("异常核实说明必填，且不能超过 500 个字");
+        }
+        const credited = Number(row.coin_amount || 0) + Number(row.bonus_coin || 0);
+        if (!window.confirm(
+          "二次确认：该操作会立即向用户 ID " + String(row.user_id || "—") +
+          " 入账 " + formatNumber(credited) + " 星币，且写入资金审计。确认继续？"
+        )) {
+          throw new Error("操作已取消，本次未入账");
         }
         return api("/admin/api/wallet/recharges/" + encodeURIComponent(id) + "/mark-paid", {
           method: "POST",

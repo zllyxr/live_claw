@@ -56,6 +56,39 @@ services:
       retries: 30
     restart: unless-stopped
 
+  bepusdt:
+    # Stable v1.24.1 release image (commit b321da7), pinned to its
+    # multi-architecture manifest so a mutable tag cannot change production
+    # behavior during a later pull.
+    image: v03413/bepusdt:b321da7@sha256:4395c070f482e7ed51a89fc7380c0b3b19322635fc999b5fd12850ee9a45310c
+    environment:
+      TZ: Asia/Shanghai
+      SQLITE: /var/lib/bepusdt/sqlite.db
+      LOG: /var/log/bepusdt
+      LISTEN: :8080
+    ports:
+      # Local-only management access. Production likewise binds its maintenance
+      # port to loopback and publishes only checkout routes through Nginx.
+      - "127.0.0.1:28081:8080"
+    volumes:
+      - bepusdt_data:/var/lib/bepusdt
+      - bepusdt_logs:/var/log/bepusdt
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Do not GET /. BEpusdt displays one-time initialization credentials to
+      # the first visitor, so health checks must not consume that page.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
   migrate:
     build:
       context: ../..
@@ -212,6 +245,8 @@ services:
         bind:
           create_host_path: false
     depends_on:
+      bepusdt:
+        condition: service_healthy
       api:
         condition: service_healthy
       admin:
@@ -228,3 +263,5 @@ volumes:
   mysql_data:
   redis_data:
   minio_data:
+  bepusdt_data:
+  bepusdt_logs:

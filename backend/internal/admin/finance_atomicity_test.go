@@ -293,6 +293,90 @@ func TestFinanceManagementAtomicityIntegration(t *testing.T) {
 		assertRechargeState(t, ctx, db, userID, orderID, orderNo, 2, "provider-"+suffix, 100, 1)
 	})
 
+	t.Run("manual recharge cannot replace a pending provider order", func(t *testing.T) {
+		orderNo, newErr := idgen.New()
+		if newErr != nil {
+			t.Fatal(newErr)
+		}
+		boundProviderOrder := "bepusdt-" + suffix
+		result, insertErr := db.ExecContext(ctx, `
+			INSERT INTO recharge_orders
+				(order_no,user_id,product_id,channel_id,provider_order_no,
+				 fiat_currency,currency_scale,amount_minor,coin_amount,bonus_coin,status)
+			VALUES(?,?,0,0,?,'CNY',2,1000,80,20,1)`,
+			orderNo, userID, boundProviderOrder,
+		)
+		if insertErr != nil {
+			t.Fatal(insertErr)
+		}
+		orderID, _ := result.LastInsertId()
+		pathID := strconv.FormatInt(orderID, 10)
+		response := invokeFinanceAdminHandler(
+			handler.markRechargePaid,
+			adminauth.Admin{ID: actorBase + 5, Username: "recharge-reviewer"},
+			http.MethodPost,
+			"/admin/api/wallet/recharges/"+pathID+"/mark-paid",
+			pathID,
+			map[string]any{
+				"provider_order_no": "different-" + suffix,
+				"reason":            "异常人工到账",
+			},
+			"",
+		)
+		if response.Code != http.StatusConflict {
+			t.Fatalf("expected pending provider conflict, got %d: %s", response.Code, response.Body.String())
+		}
+		assertRechargeState(
+			t, ctx, db, userID, orderID, orderNo, 1, boundProviderOrder, 0, 0,
+		)
+	})
+
+	t.Run("manual recharge cannot invent a BEpusdt provider order", func(t *testing.T) {
+		var channelID int64
+		if queryErr := db.QueryRowContext(ctx, `
+			SELECT id FROM payment_channels
+			WHERE provider='bepusdt'
+			ORDER BY id LIMIT 1`,
+		).Scan(&channelID); queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		orderNo, newErr := idgen.New()
+		if newErr != nil {
+			t.Fatal(newErr)
+		}
+		result, insertErr := db.ExecContext(ctx, `
+			INSERT INTO recharge_orders
+				(order_no,user_id,product_id,channel_id,fiat_currency,currency_scale,
+				 amount_minor,coin_amount,bonus_coin,status)
+			VALUES(?,?,0,?,'CNY',2,1000,80,20,0)`,
+			orderNo, userID, channelID,
+		)
+		if insertErr != nil {
+			t.Fatal(insertErr)
+		}
+		orderID, _ := result.LastInsertId()
+		pathID := strconv.FormatInt(orderID, 10)
+		response := invokeFinanceAdminHandler(
+			handler.markRechargePaid,
+			adminauth.Admin{ID: actorBase + 6, Username: "recharge-reviewer"},
+			http.MethodPost,
+			"/admin/api/payments/recharges/"+pathID+"/mark-paid",
+			pathID,
+			map[string]any{
+				"provider_order_no": "invented-" + suffix,
+				"reason":            "异常人工到账",
+			},
+			"",
+		)
+		if response.Code != http.StatusConflict {
+			t.Fatalf(
+				"expected unbound BEpusdt conflict, got %d: %s",
+				response.Code, response.Body.String(),
+			)
+		}
+		assertRechargeState(t, ctx, db, userID, orderID, orderNo, 0, "", 0, 0)
+	})
+
 	t.Run("withdraw release and commit roll back with their order state", func(t *testing.T) {
 		adminUser := adminauth.Admin{ID: actorBase + 4, Username: "withdraw-reviewer"}
 		seedNo, newErr := idgen.New()
