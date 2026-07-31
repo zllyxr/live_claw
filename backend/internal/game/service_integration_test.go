@@ -31,6 +31,14 @@ func TestFishingSessionIntegration(t *testing.T) {
 	if err = migrations.Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
+	runtimeDB := db
+	if runtimeDSN := os.Getenv("CLAW_TEST_GAME_MYSQL_DSN"); runtimeDSN != "" {
+		runtimeDB, err = database.Open(ctx, runtimeDSN)
+		if err != nil {
+			t.Fatalf("open restricted game runtime database: %v", err)
+		}
+		defer runtimeDB.Close()
+	}
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddress, DB: 15})
 	defer redisClient.Close()
 	if err = redisClient.FlushDB(ctx).Err(); err != nil {
@@ -50,12 +58,6 @@ func TestFishingSessionIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	walletService := wallet.New(db)
-	if _, err = walletService.Apply(ctx, wallet.ApplyRequest{
-		UserID: userID, Amount: 2000, BusinessType: "test_game_credit", BusinessID: "credit",
-	}); err != nil {
-		t.Fatal(err)
-	}
 	defer func() {
 		db.ExecContext(context.Background(), "DELETE FROM fishing_checkpoints WHERE session_id IN (SELECT id FROM game_sessions WHERE user_id=?)", userID) //nolint:errcheck
 		db.ExecContext(context.Background(), "DELETE FROM game_sessions WHERE user_id=?", userID)                                                          //nolint:errcheck
@@ -64,8 +66,14 @@ func TestFishingSessionIntegration(t *testing.T) {
 		db.ExecContext(context.Background(), "DELETE FROM wallet_accounts WHERE user_id=?", userID)                                                        //nolint:errcheck
 		db.ExecContext(context.Background(), "DELETE FROM users WHERE id=?", userID)                                                                       //nolint:errcheck
 	}()
+	walletService := wallet.New(runtimeDB)
+	if _, err = walletService.Apply(ctx, wallet.ApplyRequest{
+		UserID: userID, Amount: 2000, BusinessType: "test_game_credit", BusinessID: "credit",
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	service := NewService(db, NewMatchmaker(redisClient), walletService)
+	service := NewService(runtimeDB, NewMatchmaker(redisClient), walletService)
 	fixedNow := time.Now().Truncate(time.Millisecond)
 	service.now = func() time.Time { return fixedNow }
 	launch, err := service.EnterFishing(ctx, userID, "novice")

@@ -184,18 +184,17 @@ func (s *Service) FireFishing(
 		return FishingFireResult{}, err
 	}
 	var balance, eventSeq int64
+	var venueID int64
 	var status int
 	var betLevelsJSON []byte
 	var targetRTPPPM int
 	var expiresAt time.Time
 	err = tx.QueryRowContext(ctx, `
-		SELECT session.escrow_balance,session.event_seq,session.status,
-		       venue.bet_levels,venue.target_rtp_ppm,session.expires_at
-		FROM game_sessions session
-		JOIN game_venues venue ON venue.id=session.venue_id
-		WHERE session.id=? AND session.user_id=? FOR UPDATE`,
+		SELECT escrow_balance,event_seq,status,venue_id,expires_at
+		FROM game_sessions
+		WHERE id=? AND user_id=? FOR UPDATE`,
 		sessionID, userID,
-	).Scan(&balance, &eventSeq, &status, &betLevelsJSON, &targetRTPPPM, &expiresAt)
+	).Scan(&balance, &eventSeq, &status, &venueID, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FishingFireResult{}, ErrSessionNotFound
 	}
@@ -205,6 +204,21 @@ func (s *Service) FireFishing(
 	now := s.now()
 	if (status != 1 && status != 2) || !expiresAt.After(now) {
 		return FishingFireResult{}, ErrSessionNotFound
+	}
+	// Keep the locking read scoped to the player's mutable session row. The
+	// runtime role intentionally has read-only access to venue configuration,
+	// so joining game_venues into SELECT ... FOR UPDATE is rejected by MySQL.
+	err = tx.QueryRowContext(ctx, `
+		SELECT bet_levels,target_rtp_ppm
+		FROM game_venues
+		WHERE id=?`,
+		venueID,
+	).Scan(&betLevelsJSON, &targetRTPPPM)
+	if errors.Is(err, sql.ErrNoRows) {
+		return FishingFireResult{}, ErrVenueNotFound
+	}
+	if err != nil {
+		return FishingFireResult{}, err
 	}
 	var betLevels []int64
 	if err = json.Unmarshal(betLevelsJSON, &betLevels); err != nil || !containsFishingBet(betLevels, bet) {
