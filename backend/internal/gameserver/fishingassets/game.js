@@ -1,3 +1,12 @@
+import {
+  displaySeatToServerSeat,
+  normalizeSeat,
+  serverSeatToDisplaySeat,
+  viewToWorldPoint,
+  worldToViewAngle,
+  worldToViewPoint
+} from "./perspective.js?v=20260731-local-view1";
+
 const WORLD = Object.freeze({ width: 1280, height: 720 });
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const POWER_LEVELS = Object.freeze([1, 2, 5, 10, 20, 50]);
@@ -106,6 +115,7 @@ const state = {
   joining: false,
   roomId: "",
   playerId: "",
+  localSeat: null,
   resumeToken: "",
   profile: null,
   current: null,
@@ -268,19 +278,42 @@ function currentPlayer(snapshot = state.current) {
   return playersFrom(snapshot).find((player) => String(player.id) === String(state.playerId));
 }
 
+function viewerSeat() {
+  const snapshotSeat = Number(currentPlayer()?.seat);
+  if (Number.isFinite(snapshotSeat)) return normalizeSeat(snapshotSeat);
+  const assignedSeat = Number(state.localSeat);
+  return state.localSeat !== null && Number.isFinite(assignedSeat) ? normalizeSeat(assignedSeat) : 0;
+}
+
+function toViewPoint(point) {
+  return worldToViewPoint(point, viewerSeat(), WORLD);
+}
+
+function toWorldPoint(point) {
+  return viewToWorldPoint(point, viewerSeat(), WORLD);
+}
+
+function toViewAngle(angle) {
+  return worldToViewAngle(angle, viewerSeat());
+}
+
 function playerColor(player) {
   return player?.color || DEFAULT_COLORS[Number(player?.seat || 0) % DEFAULT_COLORS.length];
 }
 
-function displaySeatOrigin(seat) {
-  return DISPLAY_SEATS[Number(seat || 0) % DISPLAY_SEATS.length];
+function canonicalSeatOrigin(seat) {
+  return DISPLAY_SEATS[normalizeSeat(seat)];
+}
+
+function displaySeatOrigin(serverSeat) {
+  return DISPLAY_SEATS[serverSeatToDisplaySeat(serverSeat, viewerSeat())];
 }
 
 function physicsSeatOrigin(player) {
   if (Number.isFinite(player?.x) && Number.isFinite(player?.y)) return { x: player.x, y: player.y };
   const layout = String(state.current?.seatLayout || state.current?.layout || "").toLowerCase();
-  if (layout.includes("four") || layout.includes("table")) return displaySeatOrigin(player?.seat);
-  return LEGACY_PHYSICS_SEATS[Number(player?.seat || 0) % LEGACY_PHYSICS_SEATS.length];
+  if (layout.includes("four") || layout.includes("table")) return canonicalSeatOrigin(player?.seat);
+  return LEGACY_PHYSICS_SEATS[normalizeSeat(player?.seat)];
 }
 
 function fishAssetKey(fish = {}) {
@@ -347,12 +380,15 @@ function updateHud() {
 
   const bySeat = new Map(players.map((player) => [Number(player.seat), player]));
   for (const hud of ui.seats) {
-    const seat = Number(hud.dataset.seat);
-    const player = bySeat.get(seat);
+    const displaySeat = normalizeSeat(hud.dataset.seat);
+    const serverSeat = displaySeatToServerSeat(displaySeat, viewerSeat());
+    const player = bySeat.get(serverSeat);
     const mine = player && String(player.id) === String(state.playerId);
+    hud.dataset.serverSeat = String(serverSeat);
     hud.classList.toggle("occupied", Boolean(player));
     hud.classList.toggle("current", Boolean(mine));
-    hud.style.setProperty("--seat-color", playerColor(player || { seat }));
+    hud.style.setProperty("--seat-color", playerColor(player || { seat: serverSeat }));
+    hud.querySelector(".seat-number").textContent = String(serverSeat + 1).padStart(2, "0");
     hud.querySelector(".seat-name").textContent = player ? String(player.name || "匿名猎手") : "等待入座";
     hud.querySelector(".seat-score").textContent = player
       ? Math.max(0, Math.floor(Number(player.score || 0))).toLocaleString("zh-CN")
@@ -386,6 +422,8 @@ function setSnapshot(snapshot, { force = false } = {}) {
   }
 
   state.current = snapshot;
+  const snapshotPlayer = currentPlayer(snapshot);
+  if (Number.isFinite(Number(snapshotPlayer?.seat))) state.localSeat = normalizeSeat(snapshotPlayer.seat);
   state.snapshotAt = performance.now();
   if (state.lockedFishId && !fishesFrom(snapshot).some((fish) => String(fish.id) === state.lockedFishId)) {
     state.lockedFishId = "";
@@ -420,6 +458,7 @@ function submitJoin() {
 function resetToJoin(errorMessage) {
   state.joined = false;
   state.playerId = "";
+  state.localSeat = null;
   state.current = null;
   state.previous = null;
   state.bulletHistory.clear();
@@ -475,6 +514,9 @@ function emitJoin() {
     state.joined = true;
     state.roomId = String(response.roomId || state.profile.roomId);
     state.playerId = String(response.playerId || "");
+    if (response.seat !== null && response.seat !== undefined && Number.isFinite(Number(response.seat))) {
+      state.localSeat = normalizeSeat(response.seat);
+    }
     state.resumeToken = String(response.resumeToken || state.resumeToken || "");
     state.powerTouched = false;
     if (state.resumeToken) {
@@ -526,16 +568,18 @@ function visualAimAngle(player) {
     const locked = fishesFrom().find((fish) => String(fish.id) === state.lockedFishId);
     if (locked) {
       const origin = displaySeatOrigin(player?.seat);
-      return Math.atan2(Number(locked.y) - origin.y, Number(locked.x) - origin.x);
+      const target = toViewPoint({ x: Number(locked.x), y: Number(locked.y) });
+      return Math.atan2(target.y - origin.y, target.x - origin.x);
     }
   }
   const remembered = state.visualAimAngles.get(String(player?.id));
   if (Number.isFinite(remembered)) return remembered;
   const displayOrigin = displaySeatOrigin(player?.seat);
   const physicsOrigin = physicsSeatOrigin(player);
-  const physicsAngle = Number.isFinite(player?.angle) ? player.angle : DISPLAY_SEATS[player?.seat || 0].inward;
+  const physicsAngle = Number.isFinite(player?.angle) ? player.angle : canonicalSeatOrigin(player?.seat).inward;
   const proxy = rayExitPoint(physicsOrigin, physicsAngle);
-  return Math.atan2(proxy.y - displayOrigin.y, proxy.x - displayOrigin.x);
+  const displayProxy = toViewPoint(proxy);
+  return Math.atan2(displayProxy.y - displayOrigin.y, displayProxy.x - displayOrigin.x);
 }
 
 function activeTargetPoint(fallback = state.pointer) {
@@ -552,8 +596,9 @@ function aimAt(point, force = false) {
   const target = activeTargetPoint(point);
   const physicsOrigin = physicsSeatOrigin(me);
   const displayOrigin = displaySeatOrigin(me.seat);
+  const displayTarget = toViewPoint(target);
   const serverAngle = Math.atan2(target.y - physicsOrigin.y, target.x - physicsOrigin.x);
-  const displayAngle = Math.atan2(target.y - displayOrigin.y, target.x - displayOrigin.x);
+  const displayAngle = Math.atan2(displayTarget.y - displayOrigin.y, displayTarget.x - displayOrigin.x);
   state.visualAimAngles.set(String(me.id), displayAngle);
   const now = performance.now();
   if (force || now - state.lastAimSentAt > 45) {
@@ -651,16 +696,19 @@ function toggleLock() {
 
 function pointerToWorld(event) {
   const rect = canvas.getBoundingClientRect();
+  let viewPoint;
   if (PORTRAIT_LANDSCAPE_QUERY.matches) {
-    return {
+    viewPoint = {
       x: clamp((event.clientY - rect.top) * WORLD.width / rect.height, 0, WORLD.width),
       y: clamp((rect.right - event.clientX) * WORLD.height / rect.width, 0, WORLD.height)
     };
+  } else {
+    viewPoint = {
+      x: clamp((event.clientX - rect.left) * WORLD.width / rect.width, 0, WORLD.width),
+      y: clamp((event.clientY - rect.top) * WORLD.height / rect.height, 0, WORLD.height)
+    };
   }
-  return {
-    x: clamp((event.clientX - rect.left) * WORLD.width / rect.width, 0, WORLD.width),
-    y: clamp((event.clientY - rect.top) * WORLD.height / rect.height, 0, WORLD.height)
-  };
+  return toWorldPoint(viewPoint);
 }
 
 function updateCrosshair(event, visible = true) {
@@ -839,18 +887,21 @@ function drawFish(fish, now) {
   const radius = Number(fish.radius || (spec.boss ? 47 : 28));
   const serverScale = clamp(Number(fish.scale || 1), 0.58, 2.1);
   const size = clamp(Math.max(84, radius * 3.2 * serverScale) * spec.size, 78, spec.boss ? 265 : 190);
-  const x = Number(fish.x || 0);
+  const worldX = Number(fish.x || 0);
   const floatOffset = reducedMotion
     ? 0
     : Math.sin(now * 0.0024 * motion.rateScale + motion.phase * 1.31) * spec.drift;
-  const y = Number(fish.y || 0) + floatOffset;
+  const worldY = Number(fish.y || 0) + floatOffset;
+  const viewPoint = toViewPoint({ x: worldX, y: worldY });
+  const x = viewPoint.x;
+  const y = viewPoint.y;
   const elapsed = clamp(now - motion.updatedAt, 0, 50);
   const pitchLimit = spec.boss ? 0.075 : 0.145;
   const targetPitch = reducedMotion ? 0 : clamp(Number(fish.visualPitch || 0), -pitchLimit, pitchLimit);
   const pitchBlend = 1 - Math.exp(-elapsed / 135);
   motion.pitch += (targetPitch - motion.pitch) * pitchBlend;
   motion.updatedAt = now;
-  const angle = Number(fish.angle || 0) + motion.pitch;
+  const angle = toViewAngle(Number(fish.angle || 0) + motion.pitch);
   const flashingUntil = state.fishFlashes.get(String(fish.id)) || 0;
   const flashing = flashingUntil > now;
 
@@ -935,16 +986,22 @@ function drawTargetLock(x, y, radius, now) {
 }
 
 function visualBulletPoint(bullet, owner) {
-  if (!owner) return { x: Number(bullet.x || 0), y: Number(bullet.y || 0) };
+  const bulletPoint = { x: Number(bullet.x || 0), y: Number(bullet.y || 0) };
+  if (!owner) return toViewPoint(bulletPoint);
   const physicsOrigin = physicsSeatOrigin(owner);
-  const displayOrigin = displaySeatOrigin(owner.seat);
   const layout = String(state.current?.seatLayout || state.current?.layout || "").toLowerCase();
   if (layout.includes("four") || layout.includes("table") || (Number.isFinite(owner.x) && Number.isFinite(owner.y))) {
-    return { x: Number(bullet.x || 0), y: Number(bullet.y || 0) };
+    return toViewPoint(bulletPoint);
   }
-  const travel = Math.hypot(Number(bullet.x || 0) - physicsOrigin.x, Number(bullet.y || 0) - physicsOrigin.y);
-  const angle = visualAimAngle(owner);
-  return { x: displayOrigin.x + Math.cos(angle) * travel, y: displayOrigin.y + Math.sin(angle) * travel };
+  const canonicalOrigin = canonicalSeatOrigin(owner.seat);
+  const travel = Math.hypot(bulletPoint.x - physicsOrigin.x, bulletPoint.y - physicsOrigin.y);
+  const physicsAngle = Number.isFinite(owner?.angle) ? owner.angle : canonicalOrigin.inward;
+  const proxy = rayExitPoint(physicsOrigin, physicsAngle);
+  const canonicalAngle = Math.atan2(proxy.y - canonicalOrigin.y, proxy.x - canonicalOrigin.x);
+  return toViewPoint({
+    x: canonicalOrigin.x + Math.cos(canonicalAngle) * travel,
+    y: canonicalOrigin.y + Math.sin(canonicalAngle) * travel
+  });
 }
 
 function drawBullet(bullet) {
@@ -1088,11 +1145,12 @@ function drawCannon(seat, player, now) {
 
 function spawnNetEffect(x, y, fishId = "", color = "#76edf0", power = 1) {
   const now = performance.now();
+  const point = toViewPoint({ x, y });
   if (fishId) state.fishFlashes.set(String(fishId), now + 165);
   state.effects.push({
     type: "net",
-    x,
-    y,
+    x: point.x,
+    y: point.y,
     color,
     power: Math.max(1, Number(power) || 1),
     bornAt: now,
@@ -1110,8 +1168,11 @@ function spawnCatchEffect(event = {}) {
   };
   const spec = fishSpec(fish);
   const multiplier = fishMultiplier(fish);
-  const x = Number(event.x ?? embeddedFish.x ?? WORLD.width / 2);
-  const y = Number(event.y ?? embeddedFish.y ?? WORLD.height / 2);
+  const worldX = Number(event.x ?? embeddedFish.x ?? WORLD.width / 2);
+  const worldY = Number(event.y ?? embeddedFish.y ?? WORLD.height / 2);
+  const point = toViewPoint({ x: worldX, y: worldY });
+  const x = point.x;
+  const y = point.y;
   const reward = Math.max(0, Math.floor(Number(event.reward ?? event.payout ?? embeddedFish.reward ?? 0)));
   const player = playersFrom().find((item) => String(item.id) === String(event.playerId || event.ownerId));
   const target = player ? displaySeatOrigin(player.seat) : { x, y: WORLD.height + 40 };
@@ -1123,7 +1184,7 @@ function spawnCatchEffect(event = {}) {
     spin: 2 + ((index * 11) % 7),
     delay: (index % 4) * 0.035
   }));
-  spawnNetEffect(x, y, String(event.fishId || embeddedFish.id || ""), "#ffe169", event.power || event.bet);
+  spawnNetEffect(worldX, worldY, String(event.fishId || embeddedFish.id || ""), "#ffe169", event.power || event.bet);
   state.effects.push({
     type: "catch",
     x,
@@ -1315,13 +1376,14 @@ function render(now) {
     const me = currentPlayer();
     if (locked && me) {
       const origin = displaySeatOrigin(me.seat);
+      const target = toViewPoint({ x: Number(locked.x), y: Number(locked.y) });
       ctx.save();
       ctx.strokeStyle = "rgba(255,218,99,0.24)";
       ctx.lineWidth = 1;
       ctx.setLineDash([5, 8]);
       ctx.beginPath();
       ctx.moveTo(origin.x, origin.y);
-      ctx.lineTo(Number(locked.x), Number(locked.y));
+      ctx.lineTo(target.x, target.y);
       ctx.stroke();
       ctx.restore();
     }
@@ -1499,6 +1561,7 @@ if (hasLaunchTicket) {
     table: launchTable,
     seat: launchSeat
   };
+  state.localSeat = launchSeat - 1;
   state.roomId = matchedRoom;
   ui.nameInput.value = state.profile.name;
   ui.roomInput.value = matchedRoom;
