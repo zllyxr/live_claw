@@ -174,7 +174,6 @@ func (h *Handler) updateGameVenue(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Name         string  `json:"name"`
 		MinBalance   int64   `json:"min_balance"`
-		EscrowAmount int64   `json:"escrow_amount"`
 		BetLevels    []int64 `json:"bet_levels"`
 		TargetRTPPPM int     `json:"target_rtp_ppm"`
 		Status       int     `json:"status"`
@@ -185,7 +184,7 @@ func (h *Handler) updateGameVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" || len(request.Name) > 80 || request.MinBalance < 0 ||
-		request.EscrowAmount < 1 || request.TargetRTPPPM < 100000 ||
+		request.TargetRTPPPM < 100000 ||
 		request.TargetRTPPPM > 1000000 || request.Status < 0 || request.Status > 1 ||
 		len(request.BetLevels) < 1 || len(request.BetLevels) > 20 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "场次参数无效")
@@ -224,9 +223,9 @@ func (h *Handler) updateGameVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err = tx.ExecContext(r.Context(), `
 		UPDATE game_venues
-		SET name=?,min_balance=?,escrow_amount=?,bet_levels=?,target_rtp_ppm=?,status=?,sort_order=?
+		SET name=?,min_balance=?,escrow_amount=0,bet_levels=?,target_rtp_ppm=?,status=?,sort_order=?
 		WHERE id=?`,
-		request.Name, request.MinBalance, request.EscrowAmount, betLevelsJSON,
+		request.Name, request.MinBalance, betLevelsJSON,
 		request.TargetRTPPPM, request.Status, request.SortOrder, venueID,
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新游戏场次失败")

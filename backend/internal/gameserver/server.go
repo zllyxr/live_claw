@@ -199,6 +199,7 @@ func compatFishingLaunch(launch game.FishingLaunch, nickname string) map[string]
 		"entry_mode": "match", "launch_url": fishingLaunchURL(launch, nickname), "nickname": nickname,
 		"session_id": launch.SessionID, "venue_code": launch.VenueCode,
 		"venue_name": launch.VenueName, "multiplier": launch.Multiplier,
+		"wallet_balance": launch.WalletBalance, "escrow_amount": 0,
 	}
 }
 

@@ -536,6 +536,84 @@ func (s *Service) Balance(ctx context.Context, userID int64) (Balance, error) {
 	return balance, err
 }
 
+// BalanceTx returns the current wallet balance while holding the account row
+// for the lifetime of the caller-owned transaction. Business services use it
+// after an atomic wallet mutation so a response can never regress to a stale
+// balance when another request is running concurrently.
+func (s *Service) BalanceTx(ctx context.Context, tx *sql.Tx, userID int64) (Balance, error) {
+	if tx == nil {
+		return Balance{}, errors.New("wallet balance transaction is required")
+	}
+	if userID < 1 {
+		return Balance{}, errors.New("invalid user id")
+	}
+	account, err := lockAccount(ctx, tx, userID)
+	if err != nil {
+		return Balance{}, err
+	}
+	return Balance{
+		UserID: userID, Currency: defaultCurrency,
+		Available: account.Available, Frozen: account.Frozen, Version: account.Version,
+	}, nil
+}
+
+// Balances reads a set of wallet balances for real-time displays. Missing
+// accounts are returned as zero balances by callers, matching Balance.
+func (s *Service) Balances(ctx context.Context, userIDs []int64) (map[int64]Balance, error) {
+	result := make(map[int64]Balance, len(userIDs))
+	unique := make([]int64, 0, len(userIDs))
+	seen := make(map[int64]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		if userID < 1 {
+			continue
+		}
+		if _, found := seen[userID]; found {
+			continue
+		}
+		seen[userID] = struct{}{}
+		unique = append(unique, userID)
+		result[userID] = Balance{UserID: userID, Currency: defaultCurrency}
+	}
+	const chunkSize = 500
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		query := `SELECT user_id,currency,available,frozen,version
+			FROM wallet_accounts WHERE currency=? AND user_id IN (` + placeholders + `)`
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, defaultCurrency)
+		for _, userID := range chunk {
+			args = append(args, userID)
+		}
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var balance Balance
+			if err = rows.Scan(
+				&balance.UserID, &balance.Currency, &balance.Available, &balance.Frozen, &balance.Version,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[balance.UserID] = balance
+		}
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err = rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
 type account struct {
 	ID        int64
 	UserID    int64
