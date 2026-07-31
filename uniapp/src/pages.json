@@ -269,6 +269,13 @@
       }
     },
     {
+      "path": "pages/wallet/bank-transfer",
+      "style": {
+        "navigationBarTitleText": "银行卡付款",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/wallet/withdraw",
       "style": {
         "navigationBarTitleText": "提现",

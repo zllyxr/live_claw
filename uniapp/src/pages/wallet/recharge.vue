@@ -68,7 +68,7 @@
       </view>
       <view class="pending-actions">
         <button
-          v-if="pending.paymentUrl"
+          v-if="pending.paymentUrl || pending.channel === 'bank'"
           class="pending-continue-button"
           :disabled="checkingPending"
           @tap="resumePendingPayment"
@@ -196,7 +196,7 @@ function paymentAvailable(pay?: WalletPayMethod) {
   }
   const id = String(pay.id || "").trim().toLowerCase();
   if (
-    !["ali", "wx", "paypal", "usdt"].includes(id) ||
+    !["ali", "wx", "paypal", "usdt", "bank"].includes(id) ||
     id.startsWith("preview-") ||
     flagIsTrue(pay.preview) ||
     !statusAllowsUse(pay.status)
@@ -233,7 +233,8 @@ function payName(id?: string) {
     ali: "支付宝",
     wx: "微信支付",
     paypal: "PayPal",
-    usdt: "USDT"
+    usdt: "USDT",
+    bank: "银行卡转账"
   };
   return map[String(id || "")] || "支付方式";
 }
@@ -246,6 +247,9 @@ function payDescription(pay: WalletPayMethod) {
   const tradeType = String(pay.trade_type || "").toLowerCase();
   const network = String(pay.network || "").toLowerCase();
   const descriptor = `${provider} ${mode} ${custom}`.toLowerCase();
+  if (id === "bank" || provider === "manual_bank") {
+    return custom || "后台分配收款卡 · 上传转账凭证";
+  }
   if (
     id === "usdt" ||
     descriptor.includes("bepusdt") ||
@@ -287,7 +291,8 @@ function payIcon(pay: WalletPayMethod) {
     ali: "/static/icons/payment-alipay.svg",
     wx: "/static/icons/payment-wechat.svg",
     paypal: "/static/icons/payment-paypal.svg",
-    usdt: "/static/icons/payment-usdt.svg"
+    usdt: "/static/icons/payment-usdt.svg",
+    bank: "/static/icons/payment-bank.svg"
   };
   return icons[String(pay.id || "").toLowerCase()] || "/static/native/me_wallet.png";
 }
@@ -357,7 +362,9 @@ function mergedPendingOrder(order: RechargeOrder, stored: PendingPayment): Recha
       stored.providerTradeId
     ),
     status: firstText(order.status, stored.status, "0"),
-    expires_at: firstText(order.expires_at, stored.expiresAt)
+    expires_at: firstText(order.expires_at, stored.expiresAt),
+    channel: firstText(order.channel, stored.channel),
+    bank_stage: firstText(order.bank_stage, stored.bankStage)
   };
 }
 
@@ -489,6 +496,12 @@ async function charge() {
         rechargeIsExpired(order) ? "充值订单已过期，请重新发起" : rechargeStatusText(order)
       );
     }
+    if (String(order.channel || "").toLowerCase() === "bank") {
+      uni.navigateTo({
+        url: `/pages/wallet/bank-transfer?order_no=${encodeURIComponent(firstText(order.order_no, order.orderid))}`
+      });
+      return;
+    }
     const paymentUrl = normalizePaymentUrl(rechargePaymentUrl(order));
     if (paymentUrl && openPaymentUrl(paymentUrl, pay.name || "支付")) {
       return;
@@ -509,6 +522,12 @@ async function charge() {
 function resumePendingPayment() {
   const uid = currentUID();
   const stored = pending.value;
+  if (stored?.uid === uid && stored.channel === "bank") {
+    uni.navigateTo({
+      url: `/pages/wallet/bank-transfer?order_no=${encodeURIComponent(stored.orderNo)}`
+    });
+    return;
+  }
   if (!stored || stored.uid !== uid || !openPaymentUrl(stored.paymentUrl, "支付")) {
     void checkPendingOrder(false);
   }

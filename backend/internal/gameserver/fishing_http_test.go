@@ -104,3 +104,30 @@ func TestFishingBulletCanHitAfterReflecting(t *testing.T) {
 		t.Fatalf("bullet reached fish without reflecting first: vx=%.3f", bullet.VX)
 	}
 }
+
+func TestGoldenSharkIsLargerThanJellyfish(t *testing.T) {
+	var jellyfish, goldenShark fishingFish
+	for _, species := range fishingSpecies {
+		fish := fishingFish{
+			Multiplier: species.multiplier,
+			Radius:     species.radius,
+			Scale:      species.scale,
+		}
+		switch species.key {
+		case "octopus":
+			jellyfish = fish
+		case "orca":
+			goldenShark = fish
+		}
+	}
+	if jellyfish.Scale != 0.50 {
+		t.Fatalf("jellyfish scale=%.2f, want 0.50", jellyfish.Scale)
+	}
+	if fishingFishCollisionRadius(jellyfish) >= fishingFishCollisionRadius(goldenShark) {
+		t.Fatalf(
+			"jellyfish radius %.2f must stay below golden shark radius %.2f",
+			fishingFishCollisionRadius(jellyfish),
+			fishingFishCollisionRadius(goldenShark),
+		)
+	}
+}

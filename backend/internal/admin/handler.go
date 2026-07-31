@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
+	"github.com/zllyxr/live_claw/backend/internal/bankpayment"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/paymentconfig"
@@ -39,6 +40,7 @@ type Handler struct {
 	wallet            *wallet.Service
 	liveProbe         liveSourceProber
 	paymentCipher     *paymentconfig.Cipher
+	bankPaymentCipher *bankpayment.Cipher
 	paymentHTTPClient *http.Client
 	mediaBaseURL      string
 	publicURL         string
@@ -79,6 +81,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	bankPaymentCipher, err := bankpayment.NewCipher(dataEncryptionKey)
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		db:                db,
 		auth:              authService,
@@ -89,6 +95,7 @@ func New(
 		wallet:            walletService,
 		liveProbe:         liveProbe,
 		paymentCipher:     paymentCipher,
+		bankPaymentCipher: bankPaymentCipher,
 		paymentHTTPClient: newPaymentHTTPClient(),
 		mediaBaseURL:      strings.TrimRight(strings.TrimSpace(mediaBaseURL), "/"),
 		publicURL:         strings.TrimRight(strings.TrimSpace(publicURL), "/"),
@@ -139,12 +146,21 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/payments/channels/{id}", h.requireAPI("payments.write", true, h.updatePaymentChannel))
 	mux.HandleFunc("POST /admin/api/payments/channels/{id}/status", h.requireAPI("payments.write", true, h.setPaymentChannelStatus))
 	mux.HandleFunc("POST /admin/api/payments/channels/{id}/check", h.requireAPI("payments.write", true, h.checkPaymentChannel))
+	mux.HandleFunc("GET /admin/api/payments/bank-accounts", h.requireAPI("payments.read", false, h.listBankAccounts))
+	mux.HandleFunc("POST /admin/api/payments/bank-accounts", h.requireAPI("payments.write", true, h.createBankAccount))
+	mux.HandleFunc("POST /admin/api/payments/bank-accounts/{id}", h.requireAPI("payments.write", true, h.updateBankAccount))
+	mux.HandleFunc("POST /admin/api/payments/bank-accounts/{id}/status", h.requireAPI("payments.write", true, h.setBankAccountStatus))
 	mux.HandleFunc("GET /admin/api/payments/products", h.requireAPI("payments.read", false, h.listRechargeProducts))
 	mux.HandleFunc("POST /admin/api/payments/products", h.requireAPI("payments.write", true, h.createRechargeProduct))
 	mux.HandleFunc("POST /admin/api/payments/products/{id}", h.requireAPI("payments.write", true, h.updateRechargeProduct))
 	mux.HandleFunc("POST /admin/api/payments/products/{id}/status", h.requireAPI("payments.write", true, h.setRechargeProductStatus))
 	mux.HandleFunc("GET /admin/api/payments/recharges", h.requireAPI("payments.read", false, h.listDetailedRechargeOrders))
 	mux.HandleFunc("POST /admin/api/payments/recharges/{id}/mark-paid", h.requireAPI("wallet.review", true, h.markRechargePaid))
+	mux.HandleFunc("POST /admin/api/payments/recharges/{id}/assign-bank", h.requireAPI("wallet.review", true, h.assignRechargeBankAccount))
+	mux.HandleFunc("POST /admin/api/payments/recharges/{id}/close-bank", h.requireAPI("wallet.review", true, h.closeBankRecharge))
+	mux.HandleFunc("GET /admin/api/payments/recharges/{id}/bank-proof", h.requireAPI("wallet.review", false, h.bankRechargeProof))
+	mux.HandleFunc("POST /admin/api/payments/recharges/{id}/bank-proof/approve", h.requireAPI("wallet.review", true, h.approveBankRechargeProof))
+	mux.HandleFunc("POST /admin/api/payments/recharges/{id}/bank-proof/reject", h.requireAPI("wallet.review", true, h.rejectBankRechargeProof))
 	mux.HandleFunc("GET /admin/api/games", h.requireAPI("games.read", false, h.listGames))
 	mux.HandleFunc("POST /admin/api/games/{id}", h.requireAPI("games.write", true, h.updateGame))
 	mux.HandleFunc("POST /admin/api/games/venues/{id}", h.requireAPI("games.write", true, h.updateGameVenue))

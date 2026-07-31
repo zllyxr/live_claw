@@ -129,6 +129,23 @@ export interface RechargeOrder {
   addtime?: string | number;
   datetime?: string;
   paid_at?: string | number;
+  payment_method?: string;
+  bank_stage?: "waiting_assignment" | "awaiting_payment" | "review_pending" | "paid" | "closed" | string;
+  bank_account_id?: string | number;
+  bank_account?: {
+    display_name?: string;
+    bank_name?: string;
+    branch_name?: string;
+    holder_name?: string;
+    card_number?: string;
+    card_number_masked?: string;
+    instructions?: string;
+  };
+  proof_id?: string | number;
+  proof_status?: string | number;
+  proof_review_reason?: string;
+  failure_reason?: string;
+  close_reason?: string;
   [key: string]: unknown;
 }
 

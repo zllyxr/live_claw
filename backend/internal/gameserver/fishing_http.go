@@ -129,7 +129,7 @@ var fishingSpecies = []struct {
 	{"turtle", 12, 38, 1.05, 25},
 	{"manta", 20, 44, 1.12, 22},
 	{"hammerhead", 30, 52, 0.78, 19},
-	{"octopus", 40, 46, 1.12, 21},
+	{"octopus", 40, 46, 0.50, 21},
 	{"orca", 60, 58, 0.72, 17},
 	{"anglerfish", 80, 50, 1.05, 18},
 }

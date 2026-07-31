@@ -12,6 +12,8 @@ export interface PendingPayment {
   providerTradeId: string;
   status: string;
   expiresAt: string;
+  channel: string;
+  bankStage: string;
   createdAt: number;
 }
 
@@ -92,6 +94,9 @@ export function expirationTimestamp(value: unknown) {
 }
 
 export function rechargeIsExpired(order?: RechargeOrder, now = Date.now()) {
+  if (valueText(order?.bank_stage) === "review_pending") {
+    return false;
+  }
   const expiresAt = expirationTimestamp(rechargeExpiresAt(order));
   return expiresAt > 0 && expiresAt <= Math.floor(now / 1000);
 }
@@ -105,6 +110,18 @@ export function rechargeIsTerminal(order?: RechargeOrder) {
 }
 
 export function canContinueRecharge(order?: RechargeOrder, now = Date.now()) {
+  if (
+    valueText(order?.channel).toLowerCase() === "bank" ||
+    valueText(order?.payment_method).toLowerCase() === "bank_transfer"
+  ) {
+    return (
+      [0, 1].includes(rechargeStatusCode(order)) &&
+      !rechargeIsExpired(order, now) &&
+      ["waiting_assignment", "awaiting_payment", "review_pending"].includes(
+        valueText(order?.bank_stage)
+      )
+    );
+  }
   return (
     [0, 1].includes(rechargeStatusCode(order)) &&
     Boolean(normalizePaymentUrl(rechargePaymentUrl(order))) &&
@@ -201,6 +218,8 @@ export function readPendingPayment(uid: string) {
       providerTradeId: valueText(parsed.providerTradeId),
       status: valueText(parsed.status),
       expiresAt: valueText(parsed.expiresAt),
+      channel: valueText(parsed.channel),
+      bankStage: valueText(parsed.bankStage),
       createdAt: Number(parsed.createdAt || 0)
     } satisfies PendingPayment;
   } catch {
@@ -226,6 +245,8 @@ export function savePendingPayment(uid: string, order: RechargeOrder) {
     providerTradeId: rechargeProviderTradeId(order),
     status: valueText(order.status),
     expiresAt: rechargeExpiresAt(order),
+    channel: valueText(order.channel),
+    bankStage: valueText(order.bank_stage),
     createdAt: Date.now()
   };
   try {

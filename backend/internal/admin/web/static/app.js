@@ -19,7 +19,7 @@
     dashboard: ["数据统计", "平台概览", "关键业务数据、资金与待处理事项"],
     users: ["用户管理", "用户与团队", "账号状态、团队归属和邀请码体系"],
     wallet: ["资金管理", "资金审核与流水", "充值、提现、调账及逐场游戏输赢"],
-    payments: ["支付管理", "支付通道与充值", "BEpusdt 通道、充值商品、回调订单与异常人工处置"],
+    payments: ["支付管理", "支付通道与充值", "BEpusdt、银行卡收款、充值商品与订单审核"],
     games: ["游戏管理", "游戏与捕鱼场", "固定 300 桌、每桌 4 座，倍率 1 / 5 / 10"],
     live: ["抖音直播", "抖音直播间", "v2 仅允许经过审核的抖音 PAGE 直播"],
     lottery: ["彩票管理", "彩种、玩法与期号", "开奖先封盘，所有变更写入审计日志"],
@@ -717,15 +717,18 @@
     const result = await Promise.all([
       remoteTableData("payment-channels", "/admin/api/payments/channels"),
       remoteTableData("payment-products", "/admin/api/payments/products"),
-      remoteTableData("payment-recharges", "/admin/api/payments/recharges")
+      remoteTableData("payment-recharges", "/admin/api/payments/recharges"),
+      remoteTableData("payment-bank-accounts", "/admin/api/payments/bank-accounts")
     ]);
     if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.paymentChannels = result[0].items;
     state.cache.paymentProducts = result[1].items;
     state.cache.paymentRecharges = result[2].items;
+    state.cache.paymentBankAccounts = result[3].items;
     if (has("payments.write")) {
       actions.insertAdjacentHTML("afterbegin",
-        '<button class="layui-btn" data-action="payment-product-create">新增充值商品</button>');
+        '<button class="layui-btn" data-action="payment-product-create">新增充值商品</button>' +
+        '<button class="layui-btn layui-btn-normal" data-action="payment-bank-create">新增收款银行卡</button>');
     }
 
     const channels = table([
@@ -736,11 +739,15 @@
         className: "wrap"
       },
       { label: "服务商", render: (row) => statusTag(row.provider, {
-        bepusdt: ["BEpusdt", "ok"]
+        bepusdt: ["BEpusdt", "ok"], manual_bank: ["银行卡转账", "warn"]
       }) },
       {
         label: "配置",
-        render: (row) => '<div class="payment-config-state">' +
+        render: (row) => row.provider === "manual_bank" ?
+          '<div class="payment-config-state">' + statusTag(
+            state.cache.paymentBankAccounts.some((account) => Number(account.status) === 1) ? 1 : 0,
+            { 1: ["收款卡可用", "ok"], 0: ["请先启用收款卡", "warn"] }
+          ) + "</div>" : '<div class="payment-config-state">' +
           statusTag(row.config_valid ? 1 : 0, {
             1: ["配置有效", "ok"], 0: [row.config_error || "未配置", "bad"]
           }) +
@@ -781,8 +788,10 @@
                 "payment-channel-status", row.id,
                 Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary"));
             }
-          } else if (Number(row.status) === 1) {
-            controls.push(button("停用", "payment-channel-status", row.id, "layui-btn-danger"));
+          } else if (row.provider === "manual_bank") {
+            controls.push(button(Number(row.status) === 1 ? "停用" : "启用",
+              "payment-channel-status", row.id,
+              Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary"));
           }
           return controls.length ? '<div class="row-actions">' + controls.join("") + "</div>" : "—";
         }
@@ -794,6 +803,37 @@
       total: result[0].total,
       hasMore: result[0].has_more,
       remote: { path: "/admin/api/payments/channels", cacheName: "paymentChannels" }
+    });
+
+    const bankAccounts = table([
+      {
+        label: "收款卡",
+        render: (row) => "<strong>" + esc(row.display_name) + "</strong><br><small>" +
+          esc(row.card_number_masked) + "</small>",
+        className: "wrap"
+      },
+      { label: "银行 / 支行", render: (row) => esc(row.bank_name) +
+        "<br><small>" + esc(row.branch_name || "—") + "</small>", className: "wrap" },
+      { label: "付款说明", render: (row) => esc(row.instructions || "—"), className: "wrap" },
+      { label: "排序", key: "sort_order" },
+      { label: "状态", render: (row) => statusTag(row.status, {
+        1: ["启用", "ok"], 0: ["停用", "bad"]
+      }) },
+      {
+        label: "操作",
+        render: (row) => has("payments.write") ? '<div class="row-actions">' +
+          button("编辑", "payment-bank-edit", row.id, "layui-btn-normal") +
+          button(Number(row.status) === 1 ? "停用" : "启用", "payment-bank-status", row.id,
+            Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary") +
+          "</div>" : "—"
+      }
+    ], result[3].items, {
+      key: "payment-bank-accounts",
+      page: result[3].page,
+      pageSize: result[3].page_size,
+      total: result[3].total,
+      hasMore: result[3].has_more,
+      remote: { path: "/admin/api/payments/bank-accounts", cacheName: "paymentBankAccounts" }
     });
 
     const products = table([
@@ -844,8 +884,10 @@
       },
       {
         label: "通道 / 服务商订单",
-        render: (row) => esc(row.channel || row.channel_key || "—") +
-          "<br><small>" + esc(row.provider_trade_id || "尚未生成") + "</small>",
+        render: (row) => esc(row.channel || row.channel_key || "—") + "<br><small>" +
+          esc(row.provider === "manual_bank" ?
+            (row.bank_account_name ? row.bank_account_name + " · " + row.bank_account_masked : "尚未分配收款卡") :
+            (row.provider_trade_id || "尚未生成")) + "</small>",
         className: "wrap"
       },
       {
@@ -874,14 +916,31 @@
           formatTime(row.last_callback_at) + "</small>"
       },
       { label: "状态", render: (row) => statusTag(row.status, {
-        0: ["已创建", "warn"], 1: ["支付中", "warn"], 2: ["已支付", "ok"],
+        0: [row.provider === "manual_bank" ? "待分配" : "已创建", "warn"],
+        1: [row.bank_stage === "review_pending" ? "凭证待审核" : "支付中", "warn"], 2: ["已支付", "ok"],
         3: ["失败", "bad"], 4: ["已关闭", "bad"], 5: ["已退款", "warn"]
       }) },
       {
         label: "操作",
-        render: (row) => has("wallet.review") && row.provider === "bepusdt" &&
-          row.provider_trade_id && [0, 1].includes(Number(row.status)) ?
-          button("核验补账", "payment-recharge-mark-paid", row.id, "layui-btn-danger") : "—"
+        render: (row) => {
+          if (!has("wallet.review")) return "—";
+          if (row.provider === "bepusdt" && row.provider_trade_id && [0, 1].includes(Number(row.status))) {
+            return button("核验补账", "payment-recharge-mark-paid", row.id, "layui-btn-danger");
+          }
+          if (row.provider !== "manual_bank") return "—";
+          const controls = [];
+          if (row.bank_stage === "waiting_assignment") {
+            controls.push(button("分配银行卡", "payment-bank-assign", row.id, "layui-btn-normal"));
+            controls.push(button("关闭", "payment-bank-close", row.id, "layui-btn-danger"));
+          } else if (row.bank_stage === "awaiting_payment") {
+            controls.push(button("关闭", "payment-bank-close", row.id, "layui-btn-danger"));
+          } else if (row.bank_stage === "review_pending") {
+            controls.push(button("查看凭证", "payment-bank-proof-view", row.id, "layui-btn-normal"));
+            controls.push(button("确认到账", "payment-bank-proof-approve", row.id, "layui-btn-warm"));
+            controls.push(button("驳回关单", "payment-bank-proof-reject", row.id, "layui-btn-danger"));
+          }
+          return controls.length ? '<div class="row-actions">' + controls.join("") + "</div>" : "—";
+        }
       }
     ], result[2].items, {
       key: "payment-recharges",
@@ -893,9 +952,10 @@
     });
 
     content.innerHTML =
-      panel("支付通道", "密钥不回传；配置保存后会自动停用，必须通过签名与 Token 检查才可启用", channels) +
+      panel("支付通道", "BEpusdt 需签名检查；银行卡通道至少需要一张启用的收款卡", channels) +
+      panel("收款银行卡", "卡号与持卡人加密保存；列表仅显示掩码，已分配订单使用不可变快照", bankAccounts) +
       panel("充值商品", "前端只展示启用商品；金额按法币最小单位存储", products) +
-      panel("充值订单", "BEpusdt 回调自动入账；异常补账必须先由服务端核验 BEpusdt 已支付状态", recharges);
+      panel("充值订单", "银行卡凭证确认后才入账；驳回凭证会立即关闭订单", recharges);
   }
 
   async function games(loadContext) {
@@ -1950,6 +2010,52 @@
     });
   }
 
+  function paymentBankAccountForm(account) {
+    const editing = Boolean(account);
+    return openForm(editing ? "编辑收款银行卡" : "新增收款银行卡", [
+      { name: "display_name", label: "显示名称", value: account?.display_name || "", wide: true },
+      { name: "bank_name", label: "银行名称", value: account?.bank_name || "" },
+      { name: "branch_name", label: "开户支行（选填）", value: account?.branch_name || "", wide: true },
+      { name: "holder_name", label: "收款人姓名", value: account?.holder_name || "" },
+      {
+        name: "card_number",
+        label: editing ? "银行卡号（留空保留原卡号）" : "银行卡号",
+        value: "", inputmode: "numeric", wide: true,
+        placeholder: editing ? account.card_number_masked : "支持输入空格或短横线"
+      },
+      { name: "instructions", label: "付款说明（选填）", type: "textarea", value: account?.instructions || "", wide: true },
+      { name: "sort_order", label: "排序", type: "number", value: account?.sort_order ?? 0 }
+    ], (values) => {
+      const displayName = String(values.display_name || "").trim();
+      const bankName = String(values.bank_name || "").trim();
+      const branchName = String(values.branch_name || "").trim();
+      const holderName = String(values.holder_name || "").trim();
+      const cardNumber = String(values.card_number || "").trim();
+      const instructions = String(values.instructions || "").trim();
+      const sortOrder = Number(values.sort_order);
+      const normalizedCard = cardNumber.replace(/[\s_-]/g, "");
+      if (!displayName || [...displayName].length > 100 || !bankName || [...bankName].length > 190 ||
+          [...branchName].length > 190 || !holderName || [...holderName].length > 100 ||
+          [...instructions].length > 500 || !Number.isSafeInteger(sortOrder) || Math.abs(sortOrder) > 1000000) {
+        throw new Error("请检查显示名称、银行、支行、收款人、付款说明和排序");
+      }
+      if ((!editing || cardNumber) && !/^\d{12,30}$/.test(normalizedCard)) {
+        throw new Error("银行卡号必须为12到30位数字");
+      }
+      const path = editing ?
+        "/admin/api/payments/bank-accounts/" + encodeURIComponent(account.id) :
+        "/admin/api/payments/bank-accounts";
+      return api(path, {
+        method: "POST",
+        body: {
+          display_name: displayName, bank_name: bankName, branch_name: branchName,
+          holder_name: holderName, card_number: cardNumber,
+          instructions, sort_order: sortOrder
+        }
+      });
+    });
+  }
+
   async function handleAction(action, id, target) {
     if (action === "table-view") {
       return openTableRowDetails(target?.dataset.tableId || "", target?.dataset.rowIndex || "");
@@ -2252,6 +2358,33 @@
         });
       });
     }
+    if (action === "payment-bank-create") {
+      return paymentBankAccountForm(null);
+    }
+    if (action === "payment-bank-edit") {
+      const row = cached("paymentBankAccounts", id);
+      if (!row) {
+        notify("银行卡数据已刷新，请重试", true);
+        return;
+      }
+      return paymentBankAccountForm(row);
+    }
+    if (action === "payment-bank-status") {
+      const row = cached("paymentBankAccounts", id);
+      if (!row) {
+        notify("银行卡数据已刷新，请重试", true);
+        return;
+      }
+      const status = Number(row.status) === 1 ? 0 : 1;
+      if (!window.confirm(status === 1 ?
+        "确认启用该收款银行卡？启用后可分配给新订单。" :
+        "确认停用该收款银行卡？已分配订单不受影响。")) return;
+      return mutateAndRefresh(
+        "/admin/api/payments/bank-accounts/" + encodeURIComponent(id) + "/status",
+        { method: "POST", body: { status } },
+        status === 1 ? "收款银行卡已启用" : "收款银行卡已停用"
+      );
+    }
     if (action === "payment-channel-check") {
       const row = cached("paymentChannels", id);
       if (!row) {
@@ -2352,6 +2485,94 @@
         return api(
           "/admin/api/payments/recharges/" + encodeURIComponent(id) + "/mark-paid",
           { method: "POST", body: { provider_order_no: providerOrderNo, reason } }
+        );
+      });
+    }
+    if (action === "payment-bank-assign") {
+      const row = cached("paymentRecharges", id);
+      if (!row) {
+        notify("充值订单数据已刷新，请重试", true);
+        return;
+      }
+      const options = (state.cache.paymentBankAccounts || [])
+        .filter((account) => Number(account.status) === 1)
+        .map((account) => [account.id,
+          account.display_name + " · " + account.bank_name + " · " + account.card_number_masked]);
+      if (!options.length) {
+        notify("没有启用的收款银行卡，请先新增并启用", true);
+        return;
+      }
+      return openForm("分配收款银行卡", [
+        { name: "order_no", label: "平台订单", value: row.order_no, readonly: true, wide: true },
+        { name: "bank_account_id", label: "收款银行卡", options }
+      ], (values) => {
+        if (!window.confirm("银行卡一经分配不能更换，确认分配给该订单？")) {
+          throw new Error("操作已取消，本次未分配银行卡");
+        }
+        return api("/admin/api/payments/recharges/" + encodeURIComponent(id) + "/assign-bank", {
+          method: "POST", body: { bank_account_id: String(values.bank_account_id || "") }
+        });
+      });
+    }
+    if (action === "payment-bank-close") {
+      const row = cached("paymentRecharges", id);
+      if (!row) {
+        notify("充值订单数据已刷新，请重试", true);
+        return;
+      }
+      return openForm("关闭银行卡充值订单", [
+        { name: "order_no", label: "平台订单", value: row.order_no, readonly: true, wide: true },
+        { name: "reason", label: "关闭原因（必填）", type: "textarea", wide: true }
+      ], (values) => {
+        const reason = String(values.reason || "").trim();
+        if (!reason || [...reason].length > 500) throw new Error("关闭原因必填且不能超过500字");
+        if (!window.confirm("订单关闭后用户必须重新下单，确认关闭？")) {
+          throw new Error("操作已取消，本次未关闭订单");
+        }
+        return api("/admin/api/payments/recharges/" + encodeURIComponent(id) + "/close-bank", {
+          method: "POST", body: { reason }
+        });
+      });
+    }
+    if (action === "payment-bank-proof-view") {
+      const proof = await api(
+        "/admin/api/payments/recharges/" + encodeURIComponent(id) + "/bank-proof"
+      );
+      const viewURL = safeHTTPURL(proof.view_url);
+      if (!viewURL) {
+        notify("付款凭证查看地址无效", true);
+        return;
+      }
+      window.open(viewURL, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (action === "payment-bank-proof-approve" || action === "payment-bank-proof-reject") {
+      const row = cached("paymentRecharges", id);
+      if (!row) {
+        notify("充值订单数据已刷新，请重试", true);
+        return;
+      }
+      const approve = action === "payment-bank-proof-approve";
+      return openForm(approve ? "确认银行卡到账" : "驳回凭证并关闭订单", [
+        { name: "order_no", label: "平台订单", value: row.order_no, readonly: true, wide: true },
+        { name: "user_id", label: "用户 ID", value: row.user_id, readonly: true },
+        {
+          name: "reason", label: approve ? "到账核对说明（必填）" : "驳回原因（必填）",
+          type: "textarea", wide: true
+        }
+      ], (values) => {
+        const reason = String(values.reason || "").trim();
+        if (!reason || [...reason].length > 500) throw new Error("审核说明必填且不能超过500字");
+        const credited = Number(row.coin_amount || 0) + Number(row.bonus_coin || 0);
+        const confirmation = approve ?
+          "二次确认：已核实银行卡到账，将立即向用户 ID " + row.user_id +
+            " 入账 " + formatNumber(credited) + " 星币。确认继续？" :
+          "驳回后订单会立即关闭，用户不能重新上传凭证。确认继续？";
+        if (!window.confirm(confirmation)) throw new Error("操作已取消，本次未审核");
+        return api(
+          "/admin/api/payments/recharges/" + encodeURIComponent(id) +
+            "/bank-proof/" + (approve ? "approve" : "reject"),
+          { method: "POST", body: { reason } }
         );
       });
     }

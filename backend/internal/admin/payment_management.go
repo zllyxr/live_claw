@@ -372,17 +372,35 @@ func (h *Handler) setPaymentChannelStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if request.Status == 1 {
-		if provider != paymentProviderBEpusdt || h.paymentCipher == nil {
-			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "只有配置完整的 BEpusdt 通道可以启用")
-			return
-		}
-		config, decryptErr := h.paymentCipher.Decrypt(channelKey, ciphertext)
-		if decryptErr != nil || strings.TrimSpace(config.APIToken) == "" {
-			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "请先完成并校验 BEpusdt 配置")
-			return
-		}
-		if !paymentConfigVerified(ciphertext, verifiedHash, verifiedAt) {
-			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "请先通过 BEpusdt 签名与 Token 检查")
+		switch provider {
+		case paymentProviderBEpusdt:
+			if h.paymentCipher == nil {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "BEpusdt 配置服务不可用")
+				return
+			}
+			config, decryptErr := h.paymentCipher.Decrypt(channelKey, ciphertext)
+			if decryptErr != nil || strings.TrimSpace(config.APIToken) == "" {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "请先完成并校验 BEpusdt 配置")
+				return
+			}
+			if !paymentConfigVerified(ciphertext, verifiedHash, verifiedAt) {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "请先通过 BEpusdt 签名与 Token 检查")
+				return
+			}
+		case manualBankProvider:
+			var activeAccounts int
+			if err = tx.QueryRowContext(r.Context(),
+				"SELECT COUNT(*) FROM payment_bank_accounts WHERE status=1",
+			).Scan(&activeAccounts); err != nil {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取收款银行卡失败")
+				return
+			}
+			if activeAccounts == 0 {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "请先新增并启用至少一张收款银行卡")
+				return
+			}
+		default:
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "当前支付通道不支持启用")
 			return
 		}
 	}
@@ -786,7 +804,7 @@ func (h *Handler) listDetailedRechargeOrders(w http.ResponseWriter, r *http.Requ
 		} else if channelKey != "" {
 			channelLabel += " (" + channelKey + ")"
 		}
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"id": apiDecimalID(id), "order_no": orderNo,
 			"user_id": apiDecimalID(userID), "product_id": apiDecimalID(productID),
 			"channel_id": apiDecimalID(channelID), "channel": channelLabel,
@@ -805,7 +823,18 @@ func (h *Handler) listDetailedRechargeOrders(w http.ResponseWriter, r *http.Requ
 			"failure_reason":        failureReason, "paid_at": nullTime(paidAt),
 			"closed_at": nullTime(closedAt), "created_at": createdAt.Unix(),
 			"updated_at": updatedAt.Unix(),
-		})
+		}
+		if provider == manualBankProvider {
+			bankDetails, detailErr := h.adminBankRechargeDetails(r.Context(), id, status)
+			if detailErr != nil {
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取银行卡订单详情失败")
+				return
+			}
+			for key, value := range bankDetails {
+				item[key] = value
+			}
+		}
+		items = append(items, item)
 	}
 	if err = rows.Err(); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取充值订单失败")
