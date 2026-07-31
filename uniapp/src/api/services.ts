@@ -411,7 +411,8 @@ function payServiceOf(payId?: string) {
     ali: "Charge.getAliOrder",
     wx: "Charge.getWxOrder",
     paypal: "Charge.getBraintreePaypalOrder",
-    usdt: "Charge.getUsdtOrder"
+    usdt: "Charge.getUsdtOrder",
+    bank: "Charge.getBankOrder"
   };
   return map[String(payId || "")] || "";
 }
@@ -453,6 +454,55 @@ export function getRechargeOrderStatus(orderNo: string) {
     throw new Error("充值订单号无效");
   }
   return firstInfo<RechargeOrder>("Charge.orderStatus", { order_no: normalized });
+}
+
+export function submitBankPaymentProof(orderNo: string, filePath: string) {
+  const normalizedOrderNo = String(orderNo || "").trim();
+  if (!normalizedOrderNo || !filePath) {
+    throw new Error("请选择付款凭证图片");
+  }
+  const session = getSession();
+  const uploadUrl = proxyApiUrlForPreview(
+    `${API_BASE}?service=Charge.submitBankPaymentProof`
+  );
+  return new Promise<RechargeOrder>((resolve, reject) => {
+    uni.uploadFile({
+      url: uploadUrl,
+      filePath,
+      name: "file",
+      formData: {
+        service: "Charge.submitBankPaymentProof",
+        uid: session.uid,
+        token: session.token,
+        order_no: normalizedOrderNo,
+        language: DEFAULT_LANGUAGE
+      },
+      success: (response) => {
+        try {
+          if (Number(response.statusCode || 0) < 200 || Number(response.statusCode || 0) >= 300) {
+            throw new Error(`上传服务器响应异常（${response.statusCode || 0}）`);
+          }
+          const payload = typeof response.data === "string"
+            ? JSON.parse(response.data.slice(Math.max(0, response.data.indexOf("{"))))
+            : response.data;
+          const inner = typeof (payload as any)?.data === "string"
+            ? JSON.parse((payload as any).data)
+            : (payload as any)?.data;
+          if (Number(inner?.code ?? 0) !== 0) {
+            throw new Error(String(inner?.msg || "付款凭证提交失败"));
+          }
+          const result = Array.isArray(inner?.info) ? inner.info[0] : undefined;
+          if (!result) {
+            throw new Error("付款凭证提交结果无效");
+          }
+          resolve(result as RechargeOrder);
+        } catch (error) {
+          reject(error);
+        }
+      },
+      fail: (error) => reject(new Error(error.errMsg || "付款凭证提交失败"))
+    });
+  });
 }
 
 export function getProfit() {

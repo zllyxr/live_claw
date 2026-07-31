@@ -67,6 +67,7 @@ GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`lottery_issues\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`lottery_options\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`lottery_plays\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`payment_channels\` TO 'claw_api'@'%';
+GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`payment_bank_accounts\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`recharge_products\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`sports_market_options\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`sports_markets\` TO 'claw_api'@'%';
@@ -99,6 +100,8 @@ GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`live_gift_orders\` TO 'c
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`outbox_events\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`payment_callback_block_bindings\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`payment_callback_events\` TO 'claw_api'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`payment_bank_order_details\` TO 'claw_api'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`payment_bank_proofs\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`recharge_orders\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`social_comments\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`social_posts\` TO 'claw_api'@'%';
@@ -157,6 +160,10 @@ REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`users\` TO 'claw_scheduler'@'%';
 GRANT CREATE TEMPORARY TABLES ON \`${MYSQL_DATABASE}\`.* TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`game_settlements\` TO 'claw_scheduler'@'%';
+GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`payment_channels\` TO 'claw_scheduler'@'%';
+GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`payment_bank_order_details\` TO 'claw_scheduler'@'%';
+GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`payment_bank_proofs\` TO 'claw_scheduler'@'%';
+GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`recharge_orders\` TO 'claw_scheduler'@'%';
 # MySQL locking reads over a joined table require a write-class privilege on
 # every locked table even when the statement does not modify that table.
 GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`lottery_games\` TO 'claw_scheduler'@'%';

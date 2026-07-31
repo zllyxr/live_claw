@@ -78,9 +78,29 @@ func (r *Runner) runSlow(ctx context.Context) {
 	if err = r.releaseExpiredHolds(ctx); err != nil {
 		r.logger.Error("release expired holds", "error", err)
 	}
+	if err = r.closeExpiredBankRecharges(ctx); err != nil {
+		r.logger.Error("close expired bank recharges", "error", err)
+	}
 	if err = r.aggregateDailyMetrics(ctx); err != nil {
 		r.logger.Error("aggregate metrics", "error", err)
 	}
+}
+
+func (r *Runner) closeExpiredBankRecharges(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE recharge_orders recharge
+		JOIN payment_channels channel
+		  ON channel.id=recharge.channel_id AND channel.provider='manual_bank'
+		JOIN payment_bank_order_details detail ON detail.recharge_order_id=recharge.id
+		LEFT JOIN payment_bank_proofs proof ON proof.recharge_order_id=recharge.id
+		SET recharge.status=4,
+		    recharge.closed_at=COALESCE(recharge.closed_at,CURRENT_TIMESTAMP(3)),
+		    recharge.failure_reason='银行卡订单已超时',
+		    detail.close_reason='银行卡订单已超时'
+		WHERE recharge.status IN (0,1)
+		  AND recharge.expires_at<=CURRENT_TIMESTAMP(3)
+		  AND proof.id IS NULL`)
+	return err
 }
 
 func (r *Runner) closeLotteryIssues(ctx context.Context) error {

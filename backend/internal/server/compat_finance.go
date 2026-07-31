@@ -18,6 +18,8 @@ import (
 
 func (s *Server) compatFinance(w http.ResponseWriter, r *http.Request, service string) bool {
 	switch service {
+	case "Charge.getBankOrder":
+		s.compatCreateBankRechargeOrder(w, r)
 	case "Charge.getAliOrder", "Charge.getWxOrder", "Charge.getBraintreePaypalOrder", "Charge.getUsdtOrder":
 		s.compatCreateRechargeOrder(w, r, service)
 	case "Charge.orderStatus", "Charge.getOrderStatus":
@@ -174,6 +176,13 @@ func (s *Server) compatRechargeOrderStatus(w http.ResponseWriter, r *http.Reques
 	}
 	if reference == "" {
 		reference = strings.TrimSpace(r.FormValue("client_trace_id"))
+	}
+	if bankOrder, found, bankErr := s.compatBankRechargeByReference(r.Context(), userID, reference); bankErr != nil {
+		writeCompat(w, 500, "读取银行卡充值订单失败", nil)
+		return
+	} else if found {
+		writeCompat(w, 0, "", bankOrder)
+		return
 	}
 	order, err := s.payments.OrderStatus(r.Context(), userID, reference)
 	if err != nil {
@@ -752,6 +761,10 @@ func (s *Server) compatRechargeOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := s.expireBankRecharges(r.Context(), userID); err != nil {
+		writeCompat(w, 500, "充值记录加载失败", nil)
+		return
+	}
 	limit, offset := compatPage(r.FormValue("p"))
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT recharge.id,recharge.order_no,recharge.fiat_currency,recharge.currency_scale,
@@ -797,7 +810,7 @@ func (s *Server) compatRechargeOrders(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		cryptoCurrency, network := paymentAssetMeta(tradeType)
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"id": strconv.FormatInt(id, 10), "orderid": orderNo, "order_no": orderNo,
 			"client_trace_id":   scanNullableString(clientTraceID),
 			"provider_order_no": scanNullableString(providerOrderNo),
@@ -825,7 +838,17 @@ func (s *Server) compatRechargeOrders(w http.ResponseWriter, r *http.Request) {
 			"addtime":              strconv.FormatInt(createdAt.Unix(), 10),
 			"datetime":             createdAt.Format("2006-01-02 15:04:05"),
 			"paid_at":              compatNullableUnix(paidAt),
-		})
+		}
+		if scanNullableString(channelKey) == bankChannelKey {
+			if bankItem, found, bankErr := s.compatBankRechargeByReference(r.Context(), userID, orderNo); bankErr != nil {
+				err = bankErr
+				break
+			} else if found {
+				item = bankItem
+				item["datetime"] = createdAt.Format("2006-01-02 15:04:05")
+			}
+		}
+		items = append(items, item)
 	}
 	if err != nil || rows.Err() != nil {
 		writeCompat(w, 500, "充值记录加载失败", nil)

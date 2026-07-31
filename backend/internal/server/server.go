@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/zllyxr/live_claw/backend/internal/apprelease"
 	"github.com/zllyxr/live_claw/backend/internal/auth"
+	"github.com/zllyxr/live_claw/backend/internal/bankpayment"
 	"github.com/zllyxr/live_claw/backend/internal/home"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/im"
@@ -47,6 +48,7 @@ type Server struct {
 	publicURL    string
 	environment  string
 	dataKey      string
+	bankCipher   *bankpayment.Cipher
 }
 
 func New(
@@ -69,6 +71,7 @@ func New(
 	dataKey string,
 	logger *slog.Logger,
 ) *Server {
+	bankCipher, _ := bankpayment.NewCipher(dataKey)
 	return &Server{
 		db: db, redis: redisClient, auth: authService, home: homeService,
 		app: appService, lottery: lotteryService, sports: sportsService,
@@ -81,6 +84,7 @@ func New(
 		publicURL:    strings.TrimRight(publicURL, "/"),
 		environment:  strings.ToLower(strings.TrimSpace(environment)),
 		dataKey:      dataKey,
+		bankCipher:   bankCipher,
 		logger:       logger,
 	}
 }
@@ -119,8 +123,13 @@ func (s *Server) homeV2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) compat(w http.ResponseWriter, r *http.Request) {
-	if strings.TrimSpace(r.URL.Query().Get("service")) == "Upload.uploadFile" {
+	queryService := strings.TrimSpace(r.URL.Query().Get("service"))
+	if queryService == "Upload.uploadFile" {
 		s.compatUpload(w, r)
+		return
+	}
+	if queryService == "Charge.submitBankPaymentProof" {
+		s.compatSubmitBankPaymentProof(w, r)
 		return
 	}
 	if err := r.ParseForm(); err != nil {

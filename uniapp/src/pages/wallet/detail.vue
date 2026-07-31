@@ -333,6 +333,15 @@ function canContinueRow(row: AnyRecord) {
 
 function continueLabel(row: AnyRecord) {
   const order = row as RechargeOrder;
+  if (String(order.channel || "").toLowerCase() === "bank") {
+    return ({
+      waiting_assignment: "等待分配",
+      awaiting_payment: "去付款",
+      review_pending: "查看审核",
+      paid: "已到账",
+      closed: "已关闭"
+    } as Record<string, string>)[String(order.bank_stage || "")] || "查看订单";
+  }
   const status = rechargeStatusCode(order);
   if (status === 2) {
     return "已到账";
@@ -430,6 +439,12 @@ function continueRecharge(row: AnyRecord) {
   }
   clearForeignPendingPayments(uid);
   savePendingPayment(uid, order);
+  if (String(order.channel || "").toLowerCase() === "bank") {
+    uni.navigateTo({
+      url: `/pages/wallet/bank-transfer?order_no=${encodeURIComponent(orderNoOf(row))}`
+    });
+    return;
+  }
   if (!openPaymentCashier(rechargePaymentUrl(order), titleOf(row))) {
     uni.showToast({ title: "支付链接无效", icon: "none" });
   }
