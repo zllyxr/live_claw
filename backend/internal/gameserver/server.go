@@ -26,7 +26,7 @@ type Server struct {
 func New(authService *auth.Service, gameService *game.Service, logger *slog.Logger) *Server {
 	return &Server{
 		auth: authService, game: gameService,
-		fishing: newFishingHub(gameService), logger: logger,
+		fishing: newFishingHub(gameService, logger), logger: logger,
 	}
 }
 

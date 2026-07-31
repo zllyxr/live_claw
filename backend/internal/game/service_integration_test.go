@@ -72,10 +72,33 @@ func TestFishingSessionIntegration(t *testing.T) {
 		resumed.ResumeToken == launch.ResumeToken {
 		t.Fatalf("session was not safely resumed: %#v", resumed)
 	}
+	miss, err := service.FireFishing(ctx, launch.SessionID, userID, "empty-water-shot", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if miss.Captured || miss.Reward != 0 || miss.Bet != 1 || miss.Balance != 999 {
+		t.Fatalf("empty-water shot was not charged as a normal miss: %#v", miss)
+	}
+	var checkpointCost, checkpointReward int64
+	if err = db.QueryRowContext(ctx, `
+		SELECT total_cost,total_reward
+		FROM fishing_checkpoints
+		WHERE session_id=? AND client_command_id=?`,
+		launch.SessionID, "empty-water-shot",
+	).Scan(&checkpointCost, &checkpointReward); err != nil {
+		t.Fatal(err)
+	}
+	if checkpointCost != 1 || checkpointReward != 0 {
+		t.Fatalf("invalid empty-water checkpoint totals: cost=%d reward=%d", checkpointCost, checkpointReward)
+	}
+	replayedMiss, err := service.FireFishing(ctx, launch.SessionID, userID, "empty-water-shot", 1, 0)
+	if err != nil || !replayedMiss.Replayed || replayedMiss.Balance != miss.Balance {
+		t.Fatalf("empty-water shot was not idempotent: %#v %v", replayedMiss, err)
+	}
 	if _, err = db.ExecContext(ctx, `
 		INSERT INTO fishing_checkpoints
 			(session_id,event_seq,escrow_balance,total_cost,total_reward,state_payload,state_hash)
-		VALUES(?,1,1250,500,750,JSON_OBJECT('test',true),REPEAT('a',64))`,
+		VALUES(?,2,1250,500,750,JSON_OBJECT('test',true),REPEAT('a',64))`,
 		launch.SessionID,
 	); err != nil {
 		t.Fatal(err)

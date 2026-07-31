@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -32,9 +33,10 @@ var fishingAssetHandler = func() http.Handler {
 }()
 
 type fishingHub struct {
-	game  *game.Service
-	mu    sync.Mutex
-	rooms map[string]*fishingRoom
+	game   *game.Service
+	logger *slog.Logger
+	mu     sync.Mutex
+	rooms  map[string]*fishingRoom
 }
 
 type fishingRoom struct {
@@ -51,7 +53,7 @@ type fishingSocketPlayer struct {
 	writeMu  sync.Mutex
 	angle    float64
 	bet      int64
-	lastFire time.Time
+	fireRate fishingFireLimiter
 }
 
 type fishingSocketMessage struct {
@@ -99,8 +101,39 @@ var fishingSpecies = []struct {
 	{"anglerfish", 80, 50, 1.05, 18},
 }
 
-func newFishingHub(gameService *game.Service) *fishingHub {
-	hub := &fishingHub{game: gameService, rooms: make(map[string]*fishingRoom)}
+const (
+	fishingFireTokensPerSecond = 9.0
+	fishingFireBurst           = 2.0
+)
+
+type fishingFireLimiter struct {
+	tokens       float64
+	lastRefilled time.Time
+}
+
+func (limiter *fishingFireLimiter) allow(now time.Time) bool {
+	if limiter.lastRefilled.IsZero() {
+		limiter.tokens = fishingFireBurst
+		limiter.lastRefilled = now
+	} else {
+		elapsed := now.Sub(limiter.lastRefilled).Seconds()
+		if elapsed > 0 {
+			limiter.tokens = math.Min(
+				fishingFireBurst,
+				limiter.tokens+elapsed*fishingFireTokensPerSecond,
+			)
+			limiter.lastRefilled = now
+		}
+	}
+	if limiter.tokens < 1 {
+		return false
+	}
+	limiter.tokens--
+	return true
+}
+
+func newFishingHub(gameService *game.Service, logger *slog.Logger) *fishingHub {
+	hub := &fishingHub{game: gameService, logger: logger, rooms: make(map[string]*fishingRoom)}
 	go hub.run()
 	return hub
 }
@@ -288,12 +321,11 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 		return
 	}
 	h.mu.Lock()
-	if time.Since(player.lastFire) < 110*time.Millisecond {
+	if !player.fireRate.allow(time.Now()) {
 		h.mu.Unlock()
 		h.ack(player, message.RequestID, fishingFailure("RATE_LIMITED", "开炮速度过快"))
 		return
 	}
-	player.lastFire = time.Now()
 	if !math.IsNaN(payload.Angle) && !math.IsInf(payload.Angle, 0) {
 		player.angle = payload.Angle
 	}
@@ -305,27 +337,47 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 	}
 	fishes := fishingFishes(room, time.Now())
 	target := nearestFishingTarget(player.profile.Seat-1, player.angle, fishes)
+	shotX, shotY := fishingRayExitPoint(player.profile.Seat-1, player.angle)
+	multiplier := 0
+	if target != nil {
+		shotX, shotY = target.X, target.Y
+		multiplier = target.Multiplier
+	}
 	bet := player.bet
 	h.mu.Unlock()
-	if target == nil {
-		h.ack(player, message.RequestID, fishingFailure("NO_TARGET", "当前方向没有可捕获目标"))
-		return
-	}
 	result, err := h.game.FireFishing(
 		contextWithoutCancel(), player.profile.SessionID, player.profile.UserID,
-		payload.CommandID, bet, target.Multiplier,
+		payload.CommandID, bet, multiplier,
 	)
 	if err != nil {
 		code, label := "FIRE_FAILED", "开炮失败"
-		if errors.Is(err, wallet.ErrInsufficientFunds) {
+		switch {
+		case errors.Is(err, wallet.ErrInsufficientFunds):
 			code, label = "INSUFFICIENT_FUNDS", "捕鱼托管余额不足"
+		case errors.Is(err, game.ErrSessionNotFound):
+			code, label = "SESSION_EXPIRED", "捕鱼会话已失效，请重新进入"
+		case errors.Is(err, game.ErrInvalidFishingCannon):
+			code, label = "INVALID_BET", "当前炮值不可用，请重新选择"
+		default:
+			if h.logger != nil {
+				h.logger.Error(
+					"fishing fire",
+					"error", err,
+					"session_id", player.profile.SessionID,
+					"user_id", player.profile.UserID,
+					"command_id", payload.CommandID,
+				)
+			}
 		}
 		h.ack(player, message.RequestID, fishingFailure(code, label))
 		return
 	}
 	h.mu.Lock()
-	player.profile.EscrowBalance = result.Balance
-	if result.Captured {
+	if !result.Replayed {
+		player.profile.EscrowBalance = result.Balance
+	}
+	currentBalance := player.profile.EscrowBalance
+	if !result.Replayed && result.Captured && target != nil {
 		for index := range room.fishEpoch {
 			if target.ID == fishingFishID(index, room.fishEpoch[index]) {
 				room.fishEpoch[index]++
@@ -336,16 +388,26 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 	h.mu.Unlock()
 	h.ack(player, message.RequestID, map[string]any{
 		"ok": true, "commandId": result.CommandID, "shotId": result.CommandID,
-		"bet": result.Bet, "power": result.Bet, "score": result.Balance,
+		"bet": result.Bet, "power": result.Bet, "score": currentBalance,
+		"replayed": result.Replayed,
 	})
+	if result.Replayed {
+		return
+	}
 	event := map[string]any{
 		"roomId": room.id, "playerId": player.profile.SessionID,
-		"playerName": player.profile.Name, "fishId": target.ID,
-		"type": target.Type, "fishType": target.Type, "assetKey": target.AssetKey,
+		"playerName": player.profile.Name,
+		"commandId":  result.CommandID, "shotId": result.CommandID,
 		"captured": result.Captured, "multiplier": result.Multiplier,
 		"bet": result.Bet, "power": result.Bet, "reward": result.Reward,
 		"payout": result.Reward, "score": result.Balance,
-		"x": target.X, "y": target.Y, "serverTime": time.Now().UnixMilli(),
+		"x": shotX, "y": shotY, "serverTime": time.Now().UnixMilli(),
+	}
+	if target != nil {
+		event["fishId"] = target.ID
+		event["type"] = target.Type
+		event["fishType"] = target.Type
+		event["assetKey"] = target.AssetKey
 	}
 	h.broadcast(room.id, "shot:resolved", event)
 	if result.Captured {
@@ -429,8 +491,9 @@ func fishingSnapshot(room *fishingRoom, now time.Time) map[string]any {
 			"id": player.profile.SessionID, "name": player.profile.Name,
 			"seat": seat, "score": player.profile.EscrowBalance,
 			"bet": player.bet, "power": player.bet, "angle": player.angle,
-			"color": []string{"#55e7f0", "#f5c65f", "#ff7188", "#a88cff"}[seat%4],
-			"x":     x, "y": y,
+			"betLevels": player.profile.BetLevels,
+			"color":     []string{"#55e7f0", "#f5c65f", "#ff7188", "#a88cff"}[seat%4],
+			"x":         x, "y": y,
 		})
 	}
 	return map[string]any{
@@ -491,6 +554,33 @@ func nearestFishingTarget(seat int, angle float64, fishes []fishingFish) *fishin
 		return nil
 	}
 	return &fishes[bestIndex]
+}
+
+func fishingRayExitPoint(seat int, angle float64) (float64, float64) {
+	originX, originY := seatOrigin(seat)
+	dx, dy := math.Cos(angle), math.Sin(angle)
+	distance := math.Inf(1)
+	for _, candidate := range []float64{
+		rayBoundaryDistance(originX, dx, 0),
+		rayBoundaryDistance(originX, dx, 1280),
+		rayBoundaryDistance(originY, dy, 0),
+		rayBoundaryDistance(originY, dy, 720),
+	} {
+		if candidate > 0 && candidate < distance {
+			distance = candidate
+		}
+	}
+	if math.IsInf(distance, 1) {
+		return originX, originY
+	}
+	return originX + dx*distance, originY + dy*distance
+}
+
+func rayBoundaryDistance(origin float64, direction float64, boundary float64) float64 {
+	if math.Abs(direction) < 0.0001 {
+		return math.Inf(1)
+	}
+	return (boundary - origin) / direction
 }
 
 func seatOrigin(seat int) (float64, float64) {

@@ -6,6 +6,14 @@ import {
   worldToViewAngle,
   worldToViewPoint
 } from "./perspective.js?v=20260731-local-view1";
+import {
+  DEFAULT_AUTO_FIRE_INTERVAL_MS,
+  DEFAULT_FIRE_INTERVAL_MS,
+  evaluateFireAttempt,
+  fireFailureMessage,
+  normalizePowerLevels,
+  registerShotResolution
+} from "./fire-policy.js?v=20260731-fire1";
 
 const WORLD = Object.freeze({ width: 1280, height: 720 });
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -123,19 +131,25 @@ const state = {
   snapshotAt: 0,
   pointer: { x: WORLD.width / 2, y: WORLD.height * 0.45, active: false },
   lastAimSentAt: 0,
-  lastLocalFireAt: 0,
+  fireGate: { lastAcceptedAt: null, recentInputTokens: [] },
+  pendingFireCount: 0,
+  fireTimeoutCount: 0,
+  lastFireError: "",
+  lastFireErrorAt: 0,
   selectedPower: 2,
   powerTouched: false,
   lockSeeking: false,
   lockedFishId: "",
   autoFire: false,
   autoTimer: 0,
+  autoGeneration: 0,
   effects: [],
   muzzleFlashes: [],
   fishFlashes: new Map(),
   fishMotion: new Map(),
   lastFishMotionSweepAt: 0,
   bulletHistory: new Map(),
+  resolvedShots: new Map(),
   visualAimAngles: new Map(),
   toastTimer: 0
 };
@@ -356,12 +370,17 @@ function fishMultiplier(fish = {}) {
   return Math.max(1, Math.round(Number.isFinite(supplied) ? supplied : spec.multiplier));
 }
 
-function closestPowerIndex(value) {
+function powerLevelsFor(player = currentPlayer()) {
+  return normalizePowerLevels(player?.betLevels, POWER_LEVELS);
+}
+
+function closestPowerIndex(value, levels = POWER_LEVELS) {
+  const choices = levels.length ? levels : POWER_LEVELS;
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 1;
+  if (!Number.isFinite(numeric)) return 0;
   let bestIndex = 0;
-  for (let index = 1; index < POWER_LEVELS.length; index += 1) {
-    if (Math.abs(POWER_LEVELS[index] - numeric) < Math.abs(POWER_LEVELS[bestIndex] - numeric)) bestIndex = index;
+  for (let index = 1; index < choices.length; index += 1) {
+    if (Math.abs(choices[index] - numeric) < Math.abs(choices[bestIndex] - numeric)) bestIndex = index;
   }
   return bestIndex;
 }
@@ -374,7 +393,12 @@ function setModeButton(button, active) {
 function updateHud() {
   const players = playersFrom();
   const me = currentPlayer();
-  if (me && !state.powerTouched) state.selectedPower = POWER_LEVELS[closestPowerIndex(me.power)];
+  const powerLevels = powerLevelsFor(me);
+  if (me && !state.powerTouched) {
+    state.selectedPower = powerLevels[closestPowerIndex(me.power, powerLevels)];
+  } else if (!powerLevels.includes(state.selectedPower)) {
+    state.selectedPower = powerLevels[closestPowerIndex(state.selectedPower, powerLevels)];
+  }
   ui.playerCount.textContent = String(players.length);
   ui.powerValue.textContent = String(state.selectedPower);
 
@@ -414,7 +438,14 @@ function setSnapshot(snapshot, { force = false } = {}) {
     state.fishFlashes.clear();
     state.fishMotion.clear();
     state.lastFishMotionSweepAt = 0;
+    state.resolvedShots.clear();
     state.visualAimAngles.clear();
+    state.fireGate = { lastAcceptedAt: null, recentInputTokens: [] };
+    state.pendingFireCount = 0;
+    state.fireTimeoutCount = 0;
+    state.lastFireError = "";
+    state.lastFireErrorAt = 0;
+    state.autoGeneration += 1;
     state.lockedFishId = "";
     state.lockSeeking = false;
   } else {
@@ -464,8 +495,15 @@ function resetToJoin(errorMessage) {
   state.bulletHistory.clear();
   state.fishMotion.clear();
   state.lastFishMotionSweepAt = 0;
+  state.resolvedShots.clear();
+  state.fireGate = { lastAcceptedAt: null, recentInputTokens: [] };
+  state.pendingFireCount = 0;
+  state.fireTimeoutCount = 0;
+  state.lastFireError = "";
+  state.lastFireErrorAt = 0;
   state.lockedFishId = "";
   state.autoFire = false;
+  state.autoGeneration += 1;
   syncAutoTimer();
   ui.reconnectMask.hidden = true;
   ui.joinOverlay.classList.remove("hidden");
@@ -538,9 +576,10 @@ function emitJoin() {
 
 function changePower(delta) {
   if (!state.joined) return;
-  const currentIndex = closestPowerIndex(state.selectedPower);
-  const nextIndex = clamp(currentIndex + delta, 0, POWER_LEVELS.length - 1);
-  const nextPower = POWER_LEVELS[nextIndex];
+  const powerLevels = powerLevelsFor();
+  const currentIndex = closestPowerIndex(state.selectedPower, powerLevels);
+  const nextIndex = clamp(currentIndex + delta, 0, powerLevels.length - 1);
+  const nextPower = powerLevels[nextIndex];
   if (nextPower === state.selectedPower) return;
   state.selectedPower = nextPower;
   state.powerTouched = true;
@@ -609,20 +648,46 @@ function aimAt(point, force = false) {
   return { angle: serverAngle, displayAngle, origin: displayOrigin, target };
 }
 
-function fireAt(point = state.pointer) {
+function showFireErrorOnce(message) {
+  const normalized = String(message || "").trim();
+  if (!normalized) return;
+  const now = performance.now();
+  if (normalized === state.lastFireError && now - state.lastFireErrorAt < 2200) return;
+  state.lastFireError = normalized;
+  state.lastFireErrorAt = now;
+  showToast(normalized);
+}
+
+function stopAutoFire(expectedGeneration = null) {
+  if (expectedGeneration !== null && expectedGeneration !== state.autoGeneration) return;
+  if (!state.autoFire) return;
+  state.autoFire = false;
+  state.autoGeneration += 1;
+  syncAutoTimer();
+}
+
+function fireAt(point = state.pointer, inputToken = "") {
   if (!state.joined || !socket.connected) return;
   const now = performance.now();
-  if (now - state.lastLocalFireAt < 118) return;
+  if (state.pendingFireCount >= 2) return;
+  const attempt = evaluateFireAttempt(
+    state.fireGate,
+    { now, inputToken },
+    DEFAULT_FIRE_INTERVAL_MS
+  );
+  state.fireGate = attempt.gate;
+  if (!attempt.accepted) return;
   const me = currentPlayer();
   if (!me) return;
+  const autoGenerationAtFire = state.autoFire ? state.autoGeneration : null;
   if (Number(me.score || 0) < state.selectedPower) {
-    if (!state.autoFire) showToast("积分不足，无法开炮");
+    stopAutoFire(autoGenerationAtFire);
+    showFireErrorOnce("积分不足，无法开炮");
     return;
   }
 
   const aim = aimAt(point, true);
   if (!aim) return;
-  state.lastLocalFireAt = now;
   const commandId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   state.muzzleFlashes.push({
     x: aim.origin.x,
@@ -632,11 +697,27 @@ function fireAt(point = state.pointer) {
     color: playerColor(me),
     bornAt: now
   });
+  state.pendingFireCount += 1;
   socket.timeout(2200).emit("player:fire", { commandId, angle: aim.angle }, (timeoutError, response) => {
-    if (timeoutError || response?.ok !== false) return;
-    const code = response.error?.code;
-    if (state.autoFire && code === "RATE_LIMITED") return;
-    showToast(response.error?.message || response.error || "开炮失败");
+    state.pendingFireCount = Math.max(0, state.pendingFireCount - 1);
+    if (timeoutError) {
+      state.fireTimeoutCount += 1;
+      if (state.fireTimeoutCount >= 2) {
+        if (autoGenerationAtFire !== null) stopAutoFire(autoGenerationAtFire);
+        showFireErrorOnce("开炮服务响应超时，请检查网络后重试");
+      }
+      return;
+    }
+    state.fireTimeoutCount = 0;
+    if (response?.ok !== false) {
+      const activePlayer = currentPlayer();
+      if (activePlayer && Number.isFinite(Number(response?.score))) activePlayer.score = Number(response.score);
+      return;
+    }
+    const message = fireFailureMessage(response);
+    if (!message) return;
+    if (autoGenerationAtFire !== null) stopAutoFire(autoGenerationAtFire);
+    showFireErrorOnce(message);
   });
 }
 
@@ -646,16 +727,22 @@ function syncAutoTimer() {
   if (state.autoFire) {
     state.autoTimer = window.setInterval(() => {
       if (!document.hidden && state.joined && socket.connected) fireAt(activeTargetPoint());
-    }, 150);
+    }, DEFAULT_AUTO_FIRE_INTERVAL_MS);
   }
   updateHud();
 }
 
 function toggleAutoFire() {
   if (!state.joined) return;
-  state.autoFire = !state.autoFire;
+  if (state.autoFire) {
+    stopAutoFire(state.autoGeneration);
+    showToast("自动开炮已关闭");
+    return;
+  }
+  state.autoGeneration += 1;
+  state.autoFire = true;
   syncAutoTimer();
-  showToast(state.autoFire ? "自动开炮已开启" : "自动开炮已关闭");
+  showToast("自动开炮已开启");
 }
 
 function nearestFish(point, maximumDistance = 92) {
@@ -1429,15 +1516,20 @@ function handleMissEvent(event = {}) {
   );
 }
 
+function handleMissEventOnce(event = {}) {
+  if (!registerShotResolution(state.resolvedShots, event, performance.now())) return;
+  handleMissEvent(event);
+}
+
 socket.on("game:hit", (event = {}) => {
-  if (event.captured === false || event.success === false) handleMissEvent(event);
+  if (event.captured === false || event.success === false) handleMissEventOnce(event);
 });
-socket.on("game:miss", handleMissEvent);
-socket.on("game:catch-failed", handleMissEvent);
+socket.on("game:miss", handleMissEventOnce);
+socket.on("game:catch-failed", handleMissEventOnce);
 socket.on("shot:resolved", (event = {}) => {
   // Captures also arrive through game:catch for backward compatibility; only
   // consume failed resolutions here so success effects are never duplicated.
-  if (event.captured === false) handleMissEvent(event);
+  if (event.captured === false) handleMissEventOnce(event);
 });
 
 socket.on("room:notice", (notice) => {
@@ -1481,7 +1573,7 @@ ui.lockButton.addEventListener("click", toggleLock);
 ui.autoButton.addEventListener("click", toggleAutoFire);
 ui.fireButton.addEventListener("pointerdown", (event) => {
   event.preventDefault();
-  fireAt(activeTargetPoint());
+  fireAt(activeTargetPoint(), `fire-button:${event.pointerId}:${event.timeStamp}`);
 });
 
 ui.roomButton.addEventListener("click", () => {
@@ -1512,14 +1604,14 @@ canvas.addEventListener("pointerdown", (event) => {
       return;
     }
   }
-  fireAt(activeTargetPoint(state.pointer));
+  fireAt(activeTargetPoint(state.pointer), `canvas:${event.pointerId}:${event.timeStamp}`);
 });
 
 window.addEventListener("keydown", (event) => {
   if (!state.joined || /INPUT|TEXTAREA/.test(document.activeElement?.tagName || "")) return;
   if (event.key === " " || event.key === "Enter") {
     event.preventDefault();
-    fireAt(activeTargetPoint());
+    fireAt(activeTargetPoint(), `keyboard:${event.code}:${event.timeStamp}`);
   } else if (event.key === "ArrowUp" || event.key === "+" || event.key === "=") {
     event.preventDefault();
     changePower(1);

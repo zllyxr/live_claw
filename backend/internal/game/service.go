@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	ErrVenueNotFound   = errors.New("game venue not found")
-	ErrSessionNotFound = errors.New("game session not found")
+	ErrVenueNotFound        = errors.New("game venue not found")
+	ErrSessionNotFound      = errors.New("game session not found")
+	ErrInvalidFishingCannon = errors.New("invalid fishing cannon value")
 )
 
 type Service struct {

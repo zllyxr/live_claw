@@ -41,6 +41,7 @@ type FishingFireResult struct {
 	Balance    int64  `json:"balance"`
 	Multiplier int    `json:"multiplier"`
 	Captured   bool   `json:"captured"`
+	Replayed   bool   `json:"-"`
 }
 
 type fishingCheckpointPayload struct {
@@ -121,7 +122,7 @@ func (s *Service) FireFishing(
 ) (FishingFireResult, error) {
 	commandID = strings.TrimSpace(commandID)
 	if len(sessionID) != 26 || userID < 1 || len(commandID) < 8 || len(commandID) > 100 ||
-		bet < 1 || fishMultiplier < 1 || fishMultiplier > 200 {
+		bet < 1 || fishMultiplier < 0 || fishMultiplier > 200 {
 		return FishingFireResult{}, errors.New("invalid fishing fire request")
 	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
@@ -145,7 +146,7 @@ func (s *Service) FireFishing(
 		return FishingFireResult{
 			CommandID: payload.CommandID, EventSeq: existingSeq,
 			Bet: payload.Bet, Reward: payload.Reward, Balance: payload.Balance,
-			Multiplier: payload.Multiplier, Captured: payload.Captured,
+			Multiplier: payload.Multiplier, Captured: payload.Captured, Replayed: true,
 		}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -171,12 +172,12 @@ func (s *Service) FireFishing(
 	}
 	var betLevels []int64
 	if err = json.Unmarshal(betLevelsJSON, &betLevels); err != nil || !containsFishingBet(betLevels, bet) {
-		return FishingFireResult{}, errors.New("invalid fishing cannon value")
+		return FishingFireResult{}, ErrInvalidFishingCannon
 	}
 	if balance < bet {
 		return FishingFireResult{}, wallet.ErrInsufficientFunds
 	}
-	captured, err := fishingCapture(targetRTPPPM, fishMultiplier)
+	captured, err := fishingShotCaptured(targetRTPPPM, fishMultiplier)
 	if err != nil {
 		return FishingFireResult{}, err
 	}
@@ -272,6 +273,13 @@ func fishingCapture(targetRTPPPM int, multiplier int) (bool, error) {
 	unit := float64(binary.BigEndian.Uint64(raw[:])) / float64(math.MaxUint64)
 	probability := float64(targetRTPPPM) / 1_000_000 / float64(multiplier)
 	return unit < probability, nil
+}
+
+func fishingShotCaptured(targetRTPPPM int, multiplier int) (bool, error) {
+	if multiplier == 0 {
+		return false, nil
+	}
+	return fishingCapture(targetRTPPPM, multiplier)
 }
 
 func (p FishingPlayer) RoomID() string {
