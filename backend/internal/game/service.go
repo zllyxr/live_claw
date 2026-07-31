@@ -32,19 +32,20 @@ type Service struct {
 }
 
 type FishingLaunch struct {
-	SessionID    string `json:"session_id"`
-	GameCode     string `json:"game_code"`
-	GameName     string `json:"game_name"`
-	EntryPath    string `json:"entry_path"`
-	VenueCode    string `json:"venue_code"`
-	VenueName    string `json:"venue_name"`
-	Multiplier   int    `json:"multiplier"`
-	Table        int    `json:"table"`
-	Seat         int    `json:"seat"`
-	EscrowAmount int64  `json:"escrow_amount"`
-	ResumeToken  string `json:"resume_token"`
-	Resumed      bool   `json:"resumed"`
-	venueID      int64
+	SessionID     string `json:"session_id"`
+	GameCode      string `json:"game_code"`
+	GameName      string `json:"game_name"`
+	EntryPath     string `json:"entry_path"`
+	VenueCode     string `json:"venue_code"`
+	VenueName     string `json:"venue_name"`
+	Multiplier    int    `json:"multiplier"`
+	Table         int    `json:"table"`
+	Seat          int    `json:"seat"`
+	EscrowAmount  int64  `json:"escrow_amount"` // Deprecated: direct-wallet sessions always return zero.
+	WalletBalance int64  `json:"wallet_balance"`
+	ResumeToken   string `json:"resume_token"`
+	Resumed       bool   `json:"resumed"`
+	venueID       int64
 }
 
 type fishingVenue struct {
@@ -162,39 +163,32 @@ func (s *Service) EnterFishing(ctx context.Context, userID int64, venueCode stri
 	if err != nil {
 		return FishingLaunch{}, err
 	}
+	balance, err := s.wallet.Balance(ctx, userID)
+	if err != nil {
+		return FishingLaunch{}, err
+	}
+	if balance.Available < venue.MinBalance {
+		return FishingLaunch{}, wallet.ErrInsufficientFunds
+	}
+	now := s.now()
+	// Direct-wallet sessions never revive an expired or legacy escrow session.
+	// Closing it here also releases the generated active-user key so a fresh
+	// direct-wallet session can be inserted safely.
+	if _, err = s.db.ExecContext(ctx, `
+		UPDATE game_sessions
+		SET status=4,disconnected_at=COALESCE(disconnected_at,?)
+		WHERE user_id=? AND game_id=? AND status IN (1,2)
+		  AND (wallet_mode<>1 OR escrow_hold_no<>'' OR expires_at<=?)`,
+		now, userID, venue.GameID, now,
+	); err != nil {
+		return FishingLaunch{}, err
+	}
 	existing, found, err := s.activeFishingSession(ctx, userID, venue.GameID)
 	if err != nil {
 		return FishingLaunch{}, err
 	}
 	if found {
-		if err = s.matchmaker.ReserveFishing(
-			ctx, existing.venueID, userID, existing.Table, existing.Seat,
-		); err != nil {
-			return FishingLaunch{}, err
-		}
-		resumeToken, resumeHash, err := gameSecret(32)
-		if err != nil {
-			return FishingLaunch{}, err
-		}
-		if _, err = s.db.ExecContext(ctx, `
-			UPDATE game_sessions
-			SET resume_token_hash=?,status=1,disconnected_at=NULL,expires_at=?
-			WHERE id=? AND user_id=? AND status IN (1,2)`,
-			resumeHash, s.now().Add(30*time.Minute), existing.SessionID, userID,
-		); err != nil {
-			return FishingLaunch{}, err
-		}
-		existing.ResumeToken = resumeToken
-		existing.Resumed = true
-		return existing, nil
-	}
-
-	balance, err := s.wallet.Balance(ctx, userID)
-	if err != nil {
-		return FishingLaunch{}, err
-	}
-	if balance.Available < venue.MinBalance || balance.Available < venue.EscrowAmount {
-		return FishingLaunch{}, wallet.ErrInsufficientFunds
+		return s.resumeFishingSession(ctx, existing, userID, balance.Available)
 	}
 	sessionID, err := idgen.New()
 	if err != nil {
@@ -204,23 +198,6 @@ func (s *Service) EnterFishing(ctx context.Context, userID int64, venueCode stri
 	if err != nil {
 		return FishingLaunch{}, err
 	}
-	hold, err := s.wallet.PlaceHold(ctx, wallet.HoldRequest{
-		UserID: userID, Amount: venue.EscrowAmount,
-		BusinessType: "game_session", BusinessID: sessionID,
-		ExpiresAt:   s.now().Add(45 * time.Minute),
-		Description: "捕鱼场次托管",
-		GameCode:    venue.GameCode, VenueCode: venue.VenueCode,
-	})
-	if err != nil {
-		return FishingLaunch{}, err
-	}
-	compensateHold := true
-	defer func() {
-		if compensateHold {
-			_, _ = s.wallet.ReleaseHold(context.Background(), hold.HoldNo, "进入捕鱼失败，退回托管", nil)
-		}
-	}()
-
 	for attempt := 0; attempt < 12; attempt++ {
 		assignment, assignErr := s.matchmaker.AssignFishing(ctx, venue.VenueID, userID)
 		if assignErr != nil {
@@ -229,18 +206,17 @@ func (s *Service) EnterFishing(ctx context.Context, userID int64, venueCode stri
 		_, insertErr := s.db.ExecContext(ctx, `
 			INSERT INTO game_sessions
 				(id,user_id,game_id,venue_id,table_no,seat_no,resume_token_hash,
-				 escrow_hold_no,escrow_balance,event_seq,status,connected_at,expires_at)
-			VALUES(?,?,?,?,?,?,?,?,?,0,1,?,?)`,
+				 escrow_hold_no,wallet_mode,escrow_balance,event_seq,status,connected_at,expires_at)
+			VALUES(?,?,?,?,?,?,?,'',1,?,0,1,?,?)`,
 			sessionID, userID, venue.GameID, venue.VenueID, assignment.Table, assignment.Seat,
-			resumeHash, hold.HoldNo, venue.EscrowAmount, s.now(), s.now().Add(30*time.Minute),
+			resumeHash, balance.Available, now, now.Add(30*time.Minute),
 		)
 		if insertErr == nil {
-			compensateHold = false
 			return FishingLaunch{
 				SessionID: sessionID, GameCode: venue.GameCode, GameName: venue.GameName,
 				EntryPath: venue.EntryPath, VenueCode: venue.VenueCode, VenueName: venue.VenueName,
 				Multiplier: venue.Multiplier, Table: assignment.Table, Seat: assignment.Seat,
-				EscrowAmount: venue.EscrowAmount, ResumeToken: resumeToken,
+				EscrowAmount: 0, WalletBalance: balance.Available, ResumeToken: resumeToken,
 			}, nil
 		}
 		_ = s.matchmaker.ReleaseFishing(ctx, venue.VenueID, userID)
@@ -248,68 +224,89 @@ func (s *Service) EnterFishing(ctx context.Context, userID int64, venueCode stri
 		if !errors.As(insertErr, &mysqlErr) || mysqlErr.Number != 1062 {
 			return FishingLaunch{}, insertErr
 		}
+		if concurrent, concurrentFound, findErr := s.activeFishingSession(ctx, userID, venue.GameID); findErr != nil {
+			return FishingLaunch{}, findErr
+		} else if concurrentFound {
+			return s.resumeFishingSession(ctx, concurrent, userID, balance.Available)
+		}
 	}
 	return FishingLaunch{}, errors.New("unable to persist a free fishing seat")
 }
 
-func (s *Service) LeaveFishing(ctx context.Context, userID int64, sessionID string) (wallet.Entry, error) {
+func (s *Service) resumeFishingSession(
+	ctx context.Context,
+	existing FishingLaunch,
+	userID int64,
+	walletBalance int64,
+) (FishingLaunch, error) {
+	if err := s.matchmaker.ReserveFishing(
+		ctx, existing.venueID, userID, existing.Table, existing.Seat,
+	); err != nil {
+		return FishingLaunch{}, err
+	}
+	resumeToken, resumeHash, err := gameSecret(32)
+	if err != nil {
+		return FishingLaunch{}, err
+	}
+	now := s.now()
+	update, err := s.db.ExecContext(ctx, `
+		UPDATE game_sessions
+		SET resume_token_hash=?,escrow_balance=?,status=1,disconnected_at=NULL,expires_at=?
+		WHERE id=? AND user_id=? AND status IN (1,2)
+		  AND wallet_mode=1 AND escrow_hold_no='' AND expires_at>?`,
+		resumeHash, walletBalance, now.Add(30*time.Minute), existing.SessionID, userID, now,
+	)
+	if err != nil {
+		return FishingLaunch{}, err
+	}
+	if affected, affectedErr := update.RowsAffected(); affectedErr != nil || affected != 1 {
+		if affectedErr != nil {
+			return FishingLaunch{}, affectedErr
+		}
+		return FishingLaunch{}, ErrSessionNotFound
+	}
+	existing.EscrowAmount = 0
+	existing.WalletBalance = walletBalance
+	existing.ResumeToken = resumeToken
+	existing.Resumed = true
+	return existing, nil
+}
+
+func (s *Service) LeaveFishing(ctx context.Context, userID int64, sessionID string) (wallet.Balance, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if userID < 1 || sessionID == "" {
-		return wallet.Entry{}, errors.New("invalid leave request")
+		return wallet.Balance{}, errors.New("invalid leave request")
 	}
-	var holdNo, gameCode, venueCode string
 	var venueID int64
-	var tableNo int
-	var escrowBalance int64
-	var status uint8
+	var status, walletMode uint8
 	err := s.db.QueryRowContext(ctx, `
-		SELECT session.escrow_hold_no,session.venue_id,session.table_no,session.escrow_balance,
-		       session.status,game.game_code,venue.venue_code
+		SELECT session.venue_id,session.status,session.wallet_mode
 		FROM game_sessions session
-		JOIN games game ON game.id=session.game_id
-		JOIN game_venues venue ON venue.id=session.venue_id
 		WHERE session.id=? AND session.user_id=?`,
 		sessionID, userID,
-	).Scan(&holdNo, &venueID, &tableNo, &escrowBalance, &status, &gameCode, &venueCode)
+	).Scan(&venueID, &status, &walletMode)
 	if errors.Is(err, sql.ErrNoRows) {
-		return wallet.Entry{}, ErrSessionNotFound
+		return wallet.Balance{}, ErrSessionNotFound
 	}
 	if err != nil {
-		return wallet.Entry{}, err
+		return wallet.Balance{}, err
 	}
-	if status != 1 && status != 2 && status != 3 {
-		return wallet.Entry{}, errors.New("game session cannot be settled")
+	if walletMode != 1 || (status != 1 && status != 2 && status != 3) {
+		return wallet.Balance{}, errors.New("game session cannot be closed")
 	}
-	if status != 3 {
-		var checkpointBalance int64
-		checkpointErr := s.db.QueryRowContext(ctx, `
-			SELECT escrow_balance FROM fishing_checkpoints
-			WHERE session_id=? ORDER BY event_seq DESC LIMIT 1`,
-			sessionID,
-		).Scan(&checkpointBalance)
-		if checkpointErr == nil {
-			escrowBalance = checkpointBalance
-		} else if !errors.Is(checkpointErr, sql.ErrNoRows) {
-			return wallet.Entry{}, checkpointErr
-		}
-	}
-	entry, err := s.wallet.CommitHold(ctx, wallet.CommitRequest{
-		HoldNo: holdNo, Payout: escrowBalance, Description: "捕鱼场次结算",
-		GameCode: gameCode, VenueCode: venueCode, TableNo: tableNo, RoundNo: sessionID,
-		Metadata: map[string]any{"session_id": sessionID},
-	})
+	balance, err := s.wallet.Balance(ctx, userID)
 	if err != nil {
-		return wallet.Entry{}, err
+		return wallet.Balance{}, err
 	}
 	if _, err = s.db.ExecContext(ctx, `
 		UPDATE game_sessions SET status=3,escrow_balance=?,settled_at=?
 		WHERE id=? AND user_id=? AND status IN (1,2)`,
-		escrowBalance, s.now(), sessionID, userID,
+		balance.Available, s.now(), sessionID, userID,
 	); err != nil {
-		return wallet.Entry{}, err
+		return wallet.Balance{}, err
 	}
 	_ = s.matchmaker.ReleaseFishing(ctx, venueID, userID)
-	return entry, nil
+	return balance, nil
 }
 
 func (s *Service) activeFishingSession(ctx context.Context, userID, gameID int64) (FishingLaunch, bool, error) {
@@ -322,8 +319,9 @@ func (s *Service) activeFishingSession(ctx context.Context, userID, gameID int64
 		JOIN games game ON game.id=session.game_id
 		JOIN game_venues venue ON venue.id=session.venue_id
 		WHERE session.user_id=? AND session.game_id=? AND session.status IN (1,2)
+		  AND session.wallet_mode=1 AND session.escrow_hold_no='' AND session.expires_at>?
 		LIMIT 1`,
-		userID, gameID,
+		userID, gameID, s.now(),
 	).Scan(
 		&result.SessionID, &venueID, &result.Table, &result.Seat, &result.EscrowAmount,
 		&result.GameCode, &result.GameName, &result.EntryPath,
@@ -336,6 +334,7 @@ func (s *Service) activeFishingSession(ctx context.Context, userID, gameID int64
 		return FishingLaunch{}, false, err
 	}
 	result.venueID = venueID
+	result.EscrowAmount = 0
 	return result, true, nil
 }
 

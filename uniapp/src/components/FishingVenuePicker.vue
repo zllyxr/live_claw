@@ -5,7 +5,7 @@
         <view>
           <text class="venue-kicker">DEEP SEA ARENA</text>
           <text class="venue-title">选择捕鱼场次</text>
-          <text class="venue-subtitle">不同场次使用独立倍率与入场托管金额</text>
+          <text class="venue-subtitle">所有场次直接使用统一钱包余额</text>
         </view>
         <view class="venue-close" @tap="emit('close')">×</view>
       </view>
@@ -27,7 +27,7 @@
               <text class="venue-state">{{ balanceState(venue) }}</text>
             </view>
             <text class="venue-meta">
-              最低 {{ formatCoin(venue.min_balance) }} · 托管 {{ formatCoin(venue.escrow_amount) }}
+              最低 {{ formatCoin(venue.min_balance) }} · 统一钱包实时结算
             </text>
             <text class="venue-bets">炮台档位 {{ venue.bet_levels.join(" / ") }}</text>
           </view>
@@ -77,7 +77,7 @@ const defaultVenues: FishingVenue[] = [
     table_count: 300,
     seats_per_table: 4,
     min_balance: 100,
-    escrow_amount: 1000,
+    escrow_amount: 0,
     bet_levels: [1, 2, 5, 10]
   },
   {
@@ -87,7 +87,7 @@ const defaultVenues: FishingVenue[] = [
     table_count: 300,
     seats_per_table: 4,
     min_balance: 500,
-    escrow_amount: 5000,
+    escrow_amount: 0,
     bet_levels: [5, 10, 25, 50]
   },
   {
@@ -97,7 +97,7 @@ const defaultVenues: FishingVenue[] = [
     table_count: 300,
     seats_per_table: 4,
     min_balance: 1000,
-    escrow_amount: 10000,
+    escrow_amount: 0,
     bet_levels: [10, 20, 50, 100]
   }
 ];
@@ -128,7 +128,7 @@ function balanceState(venue: NormalizedVenue) {
   if (!Number.isFinite(balance) || props.balance === undefined || props.balance === "") {
     return `${venue.table_count}桌`;
   }
-  return balance >= Math.max(venue.min_balance, venue.escrow_amount) ? "可进入" : "余额不足";
+  return balance >= venue.min_balance ? "可进入" : "余额不足";
 }
 </script>
 

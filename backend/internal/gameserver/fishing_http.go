@@ -33,12 +33,13 @@ var fishingAssetHandler = func() http.Handler {
 }()
 
 type fishingHub struct {
-	game           *game.Service
-	logger         *slog.Logger
-	lifecycleLocks [64]sync.Mutex
-	mu             sync.Mutex
-	rooms          map[string]*fishingRoom
-	hits           chan fishingHit
+	game            *game.Service
+	logger          *slog.Logger
+	lifecycleLocks  [64]sync.Mutex
+	mu              sync.Mutex
+	rooms           map[string]*fishingRoom
+	hits            chan fishingHit
+	lastBalanceSync time.Time
 }
 
 type fishingRoom struct {
@@ -184,6 +185,10 @@ func (h *fishingHub) run() {
 	for now := range ticker.C {
 		for _, hit := range h.advanceFishingBullets(now) {
 			h.hits <- hit
+		}
+		if h.lastBalanceSync.IsZero() || now.Sub(h.lastBalanceSync) >= time.Second {
+			h.lastBalanceSync = now
+			go h.refreshWalletBalances()
 		}
 		h.broadcastSnapshots(now)
 	}
@@ -337,16 +342,17 @@ func (h *fishingHub) serve(connection *websocket.Conn, profile game.FishingPlaye
 		case "player:fire":
 			h.fire(player, message)
 		case "session:leave":
-			entry, leaveErr := h.game.LeaveFishing(
+			balance, leaveErr := h.game.LeaveFishing(
 				contextWithoutCancel(), profile.UserID, profile.SessionID,
 			)
 			if leaveErr != nil {
-				h.ack(player, message.RequestID, fishingFailure("LEAVE_FAILED", "捕鱼余额结算失败"))
+				h.ack(player, message.RequestID, fishingFailure("LEAVE_FAILED", "退出捕鱼失败"))
 				continue
 			}
 			h.ack(player, message.RequestID, map[string]any{
-				"ok": true, "available": entry.Available, "frozen": entry.Frozen,
+				"ok": true, "available": balance.Available, "frozen": balance.Frozen,
 			})
+			return
 		}
 	}
 }
@@ -441,7 +447,7 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 		code, label := "FIRE_FAILED", "开炮失败"
 		switch {
 		case errors.Is(err, wallet.ErrInsufficientFunds):
-			code, label = "INSUFFICIENT_FUNDS", "捕鱼托管余额不足"
+			code, label = "INSUFFICIENT_FUNDS", "钱包余额不足"
 		case errors.Is(err, game.ErrSessionNotFound):
 			code, label = "SESSION_EXPIRED", "捕鱼会话已失效，请重新进入"
 		case errors.Is(err, game.ErrInvalidFishingCannon):
@@ -463,14 +469,16 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 	h.mu.Lock()
 	if result.EventSeq >= player.eventSeq {
 		player.eventSeq = result.EventSeq
-		player.profile.EscrowBalance = result.Balance
+		player.profile.WalletBalance = result.Balance
+		player.profile.WalletVersion = result.WalletVersion
 	}
 	activePlayer := room.players[player.profile.SessionID]
 	if activePlayer != nil && activePlayer != player && result.EventSeq >= activePlayer.eventSeq {
 		activePlayer.eventSeq = result.EventSeq
-		activePlayer.profile.EscrowBalance = result.Balance
+		activePlayer.profile.WalletBalance = result.Balance
+		activePlayer.profile.WalletVersion = result.WalletVersion
 	}
-	currentBalance := player.profile.EscrowBalance
+	currentBalance := player.profile.WalletBalance
 	if !result.Replayed {
 		originX, originY := seatOrigin(player.profile.Seat - 1)
 		radius := fishingBulletRadius(result.Bet)
@@ -708,7 +716,8 @@ func (h *fishingHub) resolveFishingHit(hit fishingHit) {
 			if player := room.players[hit.bullet.OwnerID]; player != nil &&
 				result.EventSeq >= player.eventSeq {
 				player.eventSeq = result.EventSeq
-				player.profile.EscrowBalance = result.Balance
+				player.profile.WalletBalance = result.Balance
+				player.profile.WalletVersion = result.WalletVersion
 			}
 			if captured && hit.fishIndex >= 0 && hit.fishIndex < len(room.fishEpoch) &&
 				hit.fish.ID == fishingFishID(hit.fishIndex, room.fishEpoch[hit.fishIndex]) {
@@ -717,7 +726,7 @@ func (h *fishingHub) resolveFishingHit(hit fishingHit) {
 		}
 	} else if room != nil {
 		if player := room.players[hit.bullet.OwnerID]; player != nil {
-			score = player.profile.EscrowBalance
+			score = player.profile.WalletBalance
 		}
 	}
 	h.mu.Unlock()
@@ -797,6 +806,46 @@ func (h *fishingHub) broadcastSnapshots(now time.Time) {
 	}
 }
 
+func (h *fishingHub) refreshWalletBalances() {
+	h.mu.Lock()
+	userIDs := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for _, room := range h.rooms {
+		for _, player := range room.players {
+			if _, found := seen[player.profile.UserID]; found {
+				continue
+			}
+			seen[player.profile.UserID] = struct{}{}
+			userIDs = append(userIDs, player.profile.UserID)
+		}
+	}
+	h.mu.Unlock()
+	if len(userIDs) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+	balances, err := h.game.FishingWalletBalances(ctx, userIDs)
+	cancel()
+	if err != nil {
+		if h.logger != nil {
+			h.logger.Warn("refresh fishing wallet balances", "error", err)
+		}
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, room := range h.rooms {
+		for _, player := range room.players {
+			balance, found := balances[player.profile.UserID]
+			if !found || balance.Version < player.profile.WalletVersion {
+				continue
+			}
+			player.profile.WalletBalance = balance.Available
+			player.profile.WalletVersion = balance.Version
+		}
+	}
+}
+
 func (h *fishingHub) snapshot(roomID string, now time.Time) map[string]any {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -814,7 +863,7 @@ func fishingSnapshot(room *fishingRoom, now time.Time) map[string]any {
 		x, y := seatOrigin(seat)
 		players = append(players, map[string]any{
 			"id": player.profile.SessionID, "name": player.profile.Name,
-			"seat": seat, "score": player.profile.EscrowBalance,
+			"seat": seat, "score": player.profile.WalletBalance,
 			"bet": player.bet, "power": player.bet, "angle": player.angle,
 			"betLevels": player.profile.BetLevels,
 			"color":     []string{"#55e7f0", "#f5c65f", "#ff7188", "#a88cff"}[seat%4],

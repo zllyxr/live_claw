@@ -144,9 +144,9 @@ test("rate limiting and aim misses are non-fatal and never produce a toast", () 
 test("actionable fire failures keep their server message and generic fallback", () => {
   const funds = {
     ok: false,
-    error: { code: "INSUFFICIENT_FUNDS", message: "捕鱼托管余额不足" }
+    error: { code: "INSUFFICIENT_FUNDS", message: "钱包余额不足" }
   };
-  assert.equal(fireFailureMessage(funds), "捕鱼托管余额不足");
+  assert.equal(fireFailureMessage(funds), "钱包余额不足");
   assert.equal(shouldShowFireFailure(funds), true);
   assert.equal(fireFailureMessage({ ok: false, error: {} }), "开炮失败");
   assert.equal(fireFailureMessage({ ok: true }), "");

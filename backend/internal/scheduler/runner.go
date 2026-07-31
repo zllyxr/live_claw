@@ -75,6 +75,9 @@ func (r *Runner) runSlow(ctx context.Context) {
 	if err = r.settleSportsMatches(ctx); err != nil {
 		r.logger.Error("settle sports matches", "error", err)
 	}
+	if err = r.settleLegacyFishingHolds(ctx); err != nil {
+		r.logger.Error("settle legacy fishing holds", "error", err)
+	}
 	if err = r.releaseExpiredHolds(ctx); err != nil {
 		r.logger.Error("release expired holds", "error", err)
 	}
@@ -84,6 +87,78 @@ func (r *Runner) runSlow(ctx context.Context) {
 	if err = r.aggregateDailyMetrics(ctx); err != nil {
 		r.logger.Error("aggregate metrics", "error", err)
 	}
+}
+
+func (r *Runner) settleLegacyFishingHolds(ctx context.Context) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT session.id
+		FROM game_sessions session
+		JOIN wallet_holds hold ON hold.hold_no=session.escrow_hold_no
+		WHERE session.wallet_mode=0 AND session.status=4
+		  AND hold.business_type='game_session' AND hold.status=0
+		ORDER BY session.id LIMIT 100`)
+	if err != nil {
+		return err
+	}
+	sessionIDs := make([]string, 0, 100)
+	for rows.Next() {
+		var sessionID string
+		if err = rows.Scan(&sessionID); err != nil {
+			rows.Close()
+			return err
+		}
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	for _, sessionID := range sessionIDs {
+		if err = r.settleLegacyFishingHold(ctx, sessionID); err != nil {
+			r.logger.Error("settle legacy fishing hold", "session_id", sessionID, "error", err)
+		}
+	}
+	return nil
+}
+
+func (r *Runner) settleLegacyFishingHold(ctx context.Context, sessionID string) error {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var holdNo, venueCode string
+	var userID, venueID, payout int64
+	var tableNo int
+	err = tx.QueryRowContext(ctx, `
+		SELECT escrow_hold_no,user_id,venue_id,table_no,escrow_balance
+		FROM game_sessions
+		WHERE id=? AND wallet_mode=0 AND status=4 FOR UPDATE`,
+		sessionID,
+	).Scan(&holdNo, &userID, &venueID, &tableNo, &payout)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT venue_code FROM game_venues WHERE id=?`, venueID).Scan(&venueCode); err != nil {
+		return err
+	}
+	if _, err = r.wallet.CommitHoldTx(ctx, tx, wallet.CommitRequest{
+		HoldNo: holdNo, Payout: payout,
+		Description: "捕鱼统一钱包切换结算",
+		Metadata:    map[string]any{"session_id": sessionID, "migration": "direct_wallet"},
+		GameCode:    "deepsea_hunter", VenueCode: venueCode, TableNo: tableNo, RoundNo: sessionID,
+	}); errors.Is(err, wallet.ErrInvalidHoldState) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Runner) closeExpiredBankRecharges(ctx context.Context) error {
@@ -389,7 +464,8 @@ func scaledPayout(amount, oddsScaled int64) (int64, error) {
 func (r *Runner) releaseExpiredHolds(ctx context.Context) error {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT hold_no FROM wallet_holds
-		WHERE status=0 AND expires_at<=CURRENT_TIMESTAMP(3)
+		WHERE status=0 AND business_type<>'game_session'
+		  AND expires_at<=CURRENT_TIMESTAMP(3)
 		ORDER BY expires_at,id LIMIT 100`)
 	if err != nil {
 		return err

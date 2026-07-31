@@ -151,7 +151,6 @@ GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`game_venues\` TO 'claw_game'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`game_sessions\` TO 'claw_game'@'%';
 GRANT SELECT, INSERT ON \`${MYSQL_DATABASE}\`.\`fishing_checkpoints\` TO 'claw_game'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`wallet_accounts\` TO 'claw_game'@'%';
-GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`wallet_holds\` TO 'claw_game'@'%';
 GRANT SELECT, INSERT ON \`${MYSQL_DATABASE}\`.\`wallet_ledger_entries\` TO 'claw_game'@'%';
 
 CREATE USER IF NOT EXISTS 'claw_scheduler'@'%' IDENTIFIED BY '${MYSQL_SCHEDULER_PASSWORD}';
@@ -160,6 +159,8 @@ REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`users\` TO 'claw_scheduler'@'%';
 GRANT CREATE TEMPORARY TABLES ON \`${MYSQL_DATABASE}\`.* TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`game_settlements\` TO 'claw_scheduler'@'%';
+GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`game_venues\` TO 'claw_scheduler'@'%';
+GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`game_sessions\` TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`payment_channels\` TO 'claw_scheduler'@'%';
 GRANT SELECT, UPDATE ON \`${MYSQL_DATABASE}\`.\`payment_bank_order_details\` TO 'claw_scheduler'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`payment_bank_proofs\` TO 'claw_scheduler'@'%';

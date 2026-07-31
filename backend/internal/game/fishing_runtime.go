@@ -28,21 +28,23 @@ type FishingPlayer struct {
 	VenueFactor   int
 	Table         int
 	Seat          int
-	EscrowBalance int64
+	WalletBalance int64
+	WalletVersion uint64
 	EventSeq      int64
 	BetLevels     []int64
 	TargetRTPPPM  int
 }
 
 type FishingFireResult struct {
-	CommandID  string `json:"command_id"`
-	EventSeq   int64  `json:"event_seq"`
-	Bet        int64  `json:"bet"`
-	Reward     int64  `json:"reward"`
-	Balance    int64  `json:"balance"`
-	Multiplier int    `json:"multiplier"`
-	Captured   bool   `json:"captured"`
-	Replayed   bool   `json:"-"`
+	CommandID     string `json:"command_id"`
+	EventSeq      int64  `json:"event_seq"`
+	Bet           int64  `json:"bet"`
+	Reward        int64  `json:"reward"`
+	Balance       int64  `json:"balance"`
+	WalletVersion uint64 `json:"-"`
+	Multiplier    int    `json:"multiplier"`
+	Captured      bool   `json:"captured"`
+	Replayed      bool   `json:"-"`
 }
 
 type fishingCheckpointPayload struct {
@@ -75,18 +77,19 @@ func (s *Service) AuthenticateFishingSession(
 		SELECT session.id,session.user_id,
 		       COALESCE(NULLIF(user_row.nickname,''),user_row.username),
 		       session.venue_id,venue.venue_code,venue.name,venue.multiplier,
-		       session.table_no,session.seat_no,session.escrow_balance,
+		       session.table_no,session.seat_no,account.available,account.version,
 		       session.event_seq,venue.bet_levels,venue.target_rtp_ppm,
 		       session.resume_token_hash,session.status,session.expires_at
 		FROM game_sessions session
 		JOIN users user_row ON user_row.id=session.user_id
 		JOIN game_venues venue ON venue.id=session.venue_id
-		WHERE session.id=?`,
+		JOIN wallet_accounts account ON account.user_id=session.user_id AND account.currency='COIN'
+		WHERE session.id=? AND session.wallet_mode=1 AND session.escrow_hold_no=''`,
 		sessionID,
 	).Scan(
 		&result.SessionID, &result.UserID, &result.Name,
 		&result.VenueID, &result.VenueCode, &result.VenueName, &result.VenueFactor,
-		&result.Table, &result.Seat, &result.EscrowBalance,
+		&result.Table, &result.Seat, &result.WalletBalance, &result.WalletVersion,
 		&result.EventSeq,
 		&betLevels, &result.TargetRTPPPM, &resumeHash, &status, &expiresAt,
 	)
@@ -116,7 +119,8 @@ func (s *Service) MarkFishingConnected(ctx context.Context, sessionID string, us
 	update, err := s.db.ExecContext(ctx, `
 		UPDATE game_sessions
 		SET status=1,connected_at=?,disconnected_at=NULL,expires_at=?
-		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?`,
+		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?
+		  AND wallet_mode=1 AND escrow_hold_no=''`,
 		now, now.Add(30*time.Minute), sessionID, userID, now,
 	)
 	if err != nil {
@@ -165,40 +169,19 @@ func (s *Service) FireFishing(
 		return FishingFireResult{}, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	var existingPayload []byte
-	var existingSeq int64
-	err = tx.QueryRowContext(ctx, `
-		SELECT event_seq,state_payload
-		FROM fishing_checkpoints
-		WHERE session_id=? AND client_command_id=?`,
-		sessionID, commandID,
-	).Scan(&existingSeq, &existingPayload)
-	if err == nil {
-		var payload fishingCheckpointPayload
-		if unmarshalErr := json.Unmarshal(existingPayload, &payload); unmarshalErr != nil {
-			return FishingFireResult{}, unmarshalErr
-		}
-		return FishingFireResult{
-			CommandID: payload.CommandID, EventSeq: existingSeq,
-			Bet: payload.Bet, Reward: payload.Reward, Balance: payload.Balance,
-			Multiplier: payload.Multiplier, Captured: payload.Captured, Replayed: true,
-		}, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return FishingFireResult{}, err
-	}
-	var balance, eventSeq int64
+	var eventSeq int64
 	var venueID int64
-	var status int
+	var tableNo, status int
 	var betLevelsJSON []byte
 	var targetRTPPPM int
+	var venueCode string
 	var expiresAt time.Time
 	err = tx.QueryRowContext(ctx, `
-		SELECT escrow_balance,event_seq,status,venue_id,expires_at
+		SELECT event_seq,status,venue_id,table_no,expires_at
 		FROM game_sessions
-		WHERE id=? AND user_id=? FOR UPDATE`,
+		WHERE id=? AND user_id=? AND wallet_mode=1 AND escrow_hold_no='' FOR UPDATE`,
 		sessionID, userID,
-	).Scan(&balance, &eventSeq, &status, &venueID, &expiresAt)
+	).Scan(&eventSeq, &status, &venueID, &tableNo, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FishingFireResult{}, ErrSessionNotFound
 	}
@@ -209,15 +192,30 @@ func (s *Service) FireFishing(
 	if (status != 1 && status != 2) || !expiresAt.After(now) {
 		return FishingFireResult{}, ErrSessionNotFound
 	}
+	if existing, found, existingErr := fishingCheckpointResult(ctx, tx, sessionID, commandID); existingErr != nil {
+		return FishingFireResult{}, existingErr
+	} else if found {
+		if existing.Bet != bet || existing.CommandID != commandID || existing.Multiplier != fishMultiplier {
+			return FishingFireResult{}, wallet.ErrIdempotencyReuse
+		}
+		current, balanceErr := s.wallet.BalanceTx(ctx, tx, userID)
+		if balanceErr != nil {
+			return FishingFireResult{}, balanceErr
+		}
+		existing.Balance = current.Available
+		existing.WalletVersion = current.Version
+		existing.Replayed = true
+		return existing, nil
+	}
 	// Keep the locking read scoped to the player's mutable session row. The
 	// runtime role intentionally has read-only access to venue configuration,
 	// so joining game_venues into SELECT ... FOR UPDATE is rejected by MySQL.
 	err = tx.QueryRowContext(ctx, `
-		SELECT bet_levels,target_rtp_ppm
+		SELECT venue_code,bet_levels,target_rtp_ppm
 		FROM game_venues
 		WHERE id=?`,
 		venueID,
-	).Scan(&betLevelsJSON, &targetRTPPPM)
+	).Scan(&venueCode, &betLevelsJSON, &targetRTPPPM)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FishingFireResult{}, ErrVenueNotFound
 	}
@@ -228,8 +226,15 @@ func (s *Service) FireFishing(
 	if err = json.Unmarshal(betLevelsJSON, &betLevels); err != nil || !containsFishingBet(betLevels, bet) {
 		return FishingFireResult{}, ErrInvalidFishingCannon
 	}
-	if balance < bet {
-		return FishingFireResult{}, wallet.ErrInsufficientFunds
+	walletBusinessID := fishingWalletBusinessID(sessionID, commandID)
+	if _, err = s.wallet.ApplyTx(ctx, tx, wallet.ApplyRequest{
+		UserID: userID, Amount: -bet,
+		BusinessType: "fishing_shot", BusinessID: walletBusinessID,
+		Description: "捕鱼开炮",
+		Metadata:    map[string]any{"session_id": sessionID, "command_id": commandID, "bet": bet},
+		GameCode:    "deepsea_hunter", VenueCode: venueCode, TableNo: tableNo, RoundNo: sessionID,
+	}); err != nil {
+		return FishingFireResult{}, err
 	}
 	captured, err := fishingShotCaptured(targetRTPPPM, fishMultiplier)
 	if err != nil {
@@ -241,8 +246,24 @@ func (s *Service) FireFishing(
 			return FishingFireResult{}, errors.New("fishing reward overflow")
 		}
 		reward = bet * int64(fishMultiplier)
+		if _, err = s.wallet.ApplyTx(ctx, tx, wallet.ApplyRequest{
+			UserID: userID, Amount: reward,
+			BusinessType: "fishing_reward", BusinessID: walletBusinessID,
+			Description: "捕鱼命中奖励",
+			Metadata: map[string]any{
+				"session_id": sessionID, "command_id": commandID,
+				"bet": bet, "multiplier": fishMultiplier,
+			},
+			GameCode: "deepsea_hunter", VenueCode: venueCode, TableNo: tableNo, RoundNo: sessionID,
+		}); err != nil {
+			return FishingFireResult{}, err
+		}
 	}
-	nextBalance := balance - bet + reward
+	current, err := s.wallet.BalanceTx(ctx, tx, userID)
+	if err != nil {
+		return FishingFireResult{}, err
+	}
+	nextBalance := current.Available
 	nextSeq := eventSeq + 1
 	totalCost, totalReward := int64(0), int64(0)
 	previousHash := strings.Repeat("0", 64)
@@ -268,7 +289,8 @@ func (s *Service) FireFishing(
 		UPDATE game_sessions
 		SET escrow_balance=?,event_seq=?,
 		    connected_at=IF(status=2,?,connected_at),status=1,disconnected_at=NULL,expires_at=?
-		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?`,
+		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?
+		  AND wallet_mode=1 AND escrow_hold_no=''`,
 		nextBalance, nextSeq, now, now.Add(30*time.Minute), sessionID, userID, now,
 	)
 	if err != nil {
@@ -296,8 +318,45 @@ func (s *Service) FireFishing(
 	}
 	return FishingFireResult{
 		CommandID: commandID, EventSeq: nextSeq, Bet: bet, Reward: reward,
-		Balance: nextBalance, Multiplier: fishMultiplier, Captured: captured,
+		Balance: nextBalance, WalletVersion: current.Version,
+		Multiplier: fishMultiplier, Captured: captured,
 	}, nil
+}
+
+func fishingCheckpointResult(
+	ctx context.Context,
+	tx *sql.Tx,
+	sessionID string,
+	commandID string,
+) (FishingFireResult, bool, error) {
+	var payloadJSON []byte
+	var eventSeq int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT event_seq,state_payload
+		FROM fishing_checkpoints
+		WHERE session_id=? AND client_command_id=?`,
+		sessionID, commandID,
+	).Scan(&eventSeq, &payloadJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return FishingFireResult{}, false, nil
+	}
+	if err != nil {
+		return FishingFireResult{}, false, err
+	}
+	var payload fishingCheckpointPayload
+	if err = json.Unmarshal(payloadJSON, &payload); err != nil {
+		return FishingFireResult{}, false, err
+	}
+	return FishingFireResult{
+		CommandID: payload.CommandID, EventSeq: eventSeq,
+		Bet: payload.Bet, Reward: payload.Reward, Balance: payload.Balance,
+		Multiplier: payload.Multiplier, Captured: payload.Captured,
+	}, true, nil
+}
+
+func fishingWalletBusinessID(sessionID string, commandID string) string {
+	digest := sha256.Sum256([]byte(commandID))
+	return sessionID + ":" + hex.EncodeToString(digest[:16])
 }
 
 // ResolveFishingHit settles the capture chance after an already-paid projectile
@@ -322,28 +381,37 @@ func (s *Service) ResolveFishingHit(
 		return FishingFireResult{}, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-
-	var existingPayload []byte
-	var existingSeq int64
+	var eventSeq int64
+	var venueID int64
+	var tableNo, status int
+	var expiresAt time.Time
 	err = tx.QueryRowContext(ctx, `
-		SELECT event_seq,state_payload
-		FROM fishing_checkpoints
-		WHERE session_id=? AND client_command_id=?`,
-		sessionID, resolveID,
-	).Scan(&existingSeq, &existingPayload)
-	if err == nil {
-		var payload fishingCheckpointPayload
-		if unmarshalErr := json.Unmarshal(existingPayload, &payload); unmarshalErr != nil {
-			return FishingFireResult{}, unmarshalErr
-		}
-		return FishingFireResult{
-			CommandID: payload.CommandID, EventSeq: existingSeq,
-			Bet: payload.Bet, Reward: payload.Reward, Balance: payload.Balance,
-			Multiplier: payload.Multiplier, Captured: payload.Captured, Replayed: true,
-		}, nil
+		SELECT event_seq,status,venue_id,table_no,expires_at
+		FROM game_sessions
+		WHERE id=? AND user_id=? AND wallet_mode=1 AND escrow_hold_no='' FOR UPDATE`,
+		sessionID, userID,
+	).Scan(&eventSeq, &status, &venueID, &tableNo, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return FishingFireResult{}, ErrSessionNotFound
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if err != nil {
 		return FishingFireResult{}, err
+	}
+	now := s.now()
+	if (status != 1 && status != 2) || !expiresAt.After(now) {
+		return FishingFireResult{}, ErrSessionNotFound
+	}
+	if existing, found, existingErr := fishingCheckpointResult(ctx, tx, sessionID, resolveID); existingErr != nil {
+		return FishingFireResult{}, existingErr
+	} else if found {
+		current, balanceErr := s.wallet.BalanceTx(ctx, tx, userID)
+		if balanceErr != nil {
+			return FishingFireResult{}, balanceErr
+		}
+		existing.Balance = current.Available
+		existing.WalletVersion = current.Version
+		existing.Replayed = true
+		return existing, nil
 	}
 
 	var launchPayloadJSON []byte
@@ -367,34 +435,14 @@ func (s *Service) ResolveFishingHit(
 		return FishingFireResult{}, errors.New("invalid fishing projectile launch")
 	}
 
-	var balance, eventSeq int64
-	var venueID int64
-	var status int
-	var expiresAt time.Time
-	err = tx.QueryRowContext(ctx, `
-		SELECT escrow_balance,event_seq,status,venue_id,expires_at
-		FROM game_sessions
-		WHERE id=? AND user_id=? FOR UPDATE`,
-		sessionID, userID,
-	).Scan(&balance, &eventSeq, &status, &venueID, &expiresAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return FishingFireResult{}, ErrSessionNotFound
-	}
-	if err != nil {
-		return FishingFireResult{}, err
-	}
-	now := s.now()
-	if (status != 1 && status != 2) || !expiresAt.After(now) {
-		return FishingFireResult{}, ErrSessionNotFound
-	}
-
 	var targetRTPPPM int
+	var venueCode string
 	err = tx.QueryRowContext(ctx, `
-		SELECT target_rtp_ppm
+		SELECT venue_code,target_rtp_ppm
 		FROM game_venues
 		WHERE id=?`,
 		venueID,
-	).Scan(&targetRTPPPM)
+	).Scan(&venueCode, &targetRTPPPM)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FishingFireResult{}, ErrVenueNotFound
 	}
@@ -411,11 +459,24 @@ func (s *Service) ResolveFishingHit(
 			return FishingFireResult{}, errors.New("fishing reward overflow")
 		}
 		reward = launch.Bet * int64(fishMultiplier)
+		if _, err = s.wallet.ApplyTx(ctx, tx, wallet.ApplyRequest{
+			UserID: userID, Amount: reward,
+			BusinessType: "fishing_reward", BusinessID: fishingWalletBusinessID(sessionID, commandID),
+			Description: "捕鱼命中奖励",
+			Metadata: map[string]any{
+				"session_id": sessionID, "command_id": commandID,
+				"bet": launch.Bet, "multiplier": fishMultiplier,
+			},
+			GameCode: "deepsea_hunter", VenueCode: venueCode, TableNo: tableNo, RoundNo: sessionID,
+		}); err != nil {
+			return FishingFireResult{}, err
+		}
 	}
-	if reward > math.MaxInt64-balance {
-		return FishingFireResult{}, errors.New("fishing balance overflow")
+	current, err := s.wallet.BalanceTx(ctx, tx, userID)
+	if err != nil {
+		return FishingFireResult{}, err
 	}
-	nextBalance := balance + reward
+	nextBalance := current.Available
 	nextSeq := eventSeq + 1
 
 	totalCost, totalReward := int64(0), int64(0)
@@ -443,7 +504,8 @@ func (s *Service) ResolveFishingHit(
 		UPDATE game_sessions
 		SET escrow_balance=?,event_seq=?,
 		    connected_at=IF(status=2,?,connected_at),status=1,disconnected_at=NULL,expires_at=?
-		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?`,
+		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?
+		  AND wallet_mode=1 AND escrow_hold_no=''`,
 		nextBalance, nextSeq, now, now.Add(30*time.Minute), sessionID, userID, now,
 	)
 	if err != nil {
@@ -471,7 +533,8 @@ func (s *Service) ResolveFishingHit(
 	}
 	return FishingFireResult{
 		CommandID: commandID, EventSeq: nextSeq, Bet: launch.Bet, Reward: reward,
-		Balance: nextBalance, Multiplier: fishMultiplier, Captured: captured,
+		Balance: nextBalance, WalletVersion: current.Version,
+		Multiplier: fishMultiplier, Captured: captured,
 	}, nil
 }
 
@@ -488,9 +551,16 @@ func (s *Service) MarkFishingDisconnected(
 	_, _ = s.db.ExecContext(ctx, `
 		UPDATE game_sessions
 		SET status=2,disconnected_at=?,expires_at=?
-		WHERE id=? AND user_id=? AND status=1`,
+		WHERE id=? AND user_id=? AND status=1 AND wallet_mode=1 AND escrow_hold_no=''`,
 		s.now(), s.now().Add(30*time.Minute), sessionID, userID,
 	)
+}
+
+func (s *Service) FishingWalletBalances(
+	ctx context.Context,
+	userIDs []int64,
+) (map[int64]wallet.Balance, error) {
+	return s.wallet.Balances(ctx, userIDs)
 }
 
 func containsFishingBet(levels []int64, bet int64) bool {

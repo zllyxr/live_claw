@@ -975,7 +975,7 @@
       { label: "倍率", render: (row) => "×" + esc(row.multiplier) },
       { label: "桌 / 座", render: (row) => esc(row.table_count + " / " + row.seats_per_table) },
       { label: "最低余额", render: (row) => formatNumber(row.min_balance) },
-      { label: "入场冻结", render: (row) => formatNumber(row.escrow_amount) },
+      { label: "钱包模式", render: () => '<span class="tag ok">统一钱包</span>' },
       { label: "在线", render: (row) => formatNumber(row.active_sessions) },
       { label: "RTP", render: (row) => (Number(row.target_rtp_ppm) / 10000).toFixed(2) + "%" },
       { label: "操作", render: (row) => has("games.write") ? button("配置", "venue-edit", row.id) : "—" }
@@ -2674,7 +2674,6 @@
       return openForm("配置捕鱼场", [
         { name: "name", label: "名称", value: row.name },
         { name: "min_balance", label: "最低余额", type: "number", value: row.min_balance },
-        { name: "escrow_amount", label: "入场冻结", type: "number", value: row.escrow_amount },
         { name: "bet_levels", label: "下注档位（逗号分隔）", value: (row.bet_levels || []).join(",") },
         { name: "target_rtp_ppm", label: "目标 RTP（百万分比）", type: "number", value: row.target_rtp_ppm },
         { name: "status", label: "状态", options: [[1, "启用"], [0, "停用"]], value: row.status },
@@ -2682,7 +2681,6 @@
       ], (values) => api("/admin/api/games/venues/" + id, {
         method: "POST", body: {
           name: values.name, min_balance: Number(values.min_balance),
-          escrow_amount: Number(values.escrow_amount),
           bet_levels: values.bet_levels.split(",").map(Number).filter((value) => value > 0),
           target_rtp_ppm: Number(values.target_rtp_ppm), status: Number(values.status),
           sort_order: Number(values.sort_order)
