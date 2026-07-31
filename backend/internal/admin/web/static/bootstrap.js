@@ -1,7 +1,7 @@
 (async function () {
   function loadApplication() {
     var script = document.createElement("script");
-    script.src = "/admin/static/app.js?v=20260730-7";
+    script.src = "/admin/static/app.js?v=20260731-1";
     script.async = false;
     document.body.appendChild(script);
   }
