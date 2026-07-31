@@ -33,10 +33,11 @@ var fishingAssetHandler = func() http.Handler {
 }()
 
 type fishingHub struct {
-	game   *game.Service
-	logger *slog.Logger
-	mu     sync.Mutex
-	rooms  map[string]*fishingRoom
+	game           *game.Service
+	logger         *slog.Logger
+	lifecycleLocks [64]sync.Mutex
+	mu             sync.Mutex
+	rooms          map[string]*fishingRoom
 }
 
 type fishingRoom struct {
@@ -200,13 +201,45 @@ func (h *fishingHub) serve(connection *websocket.Conn, profile game.FishingPlaye
 		profile: profile, conn: connection,
 		angle: seatFacing(profile.Seat - 1), bet: profile.BetLevels[0],
 	}
+	lifecycle := h.lifecycleLock(profile.SessionID)
+	lifecycle.Lock()
 	room := h.add(player)
-	defer func() {
-		if h.remove(room.id, player) {
-			h.game.MarkFishingDisconnected(
-				contextWithoutCancel(), profile.SessionID, profile.UserID,
+	connectContext, cancelConnect := context.WithTimeout(context.Background(), 3*time.Second)
+	connectErr := h.game.MarkFishingConnected(
+		connectContext, profile.SessionID, profile.UserID,
+	)
+	cancelConnect()
+	if connectErr != nil {
+		h.remove(room.id, player)
+	}
+	lifecycle.Unlock()
+	if connectErr != nil {
+		if h.logger != nil {
+			h.logger.Error(
+				"fishing connect",
+				"error", connectErr,
+				"session_id", profile.SessionID,
+				"user_id", profile.UserID,
 			)
 		}
+		player.write(fishingSocketEnvelope{
+			Event: "fatal",
+			Data:  map[string]any{"message": "捕鱼会话已结束，请返回大厅重新进入"},
+		})
+		connection.Close() //nolint:errcheck
+		return
+	}
+	defer func() {
+		lifecycle.Lock()
+		removed := h.remove(room.id, player)
+		if removed {
+			disconnectContext, cancelDisconnect := context.WithTimeout(context.Background(), 3*time.Second)
+			h.game.MarkFishingDisconnected(
+				disconnectContext, profile.SessionID, profile.UserID,
+			)
+			cancelDisconnect()
+		}
+		lifecycle.Unlock()
 		connection.Close() //nolint:errcheck
 	}()
 	connection.SetReadLimit(16 << 10)
@@ -267,6 +300,15 @@ func (h *fishingHub) serve(connection *websocket.Conn, profile game.FishingPlaye
 			})
 		}
 	}
+}
+
+func (h *fishingHub) lifecycleLock(sessionID string) *sync.Mutex {
+	hash := uint32(2166136261)
+	for index := 0; index < len(sessionID); index++ {
+		hash ^= uint32(sessionID[index])
+		hash *= 16777619
+	}
+	return &h.lifecycleLocks[hash%uint32(len(h.lifecycleLocks))]
 }
 
 func (h *fishingHub) add(player *fishingSocketPlayer) *fishingRoom {

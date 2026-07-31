@@ -6,14 +6,24 @@ import {
   worldToViewAngle,
   worldToViewPoint
 } from "./perspective.js?v=20260731-local-view1";
-import {
+import * as firePolicy from "./fire-policy.js?v=20260731-fire2";
+
+const {
   DEFAULT_AUTO_FIRE_INTERVAL_MS,
   DEFAULT_FIRE_INTERVAL_MS,
   evaluateFireAttempt,
   fireFailureMessage,
-  normalizePowerLevels,
-  registerShotResolution
-} from "./fire-policy.js?v=20260731-fire1";
+  normalizePowerLevels
+} = firePolicy;
+const registerShotResolution = typeof firePolicy.registerShotResolution === "function"
+  ? firePolicy.registerShotResolution
+  : (seen, event = {}, now = 0) => {
+    const shotId = String(event.shotId || event.commandId || "").trim();
+    if (!shotId) return true;
+    if (seen.has(shotId)) return false;
+    seen.set(shotId, now);
+    return true;
+  };
 
 const WORLD = Object.freeze({ width: 1280, height: 720 });
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -145,6 +155,7 @@ const state = {
   autoGeneration: 0,
   effects: [],
   muzzleFlashes: [],
+  shotTrails: [],
   fishFlashes: new Map(),
   fishMotion: new Map(),
   lastFishMotionSweepAt: 0,
@@ -435,6 +446,7 @@ function setSnapshot(snapshot, { force = false } = {}) {
     state.bulletHistory.clear();
     state.effects.length = 0;
     state.muzzleFlashes.length = 0;
+    state.shotTrails.length = 0;
     state.fishFlashes.clear();
     state.fishMotion.clear();
     state.lastFishMotionSweepAt = 0;
@@ -493,6 +505,9 @@ function resetToJoin(errorMessage) {
   state.current = null;
   state.previous = null;
   state.bulletHistory.clear();
+  state.effects.length = 0;
+  state.muzzleFlashes.length = 0;
+  state.shotTrails.length = 0;
   state.fishMotion.clear();
   state.lastFishMotionSweepAt = 0;
   state.resolvedShots.clear();
@@ -697,6 +712,20 @@ function fireAt(point = state.pointer, inputToken = "") {
     color: playerColor(me),
     bornAt: now
   });
+  const displayTarget = toViewPoint(aim.target);
+  const shotDistance = Math.hypot(displayTarget.x - aim.origin.x, displayTarget.y - aim.origin.y);
+  state.shotTrails.push({
+    id: commandId,
+    fromX: aim.origin.x,
+    fromY: aim.origin.y,
+    toX: displayTarget.x,
+    toY: displayTarget.y,
+    power: state.selectedPower,
+    color: playerColor(me),
+    bornAt: now,
+    duration: clamp(shotDistance * 0.42, 170, 380)
+  });
+  if (state.shotTrails.length > 32) state.shotTrails.splice(0, state.shotTrails.length - 32);
   state.pendingFireCount += 1;
   socket.timeout(2200).emit("player:fire", { commandId, angle: aim.angle }, (timeoutError, response) => {
     state.pendingFireCount = Math.max(0, state.pendingFireCount - 1);
@@ -1241,7 +1270,7 @@ function spawnNetEffect(x, y, fishId = "", color = "#76edf0", power = 1) {
     color,
     power: Math.max(1, Number(power) || 1),
     bornAt: now,
-    duration: 620
+    duration: 820
   });
 }
 
@@ -1413,6 +1442,44 @@ function drawEffects(now) {
     ctx.lineTo(-5, 9 + progress * 7);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+  }
+
+  state.shotTrails = state.shotTrails.filter((shot) => now - shot.bornAt < shot.duration + 90);
+  for (const shot of state.shotTrails) {
+    const progress = clamp((now - shot.bornAt) / shot.duration, 0, 1);
+    const eased = 1 - Math.pow(1 - progress, 2);
+    const x = lerp(shot.fromX, shot.toX, eased);
+    const y = lerp(shot.fromY, shot.toY, eased);
+    const tailProgress = Math.max(0, eased - 0.13);
+    const tailX = lerp(shot.fromX, shot.toX, tailProgress);
+    const tailY = lerp(shot.fromY, shot.toY, tailProgress);
+    const radius = 5 + Math.min(6, closestPowerIndex(shot.power)) * 0.8;
+
+    ctx.save();
+    const trail = ctx.createLinearGradient(tailX, tailY, x, y);
+    trail.addColorStop(0, "rgba(255,255,255,0)");
+    trail.addColorStop(0.5, shot.color);
+    trail.addColorStop(1, "#ffffff");
+    ctx.strokeStyle = trail;
+    ctx.lineWidth = radius * 0.9;
+    ctx.lineCap = "round";
+    ctx.shadowColor = shot.color;
+    ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = shot.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 

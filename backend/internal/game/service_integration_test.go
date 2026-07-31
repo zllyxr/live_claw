@@ -2,6 +2,9 @@ package game
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -35,7 +38,18 @@ func TestFishingSessionIntegration(t *testing.T) {
 	}
 	defer redisClient.FlushDB(context.Background()) //nolint:errcheck
 
-	userID := time.Now().UnixNano() & 0x3fffffffffffffff
+	userInsert, err := db.ExecContext(ctx, `
+		INSERT INTO users(username,password_hash,nickname,status)
+		VALUES(?,?,'捕鱼测试用户',1)`,
+		fmt.Sprintf("fishing-test-%d", time.Now().UnixNano()), "integration-test-only",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := userInsert.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
 	walletService := wallet.New(db)
 	if _, err = walletService.Apply(ctx, wallet.ApplyRequest{
 		UserID: userID, Amount: 2000, BusinessType: "test_game_credit", BusinessID: "credit",
@@ -48,9 +62,12 @@ func TestFishingSessionIntegration(t *testing.T) {
 		db.ExecContext(context.Background(), "DELETE FROM wallet_ledger_entries WHERE user_id=?", userID)                                                  //nolint:errcheck
 		db.ExecContext(context.Background(), "DELETE FROM wallet_holds WHERE user_id=?", userID)                                                           //nolint:errcheck
 		db.ExecContext(context.Background(), "DELETE FROM wallet_accounts WHERE user_id=?", userID)                                                        //nolint:errcheck
+		db.ExecContext(context.Background(), "DELETE FROM users WHERE id=?", userID)                                                                       //nolint:errcheck
 	}()
 
 	service := NewService(db, NewMatchmaker(redisClient), walletService)
+	fixedNow := time.Now().Truncate(time.Millisecond)
+	service.now = func() time.Time { return fixedNow }
 	launch, err := service.EnterFishing(ctx, userID, "novice")
 	if err != nil {
 		t.Fatal(err)
@@ -95,10 +112,57 @@ func TestFishingSessionIntegration(t *testing.T) {
 	if err != nil || !replayedMiss.Replayed || replayedMiss.Balance != miss.Balance {
 		t.Fatalf("empty-water shot was not idempotent: %#v %v", replayedMiss, err)
 	}
+	service.MarkFishingDisconnected(ctx, launch.SessionID, userID)
+	recoveredShot, err := service.FireFishing(
+		ctx, launch.SessionID, userID, "disconnected-session-shot", 1, 0,
+	)
+	if err != nil || recoveredShot.Balance != 998 || recoveredShot.Captured {
+		t.Fatalf("authenticated disconnected fishing session did not self-heal: %#v %v", recoveredShot, err)
+	}
+	var recoveredStatus int
+	var recoveredDisconnectedAt sql.NullTime
+	if err = db.QueryRowContext(ctx, `
+		SELECT status,disconnected_at FROM game_sessions WHERE id=? AND user_id=?`,
+		launch.SessionID, userID,
+	).Scan(&recoveredStatus, &recoveredDisconnectedAt); err != nil {
+		t.Fatal(err)
+	}
+	if recoveredStatus != 1 || recoveredDisconnectedAt.Valid {
+		t.Fatalf(
+			"fishing session did not return active after a live shot: status=%d disconnected=%v",
+			recoveredStatus, recoveredDisconnectedAt,
+		)
+	}
+	service.MarkFishingDisconnected(ctx, launch.SessionID, userID)
+	if _, err = service.AuthenticateFishingSession(
+		ctx, launch.SessionID, resumed.ResumeToken,
+	); err != nil {
+		t.Fatalf("disconnected fishing session did not resume: %v", err)
+	}
+	if err = service.MarkFishingConnected(ctx, launch.SessionID, userID); err != nil {
+		t.Fatalf("idempotent fishing connection refresh failed: %v", err)
+	}
+	if _, err = db.ExecContext(ctx, `
+		UPDATE game_sessions SET expires_at=? WHERE id=? AND user_id=?`,
+		time.Now().Add(-time.Minute), launch.SessionID, userID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.FireFishing(
+		ctx, launch.SessionID, userID, "expired-session-shot", 1, 0,
+	); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("expired fishing session accepted a new shot: %v", err)
+	}
+	if _, err = db.ExecContext(ctx, `
+		UPDATE game_sessions SET expires_at=? WHERE id=? AND user_id=?`,
+		time.Now().Add(30*time.Minute), launch.SessionID, userID,
+	); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = db.ExecContext(ctx, `
 		INSERT INTO fishing_checkpoints
 			(session_id,event_seq,escrow_balance,total_cost,total_reward,state_payload,state_hash)
-		VALUES(?,2,1250,500,750,JSON_OBJECT('test',true),REPEAT('a',64))`,
+		VALUES(?,3,1250,500,750,JSON_OBJECT('test',true),REPEAT('a',64))`,
 		launch.SessionID,
 	); err != nil {
 		t.Fatal(err)
@@ -115,5 +179,10 @@ func TestFishingSessionIntegration(t *testing.T) {
 	repeated, err := service.LeaveFishing(ctx, userID, launch.SessionID)
 	if err != nil || repeated.EntryNo != settlement.EntryNo {
 		t.Fatalf("fishing settlement was not idempotent: %#v %v", repeated, err)
+	}
+	if _, err = service.FireFishing(
+		ctx, launch.SessionID, userID, "settled-session-shot", 1, 0,
+	); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("settled fishing session accepted a new shot: %v", err)
 	}
 }

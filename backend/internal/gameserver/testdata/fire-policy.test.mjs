@@ -6,6 +6,14 @@ const source = await readFile(
   new URL("../fishingassets/fire-policy.js", import.meta.url),
   "utf8"
 );
+const gameSource = await readFile(
+  new URL("../fishingassets/game.js", import.meta.url),
+  "utf8"
+);
+const indexSource = await readFile(
+  new URL("../fishingassets/index.html", import.meta.url),
+  "utf8"
+);
 const policy = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
@@ -19,6 +27,14 @@ const {
   registerShotResolution,
   shouldShowFireFailure
 } = policy;
+
+test("entry and policy imports share a fresh cache version", () => {
+  const entryVersion = indexSource.match(/game\.js\?v=([^"']+)/)?.[1];
+  const policyVersion = gameSource.match(/fire-policy\.js\?v=([^"']+)/)?.[1];
+  assert.equal(entryVersion, "20260731-fire2");
+  assert.equal(policyVersion, entryVersion);
+  assert.match(gameSource, /import \* as firePolicy/);
+});
 
 test("venue cannon levels replace the legacy global list exactly", () => {
   assert.deepEqual(normalizePowerLevels([10, 20, 50, 100]), [10, 20, 50, 100]);
@@ -127,6 +143,29 @@ test("actionable fire failures keep their server message and generic fallback", 
   assert.equal(shouldShowFireFailure(funds), true);
   assert.equal(fireFailureMessage({ ok: false, error: {} }), "开炮失败");
   assert.equal(fireFailureMessage({ ok: true }), "");
+});
+
+test("an expired session remains actionable so the client stops firing and asks for re-entry", () => {
+  const expired = {
+    ok: false,
+    error: { code: "SESSION_EXPIRED", message: "捕鱼会话已失效，请重新进入" }
+  };
+  assert.equal(fireFailureMessage(expired), "捕鱼会话已失效，请重新进入");
+  assert.equal(shouldShowFireFailure(expired), true);
+});
+
+test("an empty-water resolution needs no fish id to create exactly one net effect", () => {
+  const seen = new Map();
+  const event = {
+    shotId: "empty-water-shot-22",
+    captured: false,
+    x: 430,
+    y: 0,
+    power: 5
+  };
+  assert.equal(registerShotResolution(seen, event, 200), true);
+  assert.equal(registerShotResolution(seen, { ...event }, 201), false);
+  assert.equal(seen.get(event.shotId), 200);
 });
 
 test("duplicate resolution broadcasts create only one miss effect", () => {

@@ -95,21 +95,52 @@ func (s *Service) AuthenticateFishingSession(
 	sum := sha256.Sum256([]byte(resumeToken))
 	suppliedHash := hex.EncodeToString(sum[:])
 	if subtle.ConstantTimeCompare([]byte(suppliedHash), []byte(resumeHash)) != 1 ||
-		(status != 1 && status != 2) || expiresAt.Before(s.now()) {
+		(status != 1 && status != 2) || !expiresAt.After(s.now()) {
 		return FishingPlayer{}, ErrSessionNotFound
 	}
 	if err = json.Unmarshal(betLevels, &result.BetLevels); err != nil || len(result.BetLevels) == 0 {
 		return FishingPlayer{}, errors.New("invalid fishing bet levels")
 	}
-	if _, err = s.db.ExecContext(ctx, `
-		UPDATE game_sessions
-		SET status=1,connected_at=?,disconnected_at=NULL,expires_at=?
-		WHERE id=? AND user_id=? AND status IN (1,2)`,
-		s.now(), s.now().Add(30*time.Minute), result.SessionID, result.UserID,
-	); err != nil {
+	if err = s.MarkFishingConnected(ctx, result.SessionID, result.UserID); err != nil {
 		return FishingPlayer{}, err
 	}
 	return result, nil
+}
+
+func (s *Service) MarkFishingConnected(ctx context.Context, sessionID string, userID int64) error {
+	now := s.now()
+	update, err := s.db.ExecContext(ctx, `
+		UPDATE game_sessions
+		SET status=1,connected_at=?,disconnected_at=NULL,expires_at=?
+		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?`,
+		now, now.Add(30*time.Minute), sessionID, userID, now,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := update.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 1 {
+		return nil
+	}
+	var status int
+	var expiresAt time.Time
+	err = s.db.QueryRowContext(ctx, `
+		SELECT status,expires_at FROM game_sessions WHERE id=? AND user_id=?`,
+		sessionID, userID,
+	).Scan(&status, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrSessionNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if (status != 1 && status != 2) || !expiresAt.After(now) {
+		return ErrSessionNotFound
+	}
+	return nil
 }
 
 func (s *Service) FireFishing(
@@ -156,19 +187,24 @@ func (s *Service) FireFishing(
 	var status int
 	var betLevelsJSON []byte
 	var targetRTPPPM int
+	var expiresAt time.Time
 	err = tx.QueryRowContext(ctx, `
 		SELECT session.escrow_balance,session.event_seq,session.status,
-		       venue.bet_levels,venue.target_rtp_ppm
+		       venue.bet_levels,venue.target_rtp_ppm,session.expires_at
 		FROM game_sessions session
 		JOIN game_venues venue ON venue.id=session.venue_id
 		WHERE session.id=? AND session.user_id=? FOR UPDATE`,
 		sessionID, userID,
-	).Scan(&balance, &eventSeq, &status, &betLevelsJSON, &targetRTPPPM)
-	if errors.Is(err, sql.ErrNoRows) || status != 1 {
+	).Scan(&balance, &eventSeq, &status, &betLevelsJSON, &targetRTPPPM, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return FishingFireResult{}, ErrSessionNotFound
 	}
 	if err != nil {
 		return FishingFireResult{}, err
+	}
+	now := s.now()
+	if (status != 1 && status != 2) || !expiresAt.After(now) {
+		return FishingFireResult{}, ErrSessionNotFound
 	}
 	var betLevels []int64
 	if err = json.Unmarshal(betLevelsJSON, &betLevels); err != nil || !containsFishingBet(betLevels, bet) {
@@ -210,13 +246,22 @@ func (s *Service) FireFishing(
 		return FishingFireResult{}, err
 	}
 	hash := sha256.Sum256(append([]byte(previousHash), payloadJSON...))
-	if _, err = tx.ExecContext(ctx, `
+	update, err := tx.ExecContext(ctx, `
 		UPDATE game_sessions
-		SET escrow_balance=?,event_seq=?,expires_at=?
-		WHERE id=? AND user_id=? AND status=1`,
-		nextBalance, nextSeq, s.now().Add(30*time.Minute), sessionID, userID,
-	); err != nil {
+		SET escrow_balance=?,event_seq=?,
+		    connected_at=IF(status=2,?,connected_at),status=1,disconnected_at=NULL,expires_at=?
+		WHERE id=? AND user_id=? AND status IN (1,2) AND expires_at>?`,
+		nextBalance, nextSeq, now, now.Add(30*time.Minute), sessionID, userID, now,
+	)
+	if err != nil {
 		return FishingFireResult{}, err
+	}
+	affected, err := update.RowsAffected()
+	if err != nil {
+		return FishingFireResult{}, err
+	}
+	if affected != 1 {
+		return FishingFireResult{}, ErrSessionNotFound
 	}
 	if _, err = tx.ExecContext(ctx, `
 		INSERT INTO fishing_checkpoints
