@@ -141,6 +141,27 @@ func TestFishingSessionIntegration(t *testing.T) {
 			recoveredStatus, recoveredDisconnectedAt,
 		)
 	}
+	projectile, err := service.FireFishing(
+		ctx, launch.SessionID, userID, "physical-projectile-shot", 1, 0,
+	)
+	if err != nil || projectile.Balance != 997 || projectile.Captured {
+		t.Fatalf("physical projectile launch was not charged exactly once: %#v %v", projectile, err)
+	}
+	hit, err := service.ResolveFishingHit(
+		ctx, launch.SessionID, userID, "physical-projectile-shot", 2,
+	)
+	if err != nil || hit.Bet != 1 || hit.Multiplier != 2 ||
+		hit.Balance != projectile.Balance+hit.Reward ||
+		(hit.Captured && hit.Reward != 2) || (!hit.Captured && hit.Reward != 0) {
+		t.Fatalf("physical projectile hit was not settled correctly: %#v %v", hit, err)
+	}
+	replayedHit, err := service.ResolveFishingHit(
+		ctx, launch.SessionID, userID, "physical-projectile-shot", 2,
+	)
+	if err != nil || !replayedHit.Replayed || replayedHit.Balance != hit.Balance ||
+		replayedHit.Reward != hit.Reward {
+		t.Fatalf("physical projectile hit was not idempotent: %#v %v", replayedHit, err)
+	}
 	service.MarkFishingDisconnected(ctx, launch.SessionID, userID)
 	if _, err = service.AuthenticateFishingSession(
 		ctx, launch.SessionID, resumed.ResumeToken,
@@ -170,7 +191,7 @@ func TestFishingSessionIntegration(t *testing.T) {
 	if _, err = db.ExecContext(ctx, `
 		INSERT INTO fishing_checkpoints
 			(session_id,event_seq,escrow_balance,total_cost,total_reward,state_payload,state_hash)
-		VALUES(?,3,1250,500,750,JSON_OBJECT('test',true),REPEAT('a',64))`,
+		VALUES(?,20,1250,500,750,JSON_OBJECT('test',true),REPEAT('a',64))`,
 		launch.SessionID,
 	); err != nil {
 		t.Fatal(err)

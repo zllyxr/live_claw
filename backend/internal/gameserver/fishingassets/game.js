@@ -6,7 +6,7 @@ import {
   worldToViewAngle,
   worldToViewPoint
 } from "./perspective.js?v=20260731-local-view1";
-import * as firePolicy from "./fire-policy.js?v=20260731-fire2";
+import * as firePolicy from "./fire-policy.js?v=20260731-physics1";
 
 const {
   DEFAULT_AUTO_FIRE_INTERVAL_MS,
@@ -125,7 +125,9 @@ const images = {
   fish9: loadImage("assets/fish-animated/fish9.png"),
   fish10: loadImage("assets/fish-animated/fish10.png"),
   shark1: loadImage("assets/fish-animated/shark1.png"),
-  shark2: loadImage("assets/fish-animated/shark2.png")
+  shark2: loadImage("assets/fish-animated/shark2.png"),
+  bullets: Array.from({ length: 7 }, (_, index) => loadImage(`assets/bullet/bullet${index + 1}.png`)),
+  webs: Array.from({ length: 7 }, (_, index) => loadImage(`assets/net/web${index + 1}.png`))
 };
 
 const state = {
@@ -712,20 +714,6 @@ function fireAt(point = state.pointer, inputToken = "") {
     color: playerColor(me),
     bornAt: now
   });
-  const displayTarget = toViewPoint(aim.target);
-  const shotDistance = Math.hypot(displayTarget.x - aim.origin.x, displayTarget.y - aim.origin.y);
-  state.shotTrails.push({
-    id: commandId,
-    fromX: aim.origin.x,
-    fromY: aim.origin.y,
-    toX: displayTarget.x,
-    toY: displayTarget.y,
-    power: state.selectedPower,
-    color: playerColor(me),
-    bornAt: now,
-    duration: clamp(shotDistance * 0.42, 170, 380)
-  });
-  if (state.shotTrails.length > 32) state.shotTrails.splice(0, state.shotTrails.length - 32);
   state.pendingFireCount += 1;
   socket.timeout(2200).emit("player:fire", { commandId, angle: aim.angle }, (timeoutError, response) => {
     state.pendingFireCount = Math.max(0, state.pendingFireCount - 1);
@@ -935,6 +923,10 @@ function interpolateEntities(kind) {
   const alpha = clamp((performance.now() - state.snapshotAt) / 100, 0, 1);
   return current.map((entity) => {
     const before = previousById.get(String(entity.id));
+    const bulletPathPoint = kind === "bullet" ? pointAlongBulletPath(entity.path, alpha) : null;
+    if (bulletPathPoint) {
+      return { ...entity, ...bulletPathPoint };
+    }
     if (!before) return entity;
     const beforeAngle = Number(before.angle || 0);
     const angle = beforeAngle + shortestAngleDelta(Number(entity.angle || 0), beforeAngle) * alpha;
@@ -955,6 +947,42 @@ function interpolateEntities(kind) {
       visualPitch
     };
   });
+}
+
+function pointAlongBulletPath(value, progress) {
+  const path = asArray(value)
+    .map((point) => ({ x: Number(point?.x), y: Number(point?.y) }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (path.length < 2) return null;
+  const segments = [];
+  let totalDistance = 0;
+  for (let index = 1; index < path.length; index += 1) {
+    const from = path[index - 1];
+    const to = path[index];
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    if (distance <= 0.0001) continue;
+    segments.push({ from, to, distance });
+    totalDistance += distance;
+  }
+  if (!segments.length || totalDistance <= 0.0001) return null;
+  let remaining = totalDistance * clamp(progress, 0, 1);
+  for (const segment of segments) {
+    if (remaining <= segment.distance) {
+      const amount = remaining / segment.distance;
+      return {
+        x: lerp(segment.from.x, segment.to.x, amount),
+        y: lerp(segment.from.y, segment.to.y, amount),
+        angle: Math.atan2(segment.to.y - segment.from.y, segment.to.x - segment.from.x)
+      };
+    }
+    remaining -= segment.distance;
+  }
+  const last = segments[segments.length - 1];
+  return {
+    x: last.to.x,
+    y: last.to.y,
+    angle: Math.atan2(last.to.y - last.from.y, last.to.x - last.from.x)
+  };
 }
 
 function drawAnimatedFishSprite(spec, x, y, size, angle, options = {}) {
@@ -1125,6 +1153,7 @@ function drawBullet(bullet) {
   const color = playerColor(owner);
   const point = visualBulletPoint(bullet, owner);
   const id = String(bullet.id);
+  const powerTier = closestPowerIndex(Number(bullet.power || 1));
   const previous = state.bulletHistory.get(id);
   if (previous) {
     const gradient = ctx.createLinearGradient(previous.x, previous.y, point.x, point.y);
@@ -1143,10 +1172,23 @@ function drawBullet(bullet) {
   ctx.save();
   ctx.shadowColor = color;
   ctx.shadowBlur = 18;
-  ctx.fillStyle = "#f7ffff";
+  ctx.fillStyle = `${color}aa`;
   ctx.beginPath();
-  ctx.arc(point.x, point.y, 3.5 + Math.min(5, Number(bullet.power || 1)) * 0.58, 0, Math.PI * 2);
+  ctx.arc(point.x, point.y, 7 + powerTier * 0.8, 0, Math.PI * 2);
   ctx.fill();
+  const image = images.bullets[clamp(powerTier, 0, images.bullets.length - 1)];
+  if (image?.complete && image.naturalWidth) {
+    const height = 25 + powerTier * 2.4;
+    const width = height * image.naturalWidth / image.naturalHeight;
+    ctx.translate(point.x, point.y);
+    ctx.rotate(toViewAngle(Number(bullet.angle || 0)) + Math.PI / 2);
+    ctx.drawImage(image, -width / 2, -height / 2, width, height);
+  } else {
+    ctx.fillStyle = "#f7ffff";
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 4.5 + powerTier * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1323,10 +1365,17 @@ function drawNetEffect(effect, now) {
   const powerTier = closestPowerIndex(effect.power);
   const targetRadius = 54 + powerTier * 10;
   const radius = 10 + Math.sin(progress * Math.PI * 0.72) * targetRadius;
+  const webImage = images.webs[clamp(powerTier, 0, images.webs.length - 1)];
   ctx.save();
   ctx.translate(effect.x, effect.y);
   ctx.rotate(progress * 0.24);
   ctx.globalAlpha = 1 - progress;
+  if (webImage?.complete && webImage.naturalWidth) {
+    const imageSize = radius * 2.18;
+    ctx.shadowColor = effect.color;
+    ctx.shadowBlur = 16;
+    ctx.drawImage(webImage, -imageSize / 2, -imageSize / 2, imageSize, imageSize);
+  }
   ctx.strokeStyle = effect.color;
   ctx.lineWidth = 2.6 - progress * 1.5;
   ctx.shadowColor = effect.color;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(
@@ -31,9 +31,16 @@ const {
 test("entry and policy imports share a fresh cache version", () => {
   const entryVersion = indexSource.match(/game\.js\?v=([^"']+)/)?.[1];
   const policyVersion = gameSource.match(/fire-policy\.js\?v=([^"']+)/)?.[1];
-  assert.equal(entryVersion, "20260731-fire2");
+  assert.equal(entryVersion, "20260731-physics1");
   assert.equal(policyVersion, entryVersion);
   assert.match(gameSource, /import \* as firePolicy/);
+});
+
+test("all seven paid projectile and net tiers have render assets", async () => {
+  for (let tier = 1; tier <= 7; tier += 1) {
+    await access(new URL(`../fishingassets/assets/bullet/bullet${tier}.png`, import.meta.url));
+    await access(new URL(`../fishingassets/assets/net/web${tier}.png`, import.meta.url));
+  }
 });
 
 test("venue cannon levels replace the legacy global list exactly", () => {

@@ -38,14 +38,17 @@ type fishingHub struct {
 	lifecycleLocks [64]sync.Mutex
 	mu             sync.Mutex
 	rooms          map[string]*fishingRoom
+	hits           chan fishingHit
 }
 
 type fishingRoom struct {
-	id        string
-	startedAt time.Time
-	sequence  int64
-	players   map[string]*fishingSocketPlayer
-	fishEpoch []int64
+	id             string
+	startedAt      time.Time
+	lastAdvancedAt time.Time
+	sequence       int64
+	players        map[string]*fishingSocketPlayer
+	fishEpoch      []int64
+	bullets        map[string]*fishingBullet
 }
 
 type fishingSocketPlayer struct {
@@ -54,6 +57,7 @@ type fishingSocketPlayer struct {
 	writeMu  sync.Mutex
 	angle    float64
 	bet      int64
+	eventSeq int64
 	fireRate fishingFireLimiter
 }
 
@@ -83,6 +87,34 @@ type fishingFish struct {
 	Tier       string  `json:"tier"`
 }
 
+type fishingBullet struct {
+	ID         string         `json:"id"`
+	CommandID  string         `json:"commandId"`
+	OwnerID    string         `json:"ownerId"`
+	UserID     int64          `json:"-"`
+	PlayerName string         `json:"playerName"`
+	X          float64        `json:"x"`
+	Y          float64        `json:"y"`
+	VX         float64        `json:"vx"`
+	VY         float64        `json:"vy"`
+	Angle      float64        `json:"angle"`
+	Radius     float64        `json:"radius"`
+	Power      int64          `json:"power"`
+	Path       []fishingPoint `json:"path,omitempty"`
+}
+
+type fishingPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type fishingHit struct {
+	roomID    string
+	bullet    fishingBullet
+	fish      fishingFish
+	fishIndex int
+}
+
 var fishingSpecies = []struct {
 	key        string
 	multiplier int
@@ -105,6 +137,9 @@ var fishingSpecies = []struct {
 const (
 	fishingFireTokensPerSecond = 9.0
 	fishingFireBurst           = 2.0
+	fishingBulletSpeed         = 820.0
+	fishingArenaWidth          = 1280.0
+	fishingArenaHeight         = 720.0
 )
 
 type fishingFireLimiter struct {
@@ -134,8 +169,12 @@ func (limiter *fishingFireLimiter) allow(now time.Time) bool {
 }
 
 func newFishingHub(gameService *game.Service, logger *slog.Logger) *fishingHub {
-	hub := &fishingHub{game: gameService, logger: logger, rooms: make(map[string]*fishingRoom)}
+	hub := &fishingHub{
+		game: gameService, logger: logger, rooms: make(map[string]*fishingRoom),
+		hits: make(chan fishingHit, 1024),
+	}
 	go hub.run()
+	go hub.resolveHits()
 	return hub
 }
 
@@ -143,7 +182,16 @@ func (h *fishingHub) run() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for now := range ticker.C {
+		for _, hit := range h.advanceFishingBullets(now) {
+			h.hits <- hit
+		}
 		h.broadcastSnapshots(now)
+	}
+}
+
+func (h *fishingHub) resolveHits() {
+	for hit := range h.hits {
+		h.resolveFishingHit(hit)
 	}
 }
 
@@ -200,6 +248,7 @@ func (h *fishingHub) serve(connection *websocket.Conn, profile game.FishingPlaye
 	player := &fishingSocketPlayer{
 		profile: profile, conn: connection,
 		angle: seatFacing(profile.Seat - 1), bet: profile.BetLevels[0],
+		eventSeq: profile.EventSeq,
 	}
 	lifecycle := h.lifecycleLock(profile.SessionID)
 	lifecycle.Lock()
@@ -318,9 +367,10 @@ func (h *fishingHub) add(player *fishingSocketPlayer) *fishingRoom {
 	room := h.rooms[roomID]
 	if room == nil {
 		room = &fishingRoom{
-			id: roomID, startedAt: time.Now(),
+			id: roomID, startedAt: time.Now(), lastAdvancedAt: time.Now(),
 			players:   make(map[string]*fishingSocketPlayer),
 			fishEpoch: make([]int64, 18),
+			bullets:   make(map[string]*fishingBullet),
 		}
 		h.rooms[roomID] = room
 	}
@@ -339,12 +389,12 @@ func (h *fishingHub) remove(roomID string, player *fishingSocketPlayer) bool {
 		return false
 	}
 	delete(room.players, player.profile.SessionID)
-	empty := len(room.players) == 0
-	if empty {
+	noPlayers := len(room.players) == 0
+	if noPlayers && len(room.bullets) == 0 {
 		delete(h.rooms, roomID)
 	}
 	h.mu.Unlock()
-	if player != nil && !empty {
+	if player != nil && !noPlayers {
 		h.broadcast(roomID, "room:notice", map[string]any{
 			"type": "player-left", "playerId": player.profile.SessionID,
 			"name": player.profile.Name, "message": player.profile.Name + " 离开了海域",
@@ -377,19 +427,15 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 		h.ack(player, message.RequestID, fishingFailure("NOT_JOINED", "捕鱼房间不存在"))
 		return
 	}
-	fishes := fishingFishes(room, time.Now())
-	target := nearestFishingTarget(player.profile.Seat-1, player.angle, fishes)
-	shotX, shotY := fishingRayExitPoint(player.profile.Seat-1, player.angle)
-	multiplier := 0
-	if target != nil {
-		shotX, shotY = target.X, target.Y
-		multiplier = target.Multiplier
-	}
+	angle := player.angle
 	bet := player.bet
 	h.mu.Unlock()
+
+	// Launches are charged immediately, but the capture chance is deliberately
+	// deferred until the authoritative projectile physically touches a fish.
 	result, err := h.game.FireFishing(
 		contextWithoutCancel(), player.profile.SessionID, player.profile.UserID,
-		payload.CommandID, bet, multiplier,
+		payload.CommandID, bet, 0,
 	)
 	if err != nil {
 		code, label := "FIRE_FAILED", "开炮失败"
@@ -415,16 +461,31 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 		return
 	}
 	h.mu.Lock()
-	if !result.Replayed {
+	if result.EventSeq >= player.eventSeq {
+		player.eventSeq = result.EventSeq
 		player.profile.EscrowBalance = result.Balance
 	}
+	activePlayer := room.players[player.profile.SessionID]
+	if activePlayer != nil && activePlayer != player && result.EventSeq >= activePlayer.eventSeq {
+		activePlayer.eventSeq = result.EventSeq
+		activePlayer.profile.EscrowBalance = result.Balance
+	}
 	currentBalance := player.profile.EscrowBalance
-	if !result.Replayed && result.Captured && target != nil {
-		for index := range room.fishEpoch {
-			if target.ID == fishingFishID(index, room.fishEpoch[index]) {
-				room.fishEpoch[index]++
-				break
-			}
+	if !result.Replayed {
+		originX, originY := seatOrigin(player.profile.Seat - 1)
+		radius := fishingBulletRadius(result.Bet)
+		originX += math.Cos(angle) * 72
+		originY += math.Sin(angle) * 72
+		originX = math.Max(radius, math.Min(fishingArenaWidth-radius, originX))
+		originY = math.Max(radius, math.Min(fishingArenaHeight-radius, originY))
+		room.bullets[result.CommandID] = &fishingBullet{
+			ID: result.CommandID, CommandID: result.CommandID,
+			OwnerID: player.profile.SessionID, UserID: player.profile.UserID,
+			PlayerName: player.profile.Name,
+			X:          originX, Y: originY,
+			VX:    math.Cos(angle) * fishingBulletSpeed,
+			VY:    math.Sin(angle) * fishingBulletSpeed,
+			Angle: angle, Radius: radius, Power: result.Bet,
 		}
 	}
 	h.mu.Unlock()
@@ -433,29 +494,251 @@ func (h *fishingHub) fire(player *fishingSocketPlayer, message fishingSocketMess
 		"bet": result.Bet, "power": result.Bet, "score": currentBalance,
 		"replayed": result.Replayed,
 	})
-	if result.Replayed {
-		return
+}
+
+func (h *fishingHub) advanceFishingBullets(now time.Time) []fishingHit {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	hits := make([]fishingHit, 0)
+	for _, room := range h.rooms {
+		elapsed := now.Sub(room.lastAdvancedAt).Seconds()
+		room.lastAdvancedAt = now
+		if elapsed <= 0 {
+			continue
+		}
+		// Avoid a process pause turning one physics update into an unbounded
+		// collision loop. Projectiles remain alive; only excess elapsed wall
+		// time is discarded.
+		elapsed = math.Min(elapsed, 0.25)
+		fishes := fishingFishes(room, now)
+		for id, bullet := range room.bullets {
+			fishIndex := advanceFishingBullet(bullet, fishes, elapsed)
+			if fishIndex < 0 {
+				continue
+			}
+			hits = append(hits, fishingHit{
+				roomID: room.id, bullet: *bullet,
+				fish: fishes[fishIndex], fishIndex: fishIndex,
+			})
+			delete(room.bullets, id)
+		}
+		if len(room.players) == 0 && len(room.bullets) == 0 {
+			delete(h.rooms, room.id)
+		}
 	}
+	return hits
+}
+
+func advanceFishingBullet(bullet *fishingBullet, fishes []fishingFish, elapsed float64) int {
+	if bullet == nil || elapsed <= 0 {
+		return -1
+	}
+	bullet.X = math.Max(bullet.Radius, math.Min(fishingArenaWidth-bullet.Radius, bullet.X))
+	bullet.Y = math.Max(bullet.Radius, math.Min(fishingArenaHeight-bullet.Radius, bullet.Y))
+	bullet.Path = append(bullet.Path[:0], fishingPoint{X: bullet.X, Y: bullet.Y})
+	remaining := elapsed
+	for segment := 0; segment < 12 && remaining > 0.000001; segment++ {
+		timeX := fishingBoundaryTime(
+			bullet.X, bullet.VX, bullet.Radius, fishingArenaWidth-bullet.Radius,
+		)
+		timeY := fishingBoundaryTime(
+			bullet.Y, bullet.VY, bullet.Radius, fishingArenaHeight-bullet.Radius,
+		)
+		step := remaining
+		if timeX < step {
+			step = timeX
+		}
+		if timeY < step {
+			step = timeY
+		}
+		if step < 0 {
+			step = 0
+		}
+		hitTime, fishIndex := firstFishingBulletHit(bullet, fishes, step)
+		if fishIndex >= 0 {
+			bullet.X += bullet.VX * hitTime
+			bullet.Y += bullet.VY * hitTime
+			bullet.Path = appendFishingPathPoint(bullet.Path, bullet.X, bullet.Y)
+			bullet.Angle = math.Atan2(bullet.VY, bullet.VX)
+			return fishIndex
+		}
+		bullet.X += bullet.VX * step
+		bullet.Y += bullet.VY * step
+		bullet.Path = appendFishingPathPoint(bullet.Path, bullet.X, bullet.Y)
+		remaining -= step
+
+		bounced := false
+		if timeX <= step+0.000001 {
+			bullet.X = math.Max(bullet.Radius, math.Min(fishingArenaWidth-bullet.Radius, bullet.X))
+			bullet.VX = -bullet.VX
+			bounced = true
+		}
+		if timeY <= step+0.000001 {
+			bullet.Y = math.Max(bullet.Radius, math.Min(fishingArenaHeight-bullet.Radius, bullet.Y))
+			bullet.VY = -bullet.VY
+			bounced = true
+		}
+		bullet.Angle = math.Atan2(bullet.VY, bullet.VX)
+		if !bounced {
+			break
+		}
+	}
+	return -1
+}
+
+func appendFishingPathPoint(path []fishingPoint, x, y float64) []fishingPoint {
+	if len(path) > 0 {
+		last := path[len(path)-1]
+		if math.Abs(last.X-x) < 0.000001 && math.Abs(last.Y-y) < 0.000001 {
+			return path
+		}
+	}
+	return append(path, fishingPoint{X: x, Y: y})
+}
+
+func fishingBoundaryTime(position, velocity, minimum, maximum float64) float64 {
+	if velocity > 0.000001 {
+		return math.Max(0, (maximum-position)/velocity)
+	}
+	if velocity < -0.000001 {
+		return math.Max(0, (minimum-position)/velocity)
+	}
+	return math.Inf(1)
+}
+
+func firstFishingBulletHit(
+	bullet *fishingBullet,
+	fishes []fishingFish,
+	duration float64,
+) (float64, int) {
+	if duration < 0 || bullet == nil {
+		return 0, -1
+	}
+	speedSquared := bullet.VX*bullet.VX + bullet.VY*bullet.VY
+	if speedSquared < 0.000001 {
+		return 0, -1
+	}
+	firstTime := math.Inf(1)
+	firstIndex := -1
+	for index := range fishes {
+		radius := bullet.Radius + fishingFishCollisionRadius(fishes[index])
+		offsetX := bullet.X - fishes[index].X
+		offsetY := bullet.Y - fishes[index].Y
+		c := offsetX*offsetX + offsetY*offsetY - radius*radius
+		hitTime := 0.0
+		if c > 0 {
+			b := 2 * (offsetX*bullet.VX + offsetY*bullet.VY)
+			discriminant := b*b - 4*speedSquared*c
+			if discriminant < 0 {
+				continue
+			}
+			hitTime = (-b - math.Sqrt(discriminant)) / (2 * speedSquared)
+			if hitTime < 0 {
+				continue
+			}
+		}
+		if hitTime <= duration+0.000001 && hitTime < firstTime {
+			firstTime = hitTime
+			firstIndex = index
+		}
+	}
+	return firstTime, firstIndex
+}
+
+func fishingFishCollisionRadius(fish fishingFish) float64 {
+	radius := fish.Radius * fish.Scale * 1.9
+	if fish.Multiplier >= 30 {
+		radius *= 1.1
+	}
+	return math.Max(30, radius)
+}
+
+func fishingBulletRadius(power int64) float64 {
+	return 6 + math.Min(3, math.Sqrt(float64(power))*0.35)
+}
+
+func (h *fishingHub) resolveFishingHit(hit fishingHit) {
+	multiplier := hit.fish.Multiplier
+	h.mu.Lock()
+	room := h.rooms[hit.roomID]
+	if room != nil && (hit.fishIndex < 0 || hit.fishIndex >= len(room.fishEpoch) ||
+		hit.fish.ID != fishingFishID(hit.fishIndex, room.fishEpoch[hit.fishIndex])) {
+		// Another projectile already captured this exact fish before this hit
+		// could settle. The physical hit and net still count, but it cannot pay
+		// the same fish twice.
+		multiplier = 0
+	}
+	h.mu.Unlock()
+
+	var result game.FishingFireResult
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err = h.game.ResolveFishingHit(
+			contextWithoutCancel(), hit.bullet.OwnerID, hit.bullet.UserID,
+			hit.bullet.CommandID, multiplier,
+		)
+		if err == nil || errors.Is(err, game.ErrSessionNotFound) {
+			break
+		}
+		time.Sleep(time.Duration(attempt+1) * 25 * time.Millisecond)
+	}
+	if err != nil && h.logger != nil {
+		h.logger.Error(
+			"fishing hit resolution",
+			"error", err,
+			"session_id", hit.bullet.OwnerID,
+			"user_id", hit.bullet.UserID,
+			"command_id", hit.bullet.CommandID,
+			"fish_id", hit.fish.ID,
+		)
+	}
+
+	score := int64(0)
+	captured := false
+	reward := int64(0)
+	resolvedMultiplier := multiplier
+	h.mu.Lock()
+	room = h.rooms[hit.roomID]
+	if err == nil {
+		captured = result.Captured
+		reward = result.Reward
+		resolvedMultiplier = result.Multiplier
+		score = result.Balance
+		if room != nil {
+			if player := room.players[hit.bullet.OwnerID]; player != nil &&
+				result.EventSeq >= player.eventSeq {
+				player.eventSeq = result.EventSeq
+				player.profile.EscrowBalance = result.Balance
+			}
+			if captured && hit.fishIndex >= 0 && hit.fishIndex < len(room.fishEpoch) &&
+				hit.fish.ID == fishingFishID(hit.fishIndex, room.fishEpoch[hit.fishIndex]) {
+				room.fishEpoch[hit.fishIndex]++
+			}
+		}
+	} else if room != nil {
+		if player := room.players[hit.bullet.OwnerID]; player != nil {
+			score = player.profile.EscrowBalance
+		}
+	}
+	h.mu.Unlock()
+
 	event := map[string]any{
-		"roomId": room.id, "playerId": player.profile.SessionID,
-		"playerName": player.profile.Name,
-		"commandId":  result.CommandID, "shotId": result.CommandID,
-		"captured": result.Captured, "multiplier": result.Multiplier,
-		"bet": result.Bet, "power": result.Bet, "reward": result.Reward,
-		"payout": result.Reward, "score": result.Balance,
-		"x": shotX, "y": shotY, "serverTime": time.Now().UnixMilli(),
+		"roomId": hit.roomID, "playerId": hit.bullet.OwnerID,
+		"playerName": hit.bullet.PlayerName,
+		"commandId":  hit.bullet.CommandID, "shotId": hit.bullet.CommandID,
+		"captured": captured, "multiplier": resolvedMultiplier,
+		"bet": hit.bullet.Power, "power": hit.bullet.Power,
+		"reward": reward, "payout": reward, "score": score,
+		"x": hit.bullet.X, "y": hit.bullet.Y,
+		"fishId": hit.fish.ID, "type": hit.fish.Type,
+		"fishType": hit.fish.Type, "assetKey": hit.fish.AssetKey,
+		"serverTime": time.Now().UnixMilli(),
 	}
-	if target != nil {
-		event["fishId"] = target.ID
-		event["type"] = target.Type
-		event["fishType"] = target.Type
-		event["assetKey"] = target.AssetKey
-	}
-	h.broadcast(room.id, "shot:resolved", event)
-	if result.Captured {
-		h.broadcast(room.id, "game:catch", event)
+	h.broadcast(hit.roomID, "shot:resolved", event)
+	if captured {
+		h.broadcast(hit.roomID, "game:catch", event)
 	} else {
-		h.broadcast(room.id, "game:catch-failed", event)
+		h.broadcast(hit.roomID, "game:catch-failed", event)
 	}
 }
 
@@ -538,10 +821,16 @@ func fishingSnapshot(room *fishingRoom, now time.Time) map[string]any {
 			"x":         x, "y": y,
 		})
 	}
+	bullets := make([]fishingBullet, 0, len(room.bullets))
+	for _, bullet := range room.bullets {
+		item := *bullet
+		item.Path = append([]fishingPoint(nil), bullet.Path...)
+		bullets = append(bullets, item)
+	}
 	return map[string]any{
 		"seq": room.sequence, "serverTime": now.UnixMilli(), "roomId": room.id,
 		"width": 1280, "height": 720, "seatLayout": "four-seat-top-bottom",
-		"players": players, "fishes": fishingFishes(room, now), "bullets": []any{},
+		"players": players, "fishes": fishingFishes(room, now), "bullets": bullets,
 	}
 }
 
