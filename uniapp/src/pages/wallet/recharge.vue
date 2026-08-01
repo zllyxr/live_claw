@@ -139,18 +139,18 @@ const canTapCharge = computed(
     !submitting.value &&
     !pending.value &&
     walletUID.value === currentUID() &&
-    Boolean(selectedRule.value) &&
-    Boolean(selectedPay.value)
+    paymentAvailable(selectedPay.value) &&
+    ruleAvailable(selectedRule.value)
 );
 const chargeButtonText = computed(() => {
   if (pending.value) {
     return "请先完成待支付订单";
   }
   if (selectedPay.value && !paymentAvailable(selectedPay.value)) {
-    return "支付通道配置中 · 点击查看";
+    return "支付通道暂不可用";
   }
   if (selectedRule.value && !ruleAvailable(selectedRule.value)) {
-    return "充值档位预览 · 点击查看";
+    return "充值档位暂不可用";
   }
   if (!selectedRule.value) {
     return "请选择充值金额";
@@ -430,16 +430,11 @@ async function charge() {
   if (!canTapCharge.value || !rule || !pay) {
     return;
   }
-  // Preview and malformed catalog entries must stop before trace lookup,
-  // local storage writes, or any payment-order request.
+  // Malformed or disabled catalog entries must stop before trace lookup,
+  // local storage writes, or any payment-order request. Production never
+  // presents fake payment methods or non-ordering preview tiers.
   if (!paymentAvailable(pay) || !ruleAvailable(rule)) {
-    uni.showModal({
-      title: "效果预览",
-      content:
-        "当前支付方式和充值档位已展示。配置收款钱包与 API Token 后即可真实下单；目前不会生成充值订单。",
-      showCancel: false,
-      confirmColor: "#ff5878"
-    });
+    uni.showToast({ title: "支付配置不可用，请联系管理员", icon: "none" });
     return;
   }
   const uid = currentUID();
