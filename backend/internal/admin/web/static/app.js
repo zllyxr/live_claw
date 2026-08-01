@@ -8,6 +8,8 @@
   const state = {
     me: null,
     route: "",
+    section: "",
+    routeKey: "",
     cache: {},
     tableSequence: 0,
     tables: {},
@@ -29,6 +31,20 @@
     app: ["App 管理", "客户端版本", "原生强制更新与 WGT 静默热更新"],
     rbac: ["角色与权限", "管理员权限", "最小权限角色和管理员授权"],
     system: ["系统设置", "系统设置与审计", "配置版本控制、密钥掩码和完整审计"]
+  };
+
+  const pageSections = {
+    users: [["users", "用户列表"], ["teams", "团队管理"]],
+    wallet: [["ledger", "资金流水"], ["adjustments", "后台调账"],
+      ["recharges", "充值订单"], ["withdrawals", "提现订单"]],
+    payments: [["channels", "支付通道"], ["banks", "收款银行卡"],
+      ["products", "充值商品"], ["orders", "充值订单"]],
+    games: [["catalog", "游戏目录"], ["venues", "捕鱼场次"]],
+    lottery: [["games", "彩种列表"], ["categories", "彩票分类"], ["issues", "期号管理"]],
+    sports: [["matches", "赛事管理"], ["sync", "同步状态"]],
+    bets: [["lottery", "彩票投注"], ["sports", "体育投注"], ["games", "游戏结算"]],
+    rbac: [["admins", "管理员"], ["roles", "角色"], ["permissions", "权限字典"]],
+    system: [["settings", "系统设置"], ["audit", "审计日志"]]
   };
 
   const metricLabels = [
@@ -224,7 +240,7 @@
   }
 
   function tablePreferenceKey(key, route) {
-    return String(route || state.route) + ":" + key;
+    return String(route || state.routeKey || state.route) + ":" + key;
   }
 
   function remoteTableURL(key, path, extraParams, route) {
@@ -244,7 +260,7 @@
   }
 
   async function remoteTableData(key, path, extraParams) {
-    const requestRoute = state.route;
+    const requestRoute = state.routeKey || state.route;
     const preferenceKey = tablePreferenceKey(key, requestRoute);
     const data = await api(remoteTableURL(key, path, extraParams, requestRoute));
     const pageSize = Math.max(1, Number(data.page_size || 10));
@@ -523,6 +539,39 @@
       '" data-action="' + esc(action) + '" data-id="' + esc(id) + '">' + esc(label) + "</button>";
   }
 
+  function disabledButton(label, reason, style) {
+    return '<span class="disabled-action"><button type="button" class="layui-btn layui-btn-sm ' +
+      (style || "layui-btn-primary") + '" disabled aria-disabled="true" title="' + esc(reason) + '">' +
+      esc(label) + '</button><small>' + esc(reason) + "</small></span>";
+  }
+
+  function routeButton(label, route, section, style) {
+    return '<a class="layui-btn layui-btn-sm ' + (style || "layui-btn-primary") + '" href="#' +
+      esc(route) + "/" + esc(section) + '">' + esc(label) + "</a>";
+  }
+
+  function normalizedSection(route, requestedSection) {
+    const sections = pageSections[route] || [];
+    const requested = String(requestedSection || "");
+    return (sections.find((item) => item[0] === requested) || sections[0] || [""])[0];
+  }
+
+  function sectionNavigation(route, activeSection) {
+    const sections = pageSections[route] || [];
+    if (!sections.length) return "";
+    return '<nav class="admin-tabs" aria-label="' + esc((pages[route] || pages.dashboard)[1]) +
+      '二级导航" role="tablist">' + sections.map((item) =>
+        '<a class="admin-tab ' + (activeSection === item[0] ? "active" : "") +
+        '" role="tab" aria-selected="' + (activeSection === item[0] ? "true" : "false") +
+        '" href="#' + esc(route) + "/" + esc(item[0]) + '">' + esc(item[1]) + "</a>"
+      ).join("") + "</nav>";
+  }
+
+  function sectionBody(route, activeSection, bodies) {
+    const fallback = normalizedSection(route, "");
+    return sectionNavigation(route, activeSection) + (bodies[activeSection] || bodies[fallback] || "");
+  }
+
   function userActionButtons(row) {
     const buttons = [];
     if (has("users.write")) {
@@ -551,7 +600,8 @@
   function isCurrentRouteLoad(loadContext) {
     return Boolean(loadContext &&
       loadContext.serial === state.routeLoadSerial &&
-      loadContext.route === state.route);
+      loadContext.route === state.route &&
+      loadContext.section === state.section);
   }
 
   async function dashboard(loadContext) {
@@ -580,7 +630,8 @@
     state.cache.teams = result[1].items;
     state.cache.teamOptions = null;
     state.cache.teamOptionsPromise = null;
-    if (has("users.write")) {
+    const activeSection = loadContext.section;
+    if (has("users.write") && activeSection === "teams") {
       actions.insertAdjacentHTML("afterbegin",
         '<button class="layui-btn" data-action="team-create">新建团队</button>');
     }
@@ -619,8 +670,10 @@
       hasMore: result[1].has_more,
       remote: { path: "/admin/api/teams", cacheName: "teams" }
     });
-    content.innerHTML = panel("用户列表", "余额、团队和账号状态", userTable) +
-      panel("团队列表", "邀请码前三位即团队代码", teamTable);
+    content.innerHTML = sectionBody("users", activeSection, {
+      users: panel("用户列表", "余额、团队和账号状态", userTable),
+      teams: panel("团队管理", "邀请码前三位即团队代码", teamTable)
+    });
   }
 
   async function walletView(loadContext) {
@@ -634,7 +687,8 @@
     state.cache.adjustments = result[3].items;
     state.cache.recharges = result[1].items;
     state.cache.withdrawals = result[2].items;
-    if (has("wallet.review")) {
+    const activeSection = loadContext.section;
+    if (has("wallet.review") && activeSection === "adjustments") {
       actions.insertAdjacentHTML("afterbegin",
         '<button class="layui-btn" data-action="adjustment-create">发起调账</button>');
     }
@@ -708,9 +762,12 @@
       hasMore: result[2].has_more,
       remote: { path: "/admin/api/wallet/withdrawals", cacheName: "withdrawals" }
     });
-    content.innerHTML = panel("资金流水", "账本不可修改；游戏流水精确到场、桌和局", ledger) +
-      panel("后台调账", "申请人与审核人必须为不同管理员", adjustments) +
-      '<div class="subgrid">' + panel("充值订单", "", recharge) + panel("提现订单", "", withdrawal) + "</div>";
+    content.innerHTML = sectionBody("wallet", activeSection, {
+      ledger: panel("资金流水", "账本不可修改；游戏流水精确到场、桌和局", ledger),
+      adjustments: panel("后台调账", "申请人与审核人必须为不同管理员", adjustments),
+      recharges: panel("充值订单", "异常人工入账需要资金审核权限", recharge),
+      withdrawals: panel("提现订单", "提现审核和打款状态独立管理", withdrawal)
+    });
   }
 
   async function paymentsView(loadContext) {
@@ -725,10 +782,13 @@
     state.cache.paymentProducts = result[1].items;
     state.cache.paymentRecharges = result[2].items;
     state.cache.paymentBankAccounts = result[3].items;
+    const activeSection = loadContext.section;
     if (has("payments.write")) {
-      actions.insertAdjacentHTML("afterbegin",
-        '<button class="layui-btn" data-action="payment-product-create">新增充值商品</button>' +
-        '<button class="layui-btn layui-btn-normal" data-action="payment-bank-create">新增收款银行卡</button>');
+      const actionBySection = {
+        banks: '<button class="layui-btn layui-btn-normal" data-action="payment-bank-create">新增收款银行卡</button>',
+        products: '<button class="layui-btn" data-action="payment-product-create">新增充值商品</button>'
+      };
+      actions.insertAdjacentHTML("afterbegin", actionBySection[activeSection] || "");
     }
 
     const channels = table([
@@ -747,7 +807,7 @@
           '<div class="payment-config-state">' + statusTag(
             state.cache.paymentBankAccounts.some((account) => Number(account.status) === 1) ? 1 : 0,
             { 1: ["收款卡可用", "ok"], 0: ["请先启用收款卡", "warn"] }
-          ) + "</div>" : '<div class="payment-config-state">' +
+          ) + "</div>" : row.provider === "bepusdt" ? '<div class="payment-config-state">' +
           statusTag(row.config_valid ? 1 : 0, {
             1: ["配置有效", "ok"], 0: [row.config_error || "未配置", "bad"]
           }) +
@@ -756,7 +816,8 @@
           }) +
           statusTag(row.config_verified ? 1 : 0, {
             1: ["签名检查通过", "ok"], 0: ["待签名检查", "warn"]
-          }) + "</div>"
+          }) + "</div>" : '<div class="payment-config-state">' +
+          statusTag(0, { 0: ["服务端尚未接入", "warn"] }) + "</div>"
       },
       {
         label: "接口 / 类型",
@@ -776,22 +837,38 @@
       {
         label: "操作",
         render: (row) => {
-          if (!has("payments.write")) return "—";
+          if (!has("payments.write")) {
+            return '<span class="read-only-reason">只读：缺少 payments.write 权限</span>';
+          }
           const controls = [];
           if (row.provider === "bepusdt") {
             controls.push(button("编辑配置", "payment-channel-edit", row.id, "layui-btn-normal"));
             if (row.config_valid) {
               controls.push(button("协议检查", "payment-channel-check", row.id, "layui-btn-warm"));
+            } else {
+              controls.push(disabledButton("协议检查", "请先完成通道配置", "layui-btn-warm"));
             }
-            if (Number(row.status) === 1 || row.config_verified) {
+            if (Number(row.status) === 1) {
+              controls.push(button("停用", "payment-channel-status", row.id, "layui-btn-danger"));
+            } else if (row.config_verified) {
               controls.push(button(Number(row.status) === 1 ? "停用" : "启用",
                 "payment-channel-status", row.id,
                 Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary"));
+            } else {
+              controls.push(disabledButton("启用", "配置并通过协议检查后可启用"));
             }
           } else if (row.provider === "manual_bank") {
-            controls.push(button(Number(row.status) === 1 ? "停用" : "启用",
-              "payment-channel-status", row.id,
-              Number(row.status) === 1 ? "layui-btn-danger" : "layui-btn-primary"));
+            controls.push(routeButton("管理银行卡", "payments", "banks", "layui-btn-normal"));
+            if (Number(row.status) === 1) {
+              controls.push(button("停用", "payment-channel-status", row.id, "layui-btn-danger"));
+            } else if (state.cache.paymentBankAccounts.some((account) => Number(account.status) === 1)) {
+              controls.push(button("启用", "payment-channel-status", row.id));
+            } else {
+              controls.push(disabledButton("启用", "请先新增并启用收款银行卡"));
+            }
+          } else {
+            controls.push(disabledButton("编辑", "该服务商尚未接入服务端", "layui-btn-normal"));
+            controls.push(disabledButton("启用", "该服务商尚未接入服务端"));
           }
           return controls.length ? '<div class="row-actions">' + controls.join("") + "</div>" : "—";
         }
@@ -951,11 +1028,18 @@
       remote: { path: "/admin/api/payments/recharges", cacheName: "paymentRecharges" }
     });
 
-    content.innerHTML =
-      panel("支付通道", "BEpusdt 需签名检查；银行卡通道至少需要一张启用的收款卡", channels) +
-      panel("收款银行卡", "卡号与持卡人加密保存；列表仅显示掩码，已分配订单使用不可变快照", bankAccounts) +
-      panel("充值商品", "前端只展示启用商品；金额按法币最小单位存储", products) +
-      panel("充值订单", "银行卡凭证确认后才入账；驳回凭证会立即关闭订单", recharges);
+    const permissionNotice = '<div class="permission-notice ' +
+      (has("payments.write") ? "ok" : "warn") + '"><strong>' +
+      (has("payments.write") ? "当前账号可编辑支付配置" : "当前账号仅有查看权限") +
+      '</strong><span>' + (has("payments.write") ?
+        "不满足启用条件的按钮会保留并显示原因。" :
+        "需要管理员授予 payments.write 后才能编辑或启停。") + "</span></div>";
+    content.innerHTML = sectionNavigation("payments", activeSection) + permissionNotice + ({
+      channels: panel("支付通道", "BEpusdt 需签名检查；银行卡通道至少需要一张启用的收款卡", channels),
+      banks: panel("收款银行卡", "卡号与持卡人加密保存；列表仅显示掩码，已分配订单使用不可变快照", bankAccounts),
+      products: panel("充值商品", "前端只展示启用商品；金额按法币最小单位存储", products),
+      orders: panel("充值订单", "银行卡凭证确认后才入账；驳回凭证会立即关闭订单", recharges)
+    }[activeSection] || "");
   }
 
   async function games(loadContext) {
@@ -963,6 +1047,7 @@
     if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.games = data.items;
     state.cache.venues = data.venues;
+    const activeSection = loadContext.section;
     const gameTable = table([
       { label: "游戏", render: (row) => "<strong>" + esc(row.name) + "</strong><br><small>" + esc(row.game_code) + "</small>" },
       { label: "分类", key: "category" }, { label: "玩家", render: (row) => esc(row.min_players + " - " + row.max_players) },
@@ -980,8 +1065,10 @@
       { label: "RTP", render: (row) => (Number(row.target_rtp_ppm) / 10000).toFixed(2) + "%" },
       { label: "操作", render: (row) => has("games.write") ? button("配置", "venue-edit", row.id) : "—" }
     ], data.venues);
-    content.innerHTML = panel("游戏目录", "前端入口与游戏开关", gameTable) +
-      panel("深海猎手场次", "固定 300 桌、每桌 4 座，随机分配空座", venueTable);
+    content.innerHTML = sectionBody("games", activeSection, {
+      catalog: panel("游戏目录", "前端入口与游戏开关", gameTable),
+      venues: panel("深海猎手场次", "固定 300 桌、每桌 4 座，随机分配空座", venueTable)
+    });
   }
 
   async function liveView(loadContext) {
@@ -1033,14 +1120,14 @@
     state.cache.lotteryPlays = data.plays || [];
     state.cache.lotteryOptions = data.options || [];
     state.cache.lotteryIssues = issueData.items || [];
-    const activeTab = state.cache.lotteryTab || "games";
+    const activeSection = loadContext.section;
     if (has("lottery.write")) {
       const actionByTab = {
         games: '<button class="layui-btn" data-action="lottery-game">新增彩种</button>',
         categories: '<button class="layui-btn" data-action="lottery-category">新增分类</button>',
         issues: '<button class="layui-btn layui-btn-warm" data-action="lottery-issue">新建期号</button>'
       };
-      actions.insertAdjacentHTML("afterbegin", actionByTab[activeTab] || "");
+      actions.insertAdjacentHTML("afterbegin", actionByTab[activeSection] || "");
     }
     const gameTable = table([
       { label: "彩种", render: (row) => "<strong>" + esc(row.name) + "</strong><br><small>" + esc(row.game_code) + "</small>" },
@@ -1095,16 +1182,12 @@
       hasMore: issueData.has_more,
       remote: { path: "/admin/api/lottery/issues", cacheName: "lotteryIssues" }
     });
-    const tabs = '<div class="admin-tabs" role="tablist">' + [
-      ["games", "彩种列表"], ["categories", "彩票分类"], ["issues", "期号管理"]
-    ].map((item) => '<button class="admin-tab ' + (activeTab === item[0] ? "active" : "") +
-      '" data-action="lottery-tab" data-id="' + item[0] + '">' + item[1] + "</button>").join("") + "</div>";
     const bodyByTab = {
       games: panel("彩种列表", "玩法只在彩种配置弹窗中维护，不铺满主页面", gameTable),
       categories: panel("彩票分类", "分类与彩种列表独立维护", categoryTable),
       issues: panel("彩票期号", "封盘、开奖和结算状态", issueTable)
     };
-    content.innerHTML = tabs + (bodyByTab[activeTab] || bodyByTab.games);
+    content.innerHTML = sectionBody("lottery", activeSection, bodyByTab);
   }
 
   async function sportsView(loadContext) {
@@ -1116,7 +1199,8 @@
     const data = results[0];
     const sync = results[1];
     state.cache.sports = data.items;
-    if (has("sports.write")) {
+    const activeSection = loadContext.section;
+    if (has("sports.write") && activeSection === "matches") {
       actions.insertAdjacentHTML("afterbegin",
         '<button class="layui-btn" data-action="sports-create">新增赛事</button>');
     }
@@ -1164,9 +1248,10 @@
       { label: "说明", render: () => sync.logs && sync.logs.length && sync.logs[0].error_message ?
         esc(sync.logs[0].error_message) : "API-Football 真实赛事与赔率" }
     ], [sync]);
-    content.innerHTML =
-      panel("体育数据同步", "未配置 V2_SPORTS_API_KEY 时不会生成模拟赛事或赔率", syncTable) +
-      panel("体育赛事", "后台维护赛事、封盘、赛果和结算状态", matchTable);
+    content.innerHTML = sectionBody("sports", activeSection, {
+      matches: panel("体育赛事", "后台维护赛事、封盘、赛果和结算状态", matchTable),
+      sync: panel("体育数据同步", "未配置 V2_SPORTS_API_KEY 时不会生成模拟赛事或赔率", syncTable)
+    });
   }
 
   function betOrderTable(rows, statusLabels, options) {
@@ -1199,6 +1284,7 @@
     const lotteryOrders = result[1];
     const sportsOrders = result[2];
     const gameOrders = result[3];
+    const activeSection = loadContext.section;
     const groups = [
       ["lottery", "彩票投注"], ["sports", "体育投注"], ["games", "游戏结算"]
     ];
@@ -1216,8 +1302,8 @@
     const gameLabels = {
       0: ["处理中", "warn"], 1: ["已结算", "ok"], 2: ["失败", "bad"]
     };
-    content.innerHTML = metrics +
-      panel("彩票投注订单", "按期号记录投注和派彩", betOrderTable(
+    const bodies = {
+      lottery: panel("彩票投注订单", "按期号记录投注和派彩", betOrderTable(
         lotteryOrders.items, betLabels, {
           key: "bets-lottery",
           page: lotteryOrders.page,
@@ -1225,8 +1311,8 @@
           total: lotteryOrders.total,
           hasMore: lotteryOrders.has_more,
           remote: { path: "/admin/api/bets/lottery" }
-        })) +
-      panel("体育投注订单", "按赛事记录投注和派彩", betOrderTable(
+        })),
+      sports: panel("体育投注订单", "按赛事记录投注和派彩", betOrderTable(
         sportsOrders.items, betLabels, {
           key: "bets-sports",
           page: sportsOrders.page,
@@ -1234,8 +1320,8 @@
           total: sportsOrders.total,
           hasMore: sportsOrders.has_more,
           remote: { path: "/admin/api/bets/sports" }
-        })) +
-      panel("游戏逐场结算", "精确到游戏、场次、桌号与会话", betOrderTable(
+        })),
+      games: panel("游戏逐场结算", "精确到游戏、场次、桌号与会话", betOrderTable(
         gameOrders.items, gameLabels, {
           key: "bets-game",
           page: gameOrders.page,
@@ -1243,7 +1329,10 @@
           total: gameOrders.total,
           hasMore: gameOrders.has_more,
           remote: { path: "/admin/api/bets/game" }
-        }));
+        }))
+    };
+    content.innerHTML = sectionNavigation("bets", activeSection) + metrics +
+      (bodies[activeSection] || bodies.lottery);
   }
 
   async function imView(loadContext) {
@@ -1328,10 +1417,13 @@
     const data = await api("/admin/api/rbac");
     if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.rbac = data;
+    const activeSection = loadContext.section;
     if (has("rbac.write")) {
-      actions.insertAdjacentHTML("afterbegin",
-        '<button class="layui-btn" data-action="role-create">新建角色</button>' +
-        '<button class="layui-btn layui-btn-normal" data-action="admin-create">新建管理员</button>');
+      const actionBySection = {
+        admins: '<button class="layui-btn layui-btn-normal" data-action="admin-create">新建管理员</button>',
+        roles: '<button class="layui-btn" data-action="role-create">新建角色</button>'
+      };
+      actions.insertAdjacentHTML("afterbegin", actionBySection[activeSection] || "");
     }
     const adminTable = table([
       { label: "账号", render: (row) => "<strong>" + esc(row.display_name || row.username) +
@@ -1361,9 +1453,11 @@
       { label: "模块 / 动作", render: (row) => esc(row.module + " / " + row.action) },
       { label: "说明", render: (row) => esc(row.description || "—"), className: "wrap" }
     ], data.permissions);
-    content.innerHTML = panel("管理员", "管理员会话 12 小时过期，变更权限立即生效", adminTable) +
-      panel("角色", "超级管理员及客服系统角色受保护，其他角色可配置权限", roleTable) +
-      panel("权限字典", "角色授权时可按权限 ID 选择", permissionTable);
+    content.innerHTML = sectionBody("rbac", activeSection, {
+      admins: panel("管理员", "管理员会话 12 小时过期，变更权限立即生效", adminTable),
+      roles: panel("角色", "超级管理员及客服系统角色受保护，其他角色可配置权限", roleTable),
+      permissions: panel("权限字典", "角色授权时可按权限 ID 选择", permissionTable)
+    });
   }
 
   async function systemView(loadContext) {
@@ -1373,6 +1467,7 @@
     ]);
     if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.settings = result[0].items;
+    const activeSection = loadContext.section;
     const settingTable = table([
       { label: "设置项", render: (row) => "<strong>" + esc(row.key) + "</strong>" },
       { label: "值", render: (row) => '<pre class="json-block">' + esc(JSON.stringify(row.value, null, 2)) + "</pre>", className: "wrap" },
@@ -1392,8 +1487,10 @@
       hasMore: result[1].has_more,
       remote: { path: "/admin/api/system/audit" }
     });
-    content.innerHTML = panel("系统设置", "密钥只显示是否已配置，不回传明文", settingTable) +
-      panel("审计日志", "后台重要操作不可静默执行", auditTable);
+    content.innerHTML = sectionBody("system", activeSection, {
+      settings: panel("系统设置", "密钥只显示是否已配置，不回传明文", settingTable),
+      audit: panel("审计日志", "后台重要操作不可静默执行", auditTable)
+    });
   }
 
   const loaders = {
@@ -1412,10 +1509,14 @@
   }
 
   async function loadRoute() {
-    const requestedRoute = (window.location.hash || "#dashboard").slice(1);
+    const requestedPath = (window.location.hash || "#dashboard").slice(1).split("/");
+    const requestedRoute = requestedPath[0];
     const route = pages[requestedRoute] ? requestedRoute : "dashboard";
-    const loadContext = { route, serial: ++state.routeLoadSerial };
+    const section = normalizedSection(route, requestedPath[1]);
+    const loadContext = { route, section, serial: ++state.routeLoadSerial };
     state.route = route;
+    state.section = section;
+    state.routeKey = route + (section ? "/" + section : "");
     if (layer) layer.closeAll("page");
     resetTableRegistry();
     setHeader(route);
@@ -2082,10 +2183,6 @@
       return;
     }
     if (action === "refresh") return loadRoute();
-    if (action === "lottery-tab") {
-      state.cache.lotteryTab = id || "games";
-      return loadRoute();
-    }
     if (action === "user-edit") {
       const row = cached("users", id);
       if (!row) {
