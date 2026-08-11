@@ -1,6 +1,6 @@
 {
   "name": "星域",
-  "appid": "__UNI__CLAWMVP",
+  "appid": "__UNI__D917A6C",
   "description": "星域 uni-app Android MVP",
   "versionName": "8.1.1",
   "versionCode": "211",
@@ -64,10 +64,10 @@
       },
       "icons": {
         "android": {
-          "hdpi": "static/brand/icon.webp",
-          "xhdpi": "static/brand/icon.webp",
-          "xxhdpi": "static/brand/icon.webp",
-          "xxxhdpi": "static/brand/icon.webp"
+          "hdpi": "static/brand/icon.png",
+          "xhdpi": "static/brand/icon.png",
+          "xxhdpi": "static/brand/icon.png",
+          "xxxhdpi": "static/brand/icon.png"
         }
       }
     }
