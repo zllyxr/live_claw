@@ -110,7 +110,7 @@ async function fetchUpdateInfo(
         device_id: updateDeviceID(),
         language: DEFAULT_LANGUAGE
       },
-      timeout: 10_000,
+      timeout: 30_000,
       success: (response) => {
         const payload = response.data as { data?: { code?: unknown; info?: UpdateInfo[] } };
         const body = payload?.data;

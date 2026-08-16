@@ -3,7 +3,7 @@
   "appid": "__UNI__D917A6C",
   "description": "星域 uni-app Android MVP",
   "versionName": "8.1.1",
-  "versionCode": "213",
+  "versionCode": "214",
   "transformPx": false,
   "h5": {
     "publicPath": "/",
