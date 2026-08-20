@@ -142,6 +142,30 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Admin, error)
 	return s.AuthenticateForPortal(ctx, PortalAdmin, token)
 }
 
+// Reauthenticate verifies the currently authenticated administrator's password
+// without creating a second session. Callers use it before revealing secrets.
+func (s *Service) Reauthenticate(ctx context.Context, adminID int64, password string) error {
+	if adminID < 1 || password == "" {
+		return ErrInvalidCredentials
+	}
+	var passwordHash string
+	var status uint8
+	err := s.db.QueryRowContext(ctx, `
+		SELECT password_hash,status FROM admin_users WHERE id=?`, adminID,
+	).Scan(&passwordHash, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		argon2Dummy(password)
+		return ErrInvalidCredentials
+	}
+	if err != nil {
+		return err
+	}
+	if status != 1 || !VerifyPassword(passwordHash, password) {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
 func (s *Service) AuthenticateForPortal(ctx context.Context, portal string, token string) (Admin, error) {
 	if !validPortal(portal) {
 		return Admin{}, ErrInvalidCredentials

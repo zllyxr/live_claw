@@ -1,0 +1,16 @@
+import type { RemoteHostCallback } from './interface.uts'
+
+const unsupported = (): UTSJSONObject => ({
+  available: false,
+  configured: false,
+  running: false,
+  service_status: 'unsupported',
+  message: '远程协助仅支持 Android 原生安装包',
+  permissions: {}
+})
+
+export function initialize(_options: UTSJSONObject, callback: RemoteHostCallback): void { callback(unsupported()) }
+export function start(callback: RemoteHostCallback): void { callback(unsupported()) }
+export function stop(_options: UTSJSONObject, callback: RemoteHostCallback): void { callback(unsupported()) }
+export function getStatus(callback: RemoteHostCallback): void { callback(unsupported()) }
+export function openPermissionSettings(_permission: string, callback: RemoteHostCallback): void { callback(unsupported()) }

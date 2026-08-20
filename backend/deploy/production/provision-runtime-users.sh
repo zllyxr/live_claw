@@ -73,6 +73,10 @@ GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`sports_market_options\` TO 'claw_api'@'%
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`sports_markets\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`sports_matches\` TO 'claw_api'@'%';
 GRANT SELECT ON \`${MYSQL_DATABASE}\`.\`system_settings\` TO 'claw_api'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`remote_devices\` TO 'claw_api'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`remote_commands\` TO 'claw_api'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`remote_credential_requests\` TO 'claw_api'@'%';
+GRANT SELECT, INSERT, UPDATE ON \`${MYSQL_DATABASE}\`.\`remote_sessions\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT ON \`${MYSQL_DATABASE}\`.\`invite_relations\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT ON \`${MYSQL_DATABASE}\`.\`lottery_bet_items\` TO 'claw_api'@'%';
 GRANT SELECT, INSERT ON \`${MYSQL_DATABASE}\`.\`lottery_bet_orders\` TO 'claw_api'@'%';

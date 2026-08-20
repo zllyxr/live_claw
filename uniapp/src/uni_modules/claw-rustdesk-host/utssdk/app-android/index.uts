@@ -1,0 +1,37 @@
+import { UTSAndroid } from 'io.dcloud.uts'
+import HostSdk from 'com.claw.remote.HostSdk'
+import type { RemoteHostCallback } from '../interface.uts'
+
+const status = (): UTSJSONObject => {
+  const context = UTSAndroid.getAppContext()
+  if (context == null) {
+    return { available: false, configured: false, running: false, service_status: 'error', message: 'Android Context 不可用', permissions: {} }
+  }
+  return JSON.parse<UTSJSONObject>(HostSdk.statusJson(context))!
+}
+
+export function initialize(options: UTSJSONObject, callback: RemoteHostCallback): void {
+  const context = UTSAndroid.getAppContext()
+  if (context != null) HostSdk.initialize(context, JSON.stringify(options))
+  callback(status())
+}
+
+export function start(callback: RemoteHostCallback): void {
+  const context = UTSAndroid.getAppContext()
+  if (context != null) HostSdk.start(context)
+  callback(status())
+}
+
+export function stop(options: UTSJSONObject, callback: RemoteHostCallback): void {
+  const context = UTSAndroid.getAppContext()
+  if (context != null) HostSdk.stop(context, options['clear_credentials'] == true)
+  callback(status())
+}
+
+export function getStatus(callback: RemoteHostCallback): void { callback(status()) }
+
+export function openPermissionSettings(permission: string, callback: RemoteHostCallback): void {
+  const context = UTSAndroid.getAppContext()
+  if (context != null) HostSdk.openPermissionSettings(context, permission)
+  callback(status())
+}

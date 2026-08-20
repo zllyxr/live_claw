@@ -339,6 +339,13 @@
       }
     },
     {
+      "path": "pages/remote/index",
+      "style": {
+        "navigationBarTitleText": "远程协助",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/service/chat",
       "style": {
         "navigationBarTitleText": "平台客服"

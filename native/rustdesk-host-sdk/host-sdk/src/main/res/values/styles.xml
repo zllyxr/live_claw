@@ -1,0 +1,7 @@
+<resources>
+    <style name="ClawRemoteTransparentTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorAccent">#6C4DE6</item>
+    </style>
+</resources>

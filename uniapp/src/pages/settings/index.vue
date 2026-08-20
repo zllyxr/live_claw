@@ -9,6 +9,10 @@
         <text>修改密码</text>
         <text class="arrow">›</text>
       </view>
+      <view class="menu-item" @tap="openRemote">
+        <text>远程协助</text>
+        <text class="arrow">›</text>
+      </view>
       <view class="menu-item" @tap="openCancel">
         <text>账号注销</text>
         <text class="arrow">›</text>
@@ -38,6 +42,12 @@ function openProfile() {
 function openPassword() {
   if (requireLogin()) {
     uni.navigateTo({ url: "/pages/settings/password" });
+  }
+}
+
+function openRemote() {
+  if (requireLogin()) {
+    uni.navigateTo({ url: "/pages/remote/index" });
   }
 }
 

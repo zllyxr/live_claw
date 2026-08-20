@@ -12,6 +12,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
 	"github.com/zllyxr/live_claw/backend/internal/config"
 	"github.com/zllyxr/live_claw/backend/internal/live"
+	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/servicehost"
 	"github.com/zllyxr/live_claw/backend/internal/storage"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
@@ -44,10 +45,20 @@ func main() {
 		logger.Error("ensure minio buckets", "error", err)
 		os.Exit(1)
 	}
+	remoteService, err := remoteassist.New(dependencies.DB, cfg.DataEncryptionKey, remoteassist.Config{
+		Enabled: cfg.RemoteAssistanceEnabled, IDServer: cfg.RustDeskIDServer,
+		AllowedUserIDs: cfg.RemoteAssistanceAllowedUserIDs,
+		RelayServer:    cfg.RustDeskRelayServer, APIServer: cfg.RustDeskAPIServer,
+		PublicKey: cfg.RustDeskPublicKey,
+	})
+	if err != nil {
+		logger.Error("initialize remote assistance", "error", err)
+		os.Exit(1)
+	}
 	adminHandler, err := admin.New(
 		dependencies.DB, adminauth.New(dependencies.DB), storageService,
 		wallet.New(dependencies.DB), live.New(dependencies.DB, dependencies.Redis),
-		cfg.MediaBaseURL, cfg.PublicURL, cfg.Environment, cfg.DataEncryptionKey,
+		cfg.MediaBaseURL, cfg.PublicURL, cfg.Environment, cfg.DataEncryptionKey, remoteService,
 	)
 	if err != nil {
 		logger.Error("initialize admin", "error", err)

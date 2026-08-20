@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from "@dcloudio/uni-app";
-import { preloadSession } from "@/utils/session";
+import { onBeforeSessionClear, preloadSession } from "@/utils/session";
 import { checkHotUpdate } from "@/utils/hotupdate";
 import { closeIMDatabase, initIMDatabase } from "@/utils/imDatabase";
+import { cleanupRemoteOnSessionEnd } from "@/utils/remote-assistance";
+
+onBeforeSessionClear((session) => cleanupRemoteOnSessionEnd(session));
 
 onLaunch(() => {
   preloadSession();

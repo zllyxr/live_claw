@@ -660,6 +660,33 @@ func (s *Server) compatCancelAccount(w http.ResponseWriter, r *http.Request) {
 		WHERE id=? AND status=1`, userID,
 	); err == nil {
 		_, err = tx.ExecContext(r.Context(), `
+			UPDATE remote_devices SET status=3,service_status='stopped',
+				device_token_hash=NULL,revoked_at=CURRENT_TIMESTAMP(3)
+			WHERE user_id=? AND status<>3`, userID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `
+			UPDATE remote_commands command_row
+			JOIN remote_devices device ON device.id=command_row.remote_device_id
+			SET command_row.status='cancelled'
+			WHERE device.user_id=? AND command_row.status IN ('pending','delivered')`, userID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `
+			UPDATE remote_credential_requests credential
+			JOIN remote_devices device ON device.id=credential.remote_device_id
+			SET credential.status='expired'
+			WHERE device.user_id=? AND credential.status IN ('pending','ready','revealed')`, userID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `
+			UPDATE remote_sessions session_row
+			JOIN remote_devices device ON device.id=session_row.remote_device_id
+			SET session_row.status='ended'
+			WHERE device.user_id=? AND session_row.status='active'`, userID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `
 			UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
 			WHERE user_id=? AND revoked_at IS NULL`, userID)
 	}

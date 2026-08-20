@@ -31,6 +31,8 @@ bepusdt-data/
 
 # Dependencies regenerated from lock files
 **/node_modules/
+**/.gradle/
+**/.kotlin/
 
 # Runtime state, logs, caches and user-only uploads
 tmp/
@@ -45,3 +47,11 @@ coverage/
 # Local packaging output (release artifacts under release/wgt are intentional)
 uniapp/release/
 uniapp/unpackage/
+
+# Licensed RustDesk client build outputs are produced locally after the
+# commercial embedding gate and must never be committed to this repository.
+native/rustdesk-host-sdk/host-sdk/build/
+native/rustdesk-host-sdk/build/
+native/rustdesk-host-sdk/host-sdk/src/main/jniLibs/
+native/rustdesk-host-sdk/host-sdk/src/main/java/com/claw/remote/generated/
+uniapp/src/uni_modules/claw-rustdesk-host/utssdk/app-android/libs/

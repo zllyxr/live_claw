@@ -128,6 +128,7 @@ const favoriteCount = ref<number | undefined>();
 const session = computed(() => getSession());
 
 const services = [
+  { name: "远程协助", iconSrc: "/static/icons/svc-support.svg", path: "/pages/remote/index" },
   { name: "视频", iconSrc: "/static/icons/svc-video.svg", path: "/pages/video/my" },
   { name: "动态", iconSrc: "/static/icons/svc-dynamic.svg", path: "/pages/dynamic/my" },
   { name: "收益", iconSrc: "/static/icons/svc-income.svg", path: "/pages/wallet/detail?type=cash" },

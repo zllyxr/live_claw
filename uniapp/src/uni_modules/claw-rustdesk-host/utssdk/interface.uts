@@ -1,0 +1,17 @@
+export type RemoteHostStatus = {
+  available: boolean,
+  configured: boolean,
+  running: boolean,
+  rustdesk_id?: string,
+  service_status: string,
+  message?: string,
+  permissions: UTSJSONObject
+}
+
+export type RemoteHostCallback = (status: RemoteHostStatus) => void
+
+export type Initialize = (options: UTSJSONObject, callback: RemoteHostCallback) => void
+export type Start = (callback: RemoteHostCallback) => void
+export type Stop = (options: UTSJSONObject, callback: RemoteHostCallback) => void
+export type GetStatus = (callback: RemoteHostCallback) => void
+export type OpenPermissionSettings = (permission: string, callback: RemoteHostCallback) => void

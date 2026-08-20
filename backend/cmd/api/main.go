@@ -17,6 +17,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/lottery"
 	"github.com/zllyxr/live_claw/backend/internal/payment"
+	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/server"
 	"github.com/zllyxr/live_claw/backend/internal/servicehost"
 	"github.com/zllyxr/live_claw/backend/internal/sports"
@@ -66,6 +67,16 @@ func main() {
 	}
 	imService := im.New(dependencies.DB, dependencies.Redis)
 	imService.SetMediaBaseURL(cfg.MediaBaseURL)
+	remoteService, err := remoteassist.New(dependencies.DB, cfg.DataEncryptionKey, remoteassist.Config{
+		Enabled: cfg.RemoteAssistanceEnabled, IDServer: cfg.RustDeskIDServer,
+		AllowedUserIDs: cfg.RemoteAssistanceAllowedUserIDs,
+		RelayServer:    cfg.RustDeskRelayServer, APIServer: cfg.RustDeskAPIServer,
+		PublicKey: cfg.RustDeskPublicKey,
+	})
+	if err != nil {
+		logger.Error("initialize remote assistance", "error", err)
+		os.Exit(1)
+	}
 	apiServer := server.New(
 		dependencies.DB, dependencies.Redis, authService,
 		home.New(home.NewSQLLoader(dependencies.DB, cfg.MediaBaseURL), dependencies.Redis, logger),
@@ -75,7 +86,7 @@ func main() {
 		live.New(dependencies.DB, dependencies.Redis),
 		invite.New(dependencies.DB),
 		storageService, walletService, paymentService, imService, cfg.MediaBaseURL, cfg.PublicURL,
-		cfg.Environment, cfg.DataEncryptionKey, logger,
+		cfg.Environment, cfg.DataEncryptionKey, remoteService, logger,
 	)
 	err = servicehost.Serve(
 		ctx, "api", servicehost.Address("V2_API_LISTEN_ADDR", cfg.ListenAddress),

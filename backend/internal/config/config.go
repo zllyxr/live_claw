@@ -9,30 +9,36 @@ import (
 )
 
 type Config struct {
-	ListenAddress         string
-	MySQLDSN              string
-	RedisAddress          string
-	RedisPassword         string
-	RedisDB               int
-	MinIOEndpoint         string
-	MinIOPublicEndpoint   string
-	MinIORegion           string
-	MinIOAccessKey        string
-	MinIOSecretKey        string
-	MinIOUseTLS           bool
-	MinIOPublicUseTLS     bool
-	PublicURL             string
-	MediaBaseURL          string
-	Environment           string
-	DataEncryptionKey     string
-	SportsAPIBaseURL      string
-	SportsAPIKey          string
-	SportsLiveInterval    time.Duration
-	SportsCatalogInterval time.Duration
-	SportsOddsInterval    time.Duration
-	LegacyAuthCode        string
-	LegacyTablePrefix     string
-	ShutdownGrace         time.Duration
+	ListenAddress                  string
+	MySQLDSN                       string
+	RedisAddress                   string
+	RedisPassword                  string
+	RedisDB                        int
+	MinIOEndpoint                  string
+	MinIOPublicEndpoint            string
+	MinIORegion                    string
+	MinIOAccessKey                 string
+	MinIOSecretKey                 string
+	MinIOUseTLS                    bool
+	MinIOPublicUseTLS              bool
+	PublicURL                      string
+	MediaBaseURL                   string
+	Environment                    string
+	DataEncryptionKey              string
+	RemoteAssistanceEnabled        bool
+	RemoteAssistanceAllowedUserIDs []int64
+	RustDeskIDServer               string
+	RustDeskRelayServer            string
+	RustDeskAPIServer              string
+	RustDeskPublicKey              string
+	SportsAPIBaseURL               string
+	SportsAPIKey                   string
+	SportsLiveInterval             time.Duration
+	SportsCatalogInterval          time.Duration
+	SportsOddsInterval             time.Duration
+	LegacyAuthCode                 string
+	LegacyTablePrefix              string
+	ShutdownGrace                  time.Duration
 }
 
 func Load() (Config, error) {
@@ -52,6 +58,14 @@ func Load() (Config, error) {
 	minioPublicTLS, err := strconv.ParseBool(env("V2_MINIO_PUBLIC_USE_TLS", "false"))
 	if err != nil {
 		return Config{}, fmt.Errorf("V2_MINIO_PUBLIC_USE_TLS must be true or false")
+	}
+	remoteAssistanceEnabled, err := strconv.ParseBool(env("V2_REMOTE_ASSISTANCE_ENABLED", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("V2_REMOTE_ASSISTANCE_ENABLED must be true or false")
+	}
+	remoteAllowedUserIDs, err := positiveIDListEnv("V2_REMOTE_ASSISTANCE_ALLOWED_USER_IDS")
+	if err != nil {
+		return Config{}, err
 	}
 	environment := env("V2_ENV", "development")
 	minioAccessKey := env("V2_MINIO_ACCESS_KEY", "clawlocal")
@@ -79,35 +93,62 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		ListenAddress:         env("V2_LISTEN_ADDR", ":8080"),
-		MySQLDSN:              strings.TrimSpace(os.Getenv("V2_MYSQL_DSN")),
-		RedisAddress:          env("V2_REDIS_ADDR", "redis-v2:6379"),
-		RedisPassword:         os.Getenv("V2_REDIS_PASSWORD"),
-		RedisDB:               redisDB,
-		MinIOEndpoint:         env("V2_MINIO_ENDPOINT", "minio:9000"),
-		MinIOPublicEndpoint:   env("V2_MINIO_PUBLIC_ENDPOINT", "127.0.0.1:29000"),
-		MinIORegion:           env("V2_MINIO_REGION", "us-east-1"),
-		MinIOAccessKey:        minioAccessKey,
-		MinIOSecretKey:        minioSecretKey,
-		MinIOUseTLS:           minioTLS,
-		MinIOPublicUseTLS:     minioPublicTLS,
-		PublicURL:             strings.TrimRight(env("V2_PUBLIC_URL", "http://127.0.0.1:28080"), "/"),
-		MediaBaseURL:          strings.TrimRight(env("V2_MEDIA_BASE_URL", "/media"), "/"),
-		Environment:           environment,
-		DataEncryptionKey:     dataEncryptionKey,
-		SportsAPIBaseURL:      strings.TrimRight(env("V2_SPORTS_API_BASE_URL", "https://v3.football.api-sports.io"), "/"),
-		SportsAPIKey:          strings.TrimSpace(os.Getenv("V2_SPORTS_API_KEY")),
-		SportsLiveInterval:    sportsLiveInterval,
-		SportsCatalogInterval: sportsCatalogInterval,
-		SportsOddsInterval:    sportsOddsInterval,
-		LegacyAuthCode:        os.Getenv("V2_LEGACY_AUTHCODE"),
-		LegacyTablePrefix:     env("V2_LEGACY_TABLE_PREFIX", "cmf_"),
-		ShutdownGrace:         time.Duration(graceSeconds) * time.Second,
+		ListenAddress:                  env("V2_LISTEN_ADDR", ":8080"),
+		MySQLDSN:                       strings.TrimSpace(os.Getenv("V2_MYSQL_DSN")),
+		RedisAddress:                   env("V2_REDIS_ADDR", "redis-v2:6379"),
+		RedisPassword:                  os.Getenv("V2_REDIS_PASSWORD"),
+		RedisDB:                        redisDB,
+		MinIOEndpoint:                  env("V2_MINIO_ENDPOINT", "minio:9000"),
+		MinIOPublicEndpoint:            env("V2_MINIO_PUBLIC_ENDPOINT", "127.0.0.1:29000"),
+		MinIORegion:                    env("V2_MINIO_REGION", "us-east-1"),
+		MinIOAccessKey:                 minioAccessKey,
+		MinIOSecretKey:                 minioSecretKey,
+		MinIOUseTLS:                    minioTLS,
+		MinIOPublicUseTLS:              minioPublicTLS,
+		PublicURL:                      strings.TrimRight(env("V2_PUBLIC_URL", "http://127.0.0.1:28080"), "/"),
+		MediaBaseURL:                   strings.TrimRight(env("V2_MEDIA_BASE_URL", "/media"), "/"),
+		Environment:                    environment,
+		DataEncryptionKey:              dataEncryptionKey,
+		RemoteAssistanceEnabled:        remoteAssistanceEnabled,
+		RemoteAssistanceAllowedUserIDs: remoteAllowedUserIDs,
+		RustDeskIDServer:               env("V2_RUSTDESK_ID_SERVER", "rd.tmpai2.com"),
+		RustDeskRelayServer:            env("V2_RUSTDESK_RELAY_SERVER", "rd.tmpai2.com"),
+		RustDeskAPIServer:              strings.TrimRight(env("V2_RUSTDESK_API_SERVER", "https://rd-admin.tmpai2.com"), "/"),
+		RustDeskPublicKey:              strings.TrimSpace(os.Getenv("V2_RUSTDESK_PUBLIC_KEY")),
+		SportsAPIBaseURL:               strings.TrimRight(env("V2_SPORTS_API_BASE_URL", "https://v3.football.api-sports.io"), "/"),
+		SportsAPIKey:                   strings.TrimSpace(os.Getenv("V2_SPORTS_API_KEY")),
+		SportsLiveInterval:             sportsLiveInterval,
+		SportsCatalogInterval:          sportsCatalogInterval,
+		SportsOddsInterval:             sportsOddsInterval,
+		LegacyAuthCode:                 os.Getenv("V2_LEGACY_AUTHCODE"),
+		LegacyTablePrefix:              env("V2_LEGACY_TABLE_PREFIX", "cmf_"),
+		ShutdownGrace:                  time.Duration(graceSeconds) * time.Second,
 	}
 	if cfg.MySQLDSN == "" {
 		return Config{}, fmt.Errorf("V2_MYSQL_DSN is required")
 	}
 	return cfg, nil
+}
+
+func positiveIDListEnv(key string) ([]int64, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil, nil
+	}
+	result := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for _, item := range strings.Split(value, ",") {
+		parsed, err := strconv.ParseInt(strings.TrimSpace(item), 10, 64)
+		if err != nil || parsed < 1 {
+			return nil, fmt.Errorf("%s must be a comma-separated list of positive user IDs", key)
+		}
+		if _, exists := seen[parsed]; exists {
+			continue
+		}
+		seen[parsed] = struct{}{}
+		result = append(result, parsed)
+	}
+	return result, nil
 }
 
 func durationEnv(key string, fallback time.Duration) (time.Duration, error) {

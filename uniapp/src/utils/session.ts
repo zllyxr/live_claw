@@ -6,6 +6,7 @@ let memorySession: SessionState = {
   token: NOT_LOGIN_TOKEN
 };
 const sessionListeners = new Set<(session: SessionState) => void>();
+const beforeSessionClearListeners = new Set<(session: SessionState) => void>();
 
 function notifySessionChange() {
   sessionListeners.forEach((listener) => listener(memorySession));
@@ -60,6 +61,9 @@ export function isLoggedIn() {
 export function saveSession(info: UserProfile) {
   const uid = String(info.id || info.uid || "");
   const token = String(info.token || "");
+  if (memorySession.uid !== NOT_LOGIN_UID && memorySession.uid !== uid) {
+    beforeSessionClearListeners.forEach((listener) => listener(memorySession));
+  }
   memorySession = {
     uid: uid || NOT_LOGIN_UID,
     token: token || NOT_LOGIN_TOKEN,
@@ -80,6 +84,9 @@ export function saveUser(user: UserProfile) {
 }
 
 export function clearSession() {
+  if (memorySession.uid !== NOT_LOGIN_UID && memorySession.token !== NOT_LOGIN_TOKEN) {
+    beforeSessionClearListeners.forEach((listener) => listener(memorySession));
+  }
   memorySession = {
     uid: NOT_LOGIN_UID,
     token: NOT_LOGIN_TOKEN
@@ -97,6 +104,11 @@ export function clearSession() {
 export function onSessionChange(listener: (session: SessionState) => void) {
   sessionListeners.add(listener);
   return () => sessionListeners.delete(listener);
+}
+
+export function onBeforeSessionClear(listener: (session: SessionState) => void) {
+  beforeSessionClearListeners.add(listener);
+  return () => beforeSessionClearListeners.delete(listener);
 }
 
 export function authParams() {

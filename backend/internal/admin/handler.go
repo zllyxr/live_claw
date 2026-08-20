@@ -18,6 +18,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/paymentconfig"
+	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/storage"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
 )
@@ -46,6 +47,7 @@ type Handler struct {
 	publicURL         string
 	environment       string
 	secureCookies     bool
+	remote            *remoteassist.Service
 }
 
 type liveSourceProber interface {
@@ -64,6 +66,7 @@ func New(
 	publicURL string,
 	environment string,
 	dataEncryptionKey string,
+	remoteService *remoteassist.Service,
 ) (*Handler, error) {
 	loginBody, err := webFiles.ReadFile("web/login.html")
 	if err != nil {
@@ -101,6 +104,7 @@ func New(
 		publicURL:         strings.TrimRight(strings.TrimSpace(publicURL), "/"),
 		environment:       strings.ToLower(strings.TrimSpace(environment)),
 		secureCookies:     environment != "local" && environment != "development",
+		remote:            remoteService,
 	}, nil
 }
 
@@ -212,6 +216,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/rbac/admins", h.requireAPI("rbac.write", true, h.createAdministrator))
 	mux.HandleFunc("POST /admin/api/rbac/admins/{id}", h.requireAPI("rbac.write", true, h.updateAdministrator))
 	mux.HandleFunc("POST /admin/api/rbac/admins/{id}/password", h.requireAPI("rbac.write", true, h.resetAdministratorPassword))
+	mux.HandleFunc("GET /admin/api/remote/devices", h.requireAPI("remote.read", false, h.listRemoteDevices))
+	mux.HandleFunc("POST /admin/api/remote/devices/{id}/credential-requests", h.requireAPI("remote.control", true, h.createRemoteCredential))
+	mux.HandleFunc("GET /admin/api/remote/credential-requests/{id}", h.requireAPI("remote.control", false, h.remoteCredentialStatus))
+	mux.HandleFunc("POST /admin/api/remote/credential-requests/{id}/reveal", h.requireAPI("remote.control", true, h.revealRemoteCredential))
+	mux.HandleFunc("POST /admin/api/remote/devices/{id}/revoke", h.requireAPI("remote.revoke", true, h.revokeRemoteDevice))
 }
 
 func (h *Handler) root(w http.ResponseWriter, r *http.Request) {

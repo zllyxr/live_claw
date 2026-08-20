@@ -24,6 +24,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/lottery"
 	"github.com/zllyxr/live_claw/backend/internal/payment"
+	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/sports"
 	"github.com/zllyxr/live_claw/backend/internal/storage"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
@@ -49,6 +50,7 @@ type Server struct {
 	environment  string
 	dataKey      string
 	bankCipher   *bankpayment.Cipher
+	remote       *remoteassist.Service
 }
 
 func New(
@@ -69,6 +71,7 @@ func New(
 	publicURL string,
 	environment string,
 	dataKey string,
+	remoteService *remoteassist.Service,
 	logger *slog.Logger,
 ) *Server {
 	bankCipher, _ := bankpayment.NewCipher(dataKey)
@@ -85,6 +88,7 @@ func New(
 		environment:  strings.ToLower(strings.TrimSpace(environment)),
 		dataKey:      dataKey,
 		bankCipher:   bankCipher,
+		remote:       remoteService,
 		logger:       logger,
 	}
 }
@@ -95,6 +99,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.health)
 	mux.HandleFunc("GET /api/v2/home", s.homeV2)
 	mux.HandleFunc("GET /api/v2/app/update", s.appUpdateV2)
+	mux.HandleFunc("POST /api/v2/remote/devices/enroll", s.remoteEnroll)
+	mux.HandleFunc("GET /api/v2/remote/devices/current", s.remoteCurrent)
+	mux.HandleFunc("DELETE /api/v2/remote/devices/current", s.remoteUnbind)
+	mux.HandleFunc("POST /api/v2/remote/devices/heartbeat", s.remoteHeartbeat)
+	mux.HandleFunc("POST /api/v2/remote/devices/commands/{id}/ack", s.remoteCommandAck)
+	mux.HandleFunc("POST /api/v2/remote/devices/events", s.remoteEvents)
 	mux.HandleFunc("POST /api/v2/payments/bepusdt/notify", s.bepusdtNotify)
 	mux.HandleFunc("GET /api/v2/", s.notFound)
 	mux.HandleFunc("POST /api/v2/", s.notFound)

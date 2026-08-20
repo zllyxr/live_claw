@@ -43,3 +43,9 @@ WGT 下发给旧壳；后续仅资源升级时，应显式传入最近一次母�
 
 如果更新新增了 SQLite 等原生模块、Android 权限或原生 SDK，不能只发 WGT；
 必须先发布新的 APK，并把 WGT 的 `min_app_code` 设置为该 APK 的版本号。
+
+远程协助页面依赖 `claw-rustdesk-host` AAR，首个可用母包为 **8.2.0 (216)**。
+所有包含 `pages/remote/index` 的 WGT 必须设置 `min_app_code: 216`，并且只能在
+书面商业授权、RustDesk 1.4.9 Host SDK PoC 和实体机验收全部通过后发布。
+签名 APK 发布前还必须运行 `uniapp/scripts/verify-remote-apk.sh <apk>`，检查合并后的
+Manifest、签名、仅 ARM64 ABI，以及所有原生库的 16 KB LOAD 对齐。

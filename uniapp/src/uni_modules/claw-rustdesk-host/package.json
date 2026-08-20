@@ -1,0 +1,12 @@
+{
+  "id": "claw-rustdesk-host",
+  "displayName": "Claw RustDesk Android Host",
+  "version": "1.0.0",
+  "description": "User-consented RustDesk Android host bridge for Claw",
+  "uni_modules": {
+    "platforms": {
+      "cloud": { "tcb": "u", "aliyun": "u", "alipay": "u" },
+      "client": { "App": { "app-android": "y", "app-ios": "n" }, "H5-mobile": { "Safari": "u", "Android Browser": "u" } }
+    }
+  }
+}
