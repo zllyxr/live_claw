@@ -114,6 +114,9 @@ func TestRemoteAssistanceLifecycleIntegration(t *testing.T) {
 	if commands[0].Type != "authorize_session" {
 		t.Fatalf("unexpected authorization command %q", commands[0].Type)
 	}
+	if commands[0].ExpiresAt.Location() != time.UTC {
+		t.Fatalf("command expiry must be normalized to UTC for Android: %v", commands[0].ExpiresAt)
+	}
 	var commandPayload map[string]any
 	if err = json.Unmarshal(commands[0].Payload, &commandPayload); err != nil {
 		t.Fatal(err)

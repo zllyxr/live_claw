@@ -7,13 +7,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.time.Instant
 
 internal data class RemoteCommand(
     val id: String,
     val type: String,
     val payload: JSONObject,
-    val expiresAtMillis: Long,
 )
 
 internal data class CommandResult(val applied: Boolean, val code: String = "")
@@ -47,7 +45,6 @@ internal class DeviceHeartbeatClient(private val context: Context) {
                 id = value.getString("id"),
                 type = value.getString("type"),
                 payload = value.optJSONObject("payload") ?: JSONObject(),
-                expiresAtMillis = Instant.parse(value.getString("expires_at")).toEpochMilli(),
             )
             val result = try { apply(command) } catch (_: Throwable) { CommandResult(false, "apply_failed") }
             acknowledge(config.backendUrl, token, command.id, result)

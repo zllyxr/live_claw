@@ -348,6 +348,9 @@ func (s *Service) Heartbeat(ctx context.Context, device Device, report Heartbeat
 		if err = rows.Scan(&command.ID, &command.Type, &encrypted, &command.ExpiresAt); err != nil {
 			return nil, err
 		}
+		// Some Android vendor builds reject RFC3339 timestamps carrying a
+		// non-zero offset. UTC guarantees the portable trailing "Z" wire form.
+		command.ExpiresAt = command.ExpiresAt.UTC()
 		if len(encrypted) > 0 {
 			plain, decryptErr := s.cipher.decrypt("command/"+command.ID, encrypted)
 			if decryptErr != nil {
