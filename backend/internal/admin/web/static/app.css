@@ -848,6 +848,89 @@ button > strong,
   text-align: center;
 }
 
+.remote-console {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 240px;
+  height: calc(88vh - 43px);
+  min-height: 520px;
+  color: var(--ink);
+  background: #111827;
+}
+.remote-console-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+}
+.remote-screen-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #030712;
+}
+.remote-screen {
+  display: none;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  touch-action: none;
+  cursor: crosshair;
+}
+.remote-screen.ready { display: block; }
+.remote-screen-placeholder { color: #9ca3af; font-size: 14px; }
+.remote-console-status {
+  padding-top: 10px;
+  color: #a7f3d0;
+  font-size: 13px;
+  text-align: center;
+}
+.remote-console-status.error { color: #fca5a5; }
+.remote-console-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  overflow-y: auto;
+  background: #fff;
+}
+.remote-system-actions {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 8px;
+}
+.remote-system-actions button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #f8fafc;
+  cursor: pointer;
+}
+.remote-console-tools label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.remote-text {
+  min-height: 140px;
+  padding: 10px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+.remote-console-tools .layui-btn { margin: 0; }
+.remote-console-tools p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+
 @media (max-width: 900px) {
   .sidebar { width: 190px; }
   .admin-shell { width: calc(100% - 190px); margin-left: 190px; }
@@ -856,6 +939,7 @@ button > strong,
   .table-pagination { grid-template-columns: 1fr; justify-items: center; }
   .table-range, .table-page-status { justify-self: center; }
   .table-detail-modal dl { grid-template-columns: 1fr; }
+  .remote-console { grid-template-columns: minmax(0,1fr) 210px; }
 }
 
 @media (max-width: 640px) {
@@ -887,4 +971,6 @@ button > strong,
   .table-pagination { padding: 12px; }
   .table-page-controls { width: 100%; }
   .table-detail-modal { padding: 16px 14px 12px; }
+  .remote-console { grid-template-columns: 1fr; height: calc(88vh - 43px); }
+  .remote-console-tools { max-height: 230px; }
 }

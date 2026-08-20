@@ -1,14 +1,14 @@
 import type { RemoteEnrollment, RemotePermissionStatus } from "@/api/remote";
 import { unbindRemoteDevice } from "@/api/remote";
 import { API_HOST } from "@/constants/config";
-import * as rustDeskHost from "@/uni_modules/claw-rustdesk-host";
+import * as remoteHost from "@/uni_modules/claw-rustdesk-host";
 
 const INSTALL_ID_KEY = "claw_remote_install_id";
 
 export interface NativeRemoteStatus {
   available: boolean;
   running: boolean;
-  rustdesk_id?: string;
+  device_code?: string;
   service_status: string;
   permissions: RemotePermissionStatus;
   message?: string;
@@ -23,7 +23,7 @@ interface NativeRemotePlugin {
 }
 
 function nativePlugin(): NativeRemotePlugin | undefined {
-  return rustDeskHost as unknown as NativeRemotePlugin;
+  return remoteHost as unknown as NativeRemotePlugin;
 }
 
 function invoke(method: keyof NativeRemotePlugin, ...args: unknown[]): Promise<NativeRemoteStatus> {
@@ -75,10 +75,6 @@ export function initializeRemoteNative(enrollment: RemoteEnrollment) {
     backend_url: `${API_HOST.replace(/\/$/, "")}/api/v2`,
     device_id: enrollment.device_id,
     device_token: enrollment.device_token,
-    id_server: enrollment.id_server,
-    relay_server: enrollment.relay_server,
-    api_server: enrollment.api_server,
-    public_key: enrollment.public_key,
     notification_title: "星域远程协助正在运行"
   });
 }

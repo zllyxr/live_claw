@@ -48,10 +48,7 @@ coverage/
 uniapp/release/
 uniapp/unpackage/
 
-# Licensed RustDesk client build outputs are produced locally after the
-# commercial embedding gate and must never be committed to this repository.
+# In-house Android remote-host build outputs are generated locally.
 native/rustdesk-host-sdk/host-sdk/build/
 native/rustdesk-host-sdk/build/
-native/rustdesk-host-sdk/host-sdk/src/main/jniLibs/
-native/rustdesk-host-sdk/host-sdk/src/main/java/com/claw/remote/generated/
 uniapp/src/uni_modules/claw-rustdesk-host/utssdk/app-android/libs/

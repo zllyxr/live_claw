@@ -1,6 +1,7 @@
 package com.claw.remote
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,18 +24,20 @@ internal class DeviceHeartbeatClient(private val context: Context) {
         val token = SecureConfigStore.token(context)
         if (token.isBlank()) return
         val body = JSONObject()
-            .put("rustdesk_id", CoreRuntime.id())
+            .put("device_code", CoreRuntime.id())
             .put("service_status", "running")
             .put("permission_status", JSONObject(HostSdk.statusJson(context)).getJSONObject("permissions"))
             .put("capabilities", JSONObject()
                 .put("screen", true).put("input", true).put("clipboard", true)
-                .put("file_transfer", true).put("system_audio", true)
-                .put("chat", true).put("voice", true))
+                .put("file_transfer", false).put("system_audio", false)
+                .put("chat", false).put("voice", false))
             .put("device_name", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
             .put("manufacturer", Build.MANUFACTURER)
             .put("model", Build.MODEL)
             .put("android_version", Build.VERSION.RELEASE)
             .put("android_sdk", Build.VERSION.SDK_INT)
+            .put("app_version", appVersion())
+            .put("app_native_code", appVersionCode())
             .put("plugin_version", HostSdk.VERSION)
         val response = request(config.backendUrl + "/remote/devices/heartbeat", token, body)
         val commands = response.optJSONObject("data")?.optJSONArray("commands") ?: JSONArray()
@@ -50,6 +53,17 @@ internal class DeviceHeartbeatClient(private val context: Context) {
             acknowledge(config.backendUrl, token, command.id, result)
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun appVersion(): String = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
+    } catch (_: PackageManager.NameNotFoundException) { "" }
+
+    @Suppress("DEPRECATION")
+    private fun appVersionCode(): Long = try {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    } catch (_: PackageManager.NameNotFoundException) { 0 }
 
     private fun acknowledge(base: String, token: String, commandID: String, result: CommandResult) {
         val body = JSONObject()

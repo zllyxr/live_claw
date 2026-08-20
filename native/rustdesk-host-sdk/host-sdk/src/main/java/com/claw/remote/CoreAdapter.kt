@@ -4,16 +4,18 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.media.projection.MediaProjection
 
-/** Implemented by the source-generated adapter built from the licensed RustDesk 1.4.9 fork. */
-interface CoreAdapter {
+internal interface CoreAdapter {
     fun initialize(context: Context, config: HostConfig, eventSink: HostEventSink)
     fun attachAccessibilityService(service: AccessibilityService)
-    fun detachAccessibilityService()
+    fun detachAccessibilityService(service: AccessibilityService)
     fun start(projection: MediaProjection)
     fun stop()
-    fun rustDeskId(): String
-    fun setTemporaryPassword(password: String, expiresAtMillis: Long)
-    fun rotateParkingPassword()
+    fun deviceCode(): String
+    fun tap(x: Double, y: Double): Boolean
+    fun swipe(x1: Double, y1: Double, x2: Double, y2: Double, durationMillis: Long): Boolean
+    fun systemAction(action: String): Boolean
+    fun inputText(text: String): Boolean
+    fun setClipboard(text: String): Boolean
 }
 
 data class HostEvent(
@@ -27,11 +29,5 @@ fun interface HostEventSink {
 }
 
 internal object CoreAdapterLoader {
-    private const val IMPLEMENTATION = "com.claw.remote.generated.RustDesk149Adapter"
-
-    fun load(): CoreAdapter? = try {
-        Class.forName(IMPLEMENTATION).getDeclaredConstructor().newInstance() as CoreAdapter
-    } catch (_: Throwable) {
-        null
-    }
+    fun load(): CoreAdapter = NativeCoreAdapter()
 }

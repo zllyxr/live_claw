@@ -220,6 +220,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/credential-requests", h.requireAPI("remote.control", true, h.createRemoteCredential))
 	mux.HandleFunc("GET /admin/api/remote/credential-requests/{id}", h.requireAPI("remote.control", false, h.remoteCredentialStatus))
 	mux.HandleFunc("POST /admin/api/remote/credential-requests/{id}/reveal", h.requireAPI("remote.control", true, h.revealRemoteCredential))
+	mux.HandleFunc("GET /admin/api/remote/devices/{id}/frame", h.requireAPI("remote.control", false, h.remoteFrame))
+	mux.HandleFunc("POST /admin/api/remote/devices/{id}/control", h.requireAPI("remote.control", true, h.remoteControl))
+	mux.HandleFunc("POST /admin/api/remote/devices/{id}/sessions/end", h.requireAPI("remote.control", true, h.endRemoteControl))
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/revoke", h.requireAPI("remote.revoke", true, h.revokeRemoteDevice))
 }
 
@@ -432,7 +435,7 @@ func (h *Handler) currentAdmin(r *http.Request) (adminauth.Admin, error) {
 
 func (h *Handler) securityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'")
+		"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Cache-Control", "no-store")
 }

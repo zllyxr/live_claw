@@ -14,8 +14,8 @@
         <view class="status-dot" :class="{ active: running }" />
       </view>
       <view class="id-row">
-        <text>RustDesk ID</text>
-        <text class="id-value">{{ rustDeskId || "尚未分配" }}</text>
+        <text>设备代码</text>
+        <text class="id-value">{{ deviceCode || "尚未分配" }}</text>
       </view>
       <view class="id-row">
         <text>服务器连接</text>
@@ -50,7 +50,7 @@
     </button>
     <button v-if="enrolled" class="unbind-button" :disabled="busy" @tap="unbindRemote">解绑此设备</button>
 
-    <text class="privacy-copy">管理员无法隐藏系统通知，也无法绕过 Android 的屏幕共享确认。连接密码不会出现在连接链接、日志或本页面中。</text>
+    <text class="privacy-copy">管理员无法隐藏系统通知，也无法绕过 Android 的屏幕共享确认。协助授权和画面不会写入业务日志。</text>
   </view>
 </template>
 
@@ -76,10 +76,10 @@ const serverOnline = ref(false);
 const nativeStatus = ref<NativeRemoteStatus>({
   available: false, running: false, service_status: "stopped", permissions: {}
 });
-const serverRustDeskId = ref("");
+const serverDeviceCode = ref("");
 
 const running = computed(() => nativeStatus.value.running);
-const rustDeskId = computed(() => nativeStatus.value.rustdesk_id || serverRustDeskId.value);
+const deviceCode = computed(() => nativeStatus.value.device_code || serverDeviceCode.value);
 const statusText = computed(() => {
   if (!nativeStatus.value.available) return nativeStatus.value.message || "当前安装包不支持";
   if (running.value) return "正在运行，等待管理员连接";
@@ -90,11 +90,7 @@ const statusText = computed(() => {
 const permissionDefinitions = [
   ["notification", "前台通知", "运行期间固定显示，Android 13+ 需要通知权限"],
   ["media_projection", "屏幕共享", "每次失效后都必须由你重新确认"],
-  ["system_audio", "系统音频", "随本次屏幕共享授权启用，不会在后台静默开启"],
   ["accessibility", "无障碍服务", "用于触控和文字输入协助"],
-  ["overlay", "悬浮窗", "显示当前连接与停止入口"],
-  ["all_files", "文件访问", "用于你主动允许的文件上传和下载"],
-  ["microphone", "录音权限", "用于语音协助"],
   ["battery", "电池白名单", "降低系统在后台结束服务的概率"]
 ] as const;
 
@@ -116,7 +112,7 @@ async function refresh() {
     nativeStatus.value = native;
     enrolled.value = Boolean(server);
     serverOnline.value = Boolean(server?.online);
-    serverRustDeskId.value = server?.rustdesk_id || "";
+    serverDeviceCode.value = server?.device_code || "";
   } finally {
     uni.stopPullDownRefresh();
   }
@@ -163,7 +159,7 @@ function unbindRemote() {
   if (busy.value) return;
   uni.showModal({
     title: "解绑此设备",
-    content: "解绑会立即停止服务、撤销设备凭据并清除远控密码。确定继续？",
+    content: "解绑会立即停止服务、撤销设备凭据并清除远程控制授权。确定继续？",
     confirmColor: "#e5484d",
     success: async ({ confirm }) => {
       if (!confirm) return;
@@ -173,7 +169,7 @@ function unbindRemote() {
         await unbindRemoteDevice(getRemoteInstallId());
         enrolled.value = false;
         serverOnline.value = false;
-        serverRustDeskId.value = "";
+        serverDeviceCode.value = "";
         await refresh();
       } catch (error: any) {
         uni.showToast({ title: error?.message || "解绑失败", icon: "none" });

@@ -14,7 +14,7 @@ export interface RemotePermissionStatus {
 
 export interface RemoteDeviceStatus {
   id: string;
-  rustdesk_id: string;
+  device_code: string;
   service_status: string;
   online: boolean;
   permission_status?: RemotePermissionStatus;
@@ -24,10 +24,6 @@ export interface RemoteDeviceStatus {
 export interface RemoteEnrollment {
   device_id: string;
   device_token: string;
-  id_server: string;
-  relay_server: string;
-  api_server: string;
-  public_key: string;
   heartbeat_seconds: number;
 }
 

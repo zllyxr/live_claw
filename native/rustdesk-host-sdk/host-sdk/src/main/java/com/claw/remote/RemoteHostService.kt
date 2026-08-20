@@ -1,13 +1,11 @@
 package com.claw.remote
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -17,7 +15,6 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -59,11 +56,7 @@ class RemoteHostService : Service() {
     }
 
     private fun startVisibleForeground(title: String) {
-        var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-        if (Build.VERSION.SDK_INT >= 30 && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(title), type)
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(title), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
     }
 
     private fun notification(title: String): Notification {
@@ -97,32 +90,36 @@ class RemoteHostService : Service() {
                 } catch (_: Throwable) {
                     // Network loss is reflected by the backend's 20-second online window.
                 }
-            }, 0, 5, TimeUnit.SECONDS)
+            }, 0, 2, TimeUnit.SECONDS)
         }
     }
 
     private fun applyCommand(command: RemoteCommand): CommandResult {
         return when (command.type) {
-            "set_temporary_password" -> {
-                val password = command.payload.getString("password")
-                val expires = command.expiresAtMillis
-                CoreRuntime.setPassword(password, expires)
-                val delay = (expires - System.currentTimeMillis()).coerceAtLeast(0)
-                mainHandler.postDelayed({ CoreRuntime.rotatePassword() }, delay)
-                CommandResult(true)
-            }
+            "authorize_session" -> CommandResult(true)
+            "tap" -> commandResult(CoreRuntime.tap(command.payload.getDouble("x"), command.payload.getDouble("y")), "gesture_failed")
+            "swipe" -> commandResult(CoreRuntime.swipe(
+                command.payload.getDouble("x1"), command.payload.getDouble("y1"),
+                command.payload.getDouble("x2"), command.payload.getDouble("y2"),
+                command.payload.getLong("duration_ms"),
+            ), "gesture_failed")
+            "system_action" -> commandResult(CoreRuntime.systemAction(command.payload.getString("action")), "input_unavailable")
+            "text" -> commandResult(CoreRuntime.inputText(command.payload.getString("text")), "input_unavailable")
+            "clipboard_set" -> commandResult(CoreRuntime.setClipboard(command.payload.getString("text")), "input_unavailable")
+            "end_session" -> CommandResult(true)
             "stop" -> {
                 mainHandler.post { stopRemoteHost(clearCredentials = true) }
                 CommandResult(true)
             }
-            "rotate_password" -> { CoreRuntime.rotatePassword(); CommandResult(true) }
             else -> CommandResult(false, "unsupported_command")
         }
     }
 
+    private fun commandResult(applied: Boolean, failureCode: String) =
+        if (applied) CommandResult(true) else CommandResult(false, failureCode)
+
     private fun stopRemoteHost(clearCredentials: Boolean) {
         heartbeat?.shutdownNow(); heartbeat = null
-        CoreRuntime.rotatePassword()
         CoreRuntime.stop()
         projection?.stop(); projection = null
         if (clearCredentials) SecureConfigStore.clear(this)
@@ -132,7 +129,6 @@ class RemoteHostService : Service() {
 
     override fun onDestroy() {
         heartbeat?.shutdownNow()
-        CoreRuntime.rotatePassword()
         CoreRuntime.stop()
         super.onDestroy()
     }

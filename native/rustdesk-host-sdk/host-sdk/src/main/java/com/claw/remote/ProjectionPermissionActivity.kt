@@ -17,9 +17,6 @@ class ProjectionPermissionActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             permissions += Manifest.permission.POST_NOTIFICATIONS
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            permissions += Manifest.permission.RECORD_AUDIO
-        }
         if (permissions.isNotEmpty()) {
             requestPermissions(permissions.toTypedArray(), REQUEST_RUNTIME_PERMISSIONS)
             return

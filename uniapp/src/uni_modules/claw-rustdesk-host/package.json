@@ -1,8 +1,8 @@
 {
   "id": "claw-rustdesk-host",
-  "displayName": "Claw RustDesk Android Host",
+  "displayName": "Claw Remote Android Host",
   "version": "1.0.0",
-  "description": "User-consented RustDesk Android host bridge for Claw",
+  "description": "User-consented Android screen sharing and remote input bridge for Claw",
   "uni_modules": {
     "platforms": {
       "cloud": { "tcb": "u", "aliyun": "u", "alipay": "u" },

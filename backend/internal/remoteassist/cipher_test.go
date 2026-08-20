@@ -86,8 +86,6 @@ func TestRemoteStateAndAckMetadataAreAllowlisted(t *testing.T) {
 func TestRolloutGateAndIdentifiers(t *testing.T) {
 	service, err := New(nil, "test-master-key-that-is-long-enough", Config{
 		AllowedUserIDs: []int64{42},
-		IDServer:       "rd.tmpai2.com", RelayServer: "rd.tmpai2.com",
-		APIServer: "https://rd-admin.tmpai2.com", PublicKey: strings.Repeat("k", 32),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,13 +94,13 @@ func TestRolloutGateAndIdentifiers(t *testing.T) {
 		t.Fatal("staged user allowlist was not enforced")
 	}
 	for _, id := range []string{"123456789", "device_A-1"} {
-		if !validRustDeskID(id) {
-			t.Fatalf("valid RustDesk ID %q was rejected", id)
+		if !validDeviceCode(id) {
+			t.Fatalf("valid device code %q was rejected", id)
 		}
 	}
 	for _, id := range []string{"", "bad/id", "bad?query", "bad id"} {
-		if validRustDeskID(id) {
-			t.Fatalf("invalid RustDesk ID %q was accepted", id)
+		if validDeviceCode(id) {
+			t.Fatalf("invalid device code %q was accepted", id)
 		}
 	}
 }

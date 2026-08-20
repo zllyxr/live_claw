@@ -6,12 +6,9 @@ plugins {
 android {
     namespace = "com.claw.remote"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
-
     defaultConfig {
         minSdk = 29
         consumerProguardFiles("consumer-rules.pro")
-        ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -26,7 +23,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    packaging { jniLibs.useLegacyPackaging = false }
 }
 
 dependencies {

@@ -68,11 +68,9 @@ func main() {
 	imService := im.New(dependencies.DB, dependencies.Redis)
 	imService.SetMediaBaseURL(cfg.MediaBaseURL)
 	remoteService, err := remoteassist.New(dependencies.DB, cfg.DataEncryptionKey, remoteassist.Config{
-		Enabled: cfg.RemoteAssistanceEnabled, IDServer: cfg.RustDeskIDServer,
+		Enabled:        cfg.RemoteAssistanceEnabled,
 		AllowedUserIDs: cfg.RemoteAssistanceAllowedUserIDs,
-		RelayServer:    cfg.RustDeskRelayServer, APIServer: cfg.RustDeskAPIServer,
-		PublicKey: cfg.RustDeskPublicKey,
-	})
+	}, dependencies.Redis)
 	if err != nil {
 		logger.Error("initialize remote assistance", "error", err)
 		os.Exit(1)

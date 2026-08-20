@@ -2,7 +2,7 @@ export interface RemoteHostStatus {
   available: boolean;
   configured: boolean;
   running: boolean;
-  rustdesk_id?: string;
+  device_code?: string;
   service_status: string;
   message?: string;
   permissions: Record<string, boolean>;

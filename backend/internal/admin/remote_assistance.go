@@ -3,6 +3,7 @@ package admin
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
@@ -63,7 +64,7 @@ func (h *Handler) createRemoteCredential(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	adminUser, _ := adminFromRequest(r)
-	if err := auditAdmin(r.Context(), h.db, r, "remote.credential.request", "remote_device", r.PathValue("id"), nil, map[string]any{"requested": true}); err != nil {
+	if err := auditAdmin(r.Context(), h.db, r, "remote.authorization.request", "remote_device", r.PathValue("id"), nil, map[string]any{"requested": true}); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录远程协助审计失败")
 		return
 	}
@@ -111,7 +112,7 @@ func (h *Handler) revealRemoteCredential(w http.ResponseWriter, r *http.Request)
 	}
 	// Persist the authorization audit before decrypting or returning a secret.
 	// A failed reveal is still a security-relevant, reauthenticated attempt.
-	if err := auditAdmin(r.Context(), h.db, r, "remote.credential.reveal", "remote_credential_request", r.PathValue("id"), nil, map[string]any{"identity_reverified": true}); err != nil {
+	if err := auditAdmin(r.Context(), h.db, r, "remote.authorization.activate", "remote_credential_request", r.PathValue("id"), nil, map[string]any{"identity_reverified": true}); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录远程协助审计失败")
 		return
 	}
@@ -140,6 +141,87 @@ func (h *Handler) revokeRemoteDevice(w http.ResponseWriter, r *http.Request) {
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]bool{"revoking": true})
 }
 
+func (h *Handler) remoteFrame(w http.ResponseWriter, r *http.Request) {
+	if !h.remoteAvailable(w, r) {
+		return
+	}
+	adminUser, _ := adminFromRequest(r)
+	frame, err := h.remote.Frame(r.Context(), r.PathValue("id"), adminUser.ID, r.Header.Get("X-Remote-Session"))
+	if errors.Is(err, remoteassist.ErrNoFrame) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		h.writeAdminRemoteError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Content-Length", strconv.Itoa(len(frame.JPEG)))
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("X-Frame-Width", strconv.Itoa(frame.Width))
+	w.Header().Set("X-Frame-Height", strconv.Itoa(frame.Height))
+	w.Header().Set("X-Frame-Rotation", strconv.Itoa(frame.Rotation))
+	w.Header().Set("X-Frame-Sequence", strconv.FormatInt(frame.Sequence, 10))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(frame.JPEG)
+}
+
+func (h *Handler) remoteControl(w http.ResponseWriter, r *http.Request) {
+	if !h.remoteAvailable(w, r) {
+		return
+	}
+	var request struct {
+		Type    string         `json:"type"`
+		Payload map[string]any `json:"payload"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	if request.Payload == nil {
+		request.Payload = map[string]any{}
+	}
+	adminUser, _ := adminFromRequest(r)
+	commandType := strings.ToLower(strings.TrimSpace(request.Type))
+	allowedCommands := map[string]struct{}{
+		"tap": {}, "swipe": {}, "system_action": {}, "text": {}, "clipboard_set": {},
+	}
+	if _, allowed := allowedCommands[commandType]; !allowed {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "远程控制参数无效")
+		return
+	}
+	if err := auditAdmin(r.Context(), h.db, r, "remote.control."+commandType, "remote_device", r.PathValue("id"), nil, map[string]any{"command_type": commandType}); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录远程控制审计失败")
+		return
+	}
+	if err := h.remote.QueueControlCommand(r.Context(), r.PathValue("id"), adminUser.ID, r.Header.Get("X-Remote-Session"), commandType, request.Payload); err != nil {
+		h.writeAdminRemoteError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]bool{"queued": true})
+}
+
+func (h *Handler) endRemoteControl(w http.ResponseWriter, r *http.Request) {
+	if !h.remoteAvailable(w, r) {
+		return
+	}
+	adminUser, _ := adminFromRequest(r)
+	if err := auditAdmin(r.Context(), h.db, r, "remote.control.end", "remote_device", r.PathValue("id"), nil, map[string]any{"ended": true}); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录远程控制审计失败")
+		return
+	}
+	token := r.Header.Get("X-Remote-Session")
+	if err := h.remote.QueueControlCommand(r.Context(), r.PathValue("id"), adminUser.ID, token, "end_session", map[string]any{}); err != nil {
+		endErr := h.remote.EndControlSession(r.Context(), r.PathValue("id"), adminUser.ID, token)
+		if !errors.Is(err, remoteassist.ErrOffline) || endErr != nil {
+			h.writeAdminRemoteError(w, r, err)
+			return
+		}
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]bool{"ended": true})
+}
+
 func (h *Handler) remoteAvailable(w http.ResponseWriter, r *http.Request) bool {
 	if h.remote != nil && h.remote.Enabled() {
 		return true
@@ -150,14 +232,16 @@ func (h *Handler) remoteAvailable(w http.ResponseWriter, r *http.Request) bool {
 
 func (h *Handler) writeAdminRemoteError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, remoteassist.ErrInvalid):
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "远程控制参数无效")
 	case errors.Is(err, remoteassist.ErrNotFound):
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "远程设备或请求不存在")
 	case errors.Is(err, remoteassist.ErrOffline):
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "设备不在线或远程服务未运行")
 	case errors.Is(err, remoteassist.ErrNotReady):
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "临时密码尚未就绪或已过期")
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusUnauthorized, 401, "远程控制授权尚未就绪或已过期")
 	case errors.Is(err, remoteassist.ErrAlreadyRevealed):
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusGone, 410, "临时密码已显示过，不能再次查看")
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusGone, 410, "远程控制授权已使用，不能再次开启")
 	case errors.Is(err, remoteassist.ErrDisabled):
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusServiceUnavailable, 503, "远程协助暂未开放")
 	default:

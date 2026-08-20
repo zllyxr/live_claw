@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/zllyxr/live_claw/backend/internal/auth"
@@ -70,7 +71,39 @@ func (s *Server) remoteHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"commands": commands, "next_heartbeat_seconds": 5})
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{"commands": commands, "next_heartbeat_seconds": 2})
+}
+
+func (s *Server) remoteFrame(w http.ResponseWriter, r *http.Request) {
+	device, ok := s.remoteDevice(w, r)
+	if !ok {
+		return
+	}
+	if mediaType := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0])); mediaType != "image/jpeg" {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusUnsupportedMediaType, 415, "画面格式必须为 JPEG")
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 768<<10))
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusRequestEntityTooLarge, 413, "画面数据过大")
+		return
+	}
+	width, widthOK := positiveFrameHeader(r, "X-Frame-Width")
+	height, heightOK := positiveFrameHeader(r, "X-Frame-Height")
+	rotation, rotationOK := frameHeader(r, "X-Frame-Rotation")
+	sequence, sequenceOK := frameSequenceHeader(r, "X-Frame-Sequence")
+	if !widthOK || !heightOK || !rotationOK || !sequenceOK {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "画面参数无效")
+		return
+	}
+	if err = s.remote.StoreFrame(r.Context(), device, remoteassist.ScreenFrame{
+		JPEG: body, Width: width, Height: height, Rotation: rotation, Sequence: sequence,
+	}); err != nil {
+		s.writeRemoteError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) remoteCommandAck(w http.ResponseWriter, r *http.Request) {
@@ -174,4 +207,19 @@ func decodeRemoteJSON(w http.ResponseWriter, r *http.Request, target any, limit 
 		return false
 	}
 	return true
+}
+
+func frameHeader(r *http.Request, name string) (int, bool) {
+	value, err := strconv.Atoi(strings.TrimSpace(r.Header.Get(name)))
+	return value, err == nil
+}
+
+func positiveFrameHeader(r *http.Request, name string) (int, bool) {
+	value, ok := frameHeader(r, name)
+	return value, ok && value > 0
+}
+
+func frameSequenceHeader(r *http.Request, name string) (int64, bool) {
+	value, err := strconv.ParseInt(strings.TrimSpace(r.Header.Get(name)), 10, 64)
+	return value, err == nil && value >= 0
 }

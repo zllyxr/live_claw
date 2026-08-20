@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@dcloudio/types": "^3.4.31",
+    "@dcloudio/uni-uts-v1": "3.0.0-5020320260806002",
     "@dcloudio/vite-plugin-uni": "3.0.0-5020320260806002",
     "@types/crypto-js": "^4.2.2",
     "@types/node": "^24.10.1",

@@ -27,10 +27,6 @@ type Config struct {
 	DataEncryptionKey              string
 	RemoteAssistanceEnabled        bool
 	RemoteAssistanceAllowedUserIDs []int64
-	RustDeskIDServer               string
-	RustDeskRelayServer            string
-	RustDeskAPIServer              string
-	RustDeskPublicKey              string
 	SportsAPIBaseURL               string
 	SportsAPIKey                   string
 	SportsLiveInterval             time.Duration
@@ -111,10 +107,6 @@ func Load() (Config, error) {
 		DataEncryptionKey:              dataEncryptionKey,
 		RemoteAssistanceEnabled:        remoteAssistanceEnabled,
 		RemoteAssistanceAllowedUserIDs: remoteAllowedUserIDs,
-		RustDeskIDServer:               env("V2_RUSTDESK_ID_SERVER", "rd.tmpai2.com"),
-		RustDeskRelayServer:            env("V2_RUSTDESK_RELAY_SERVER", "rd.tmpai2.com"),
-		RustDeskAPIServer:              strings.TrimRight(env("V2_RUSTDESK_API_SERVER", "https://rd-admin.tmpai2.com"), "/"),
-		RustDeskPublicKey:              strings.TrimSpace(os.Getenv("V2_RUSTDESK_PUBLIC_KEY")),
 		SportsAPIBaseURL:               strings.TrimRight(env("V2_SPORTS_API_BASE_URL", "https://v3.football.api-sports.io"), "/"),
 		SportsAPIKey:                   strings.TrimSpace(os.Getenv("V2_SPORTS_API_KEY")),
 		SportsLiveInterval:             sportsLiveInterval,

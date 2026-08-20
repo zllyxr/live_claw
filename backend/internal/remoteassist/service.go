@@ -10,11 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/zllyxr/live_claw/backend/internal/idgen"
 )
 
@@ -25,6 +25,7 @@ var (
 	ErrConflict        = errors.New("remote assistance state conflict")
 	ErrOffline         = errors.New("remote assistance device is offline")
 	ErrNotReady        = errors.New("remote assistance credential is not ready")
+	ErrNoFrame         = errors.New("remote assistance frame is not available")
 	ErrAlreadyRevealed = errors.New("remote assistance credential was already revealed")
 )
 
@@ -36,10 +37,6 @@ const (
 type Config struct {
 	Enabled        bool
 	AllowedUserIDs []int64
-	IDServer       string
-	RelayServer    string
-	APIServer      string
-	PublicKey      string
 }
 
 type Service struct {
@@ -48,6 +45,7 @@ type Service struct {
 	config         Config
 	now            func() time.Time
 	allowedUserIDs map[int64]struct{}
+	realtime       *realtimeStore
 }
 
 type EnrollRequest struct {
@@ -65,10 +63,6 @@ type EnrollRequest struct {
 type Enrollment struct {
 	DeviceID         string `json:"device_id"`
 	DeviceToken      string `json:"device_token"`
-	IDServer         string `json:"id_server"`
-	RelayServer      string `json:"relay_server"`
-	APIServer        string `json:"api_server"`
-	PublicKey        string `json:"public_key"`
 	HeartbeatSeconds int    `json:"heartbeat_seconds"`
 }
 
@@ -85,7 +79,7 @@ type Device struct {
 	AppVersion       string          `json:"app_version"`
 	AppNativeCode    int             `json:"app_native_code"`
 	PluginVersion    string          `json:"plugin_version"`
-	RustDeskID       string          `json:"rustdesk_id"`
+	DeviceCode       string          `json:"device_code"`
 	ServiceStatus    string          `json:"service_status"`
 	PermissionStatus json.RawMessage `json:"permission_status,omitempty"`
 	Capabilities     json.RawMessage `json:"capabilities,omitempty"`
@@ -97,7 +91,7 @@ type Device struct {
 }
 
 type Heartbeat struct {
-	RustDeskID       string         `json:"rustdesk_id"`
+	DeviceCode       string         `json:"device_code"`
 	ServiceStatus    string         `json:"service_status"`
 	PermissionStatus map[string]any `json:"permission_status"`
 	Capabilities     map[string]any `json:"capabilities"`
@@ -140,35 +134,15 @@ type Credential struct {
 
 type RevealedCredential struct {
 	ID               string    `json:"id"`
-	Password         string    `json:"password"`
-	ConnectionURI    string    `json:"connection_uri"`
+	ControlToken     string    `json:"control_token"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	HideAfterSeconds int       `json:"hide_after_seconds"`
 }
 
-func New(db *sql.DB, masterKey string, config Config) (*Service, error) {
+func New(db *sql.DB, masterKey string, config Config, redisClients ...*redis.Client) (*Service, error) {
 	cipher, err := newSecretCipher(masterKey)
 	if err != nil {
 		return nil, err
-	}
-	config.IDServer = strings.TrimSpace(config.IDServer)
-	config.RelayServer = strings.TrimSpace(config.RelayServer)
-	config.APIServer = strings.TrimRight(strings.TrimSpace(config.APIServer), "/")
-	config.PublicKey = strings.TrimSpace(config.PublicKey)
-	if (config.Enabled || len(config.AllowedUserIDs) > 0) && (config.IDServer == "" || config.RelayServer == "" || config.PublicKey == "") {
-		return nil, errors.New("remote assistance server configuration is incomplete")
-	}
-	if config.Enabled || len(config.AllowedUserIDs) > 0 {
-		if !validServerAddress(config.IDServer) || !validServerAddress(config.RelayServer) ||
-			len(config.PublicKey) < 16 || len(config.PublicKey) > 512 {
-			return nil, errors.New("remote assistance server configuration is invalid")
-		}
-		if config.APIServer != "" {
-			parsed, parseErr := url.Parse(config.APIServer)
-			if parseErr != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-				return nil, errors.New("remote assistance API server is invalid")
-			}
-		}
 	}
 	allowed := make(map[int64]struct{}, len(config.AllowedUserIDs))
 	for _, userID := range config.AllowedUserIDs {
@@ -176,7 +150,14 @@ func New(db *sql.DB, masterKey string, config Config) (*Service, error) {
 			allowed[userID] = struct{}{}
 		}
 	}
-	return &Service{db: db, cipher: cipher, config: config, now: time.Now, allowedUserIDs: allowed}, nil
+	var redisClient *redis.Client
+	if len(redisClients) > 0 {
+		redisClient = redisClients[0]
+	}
+	return &Service{
+		db: db, cipher: cipher, config: config, now: time.Now,
+		allowedUserIDs: allowed, realtime: newRealtimeStore(redisClient),
+	}, nil
 }
 
 // Enabled reports that the management and device command channel is present.
@@ -231,7 +212,7 @@ func (s *Service) Enroll(ctx context.Context, userID int64, request EnrollReques
 		return Enrollment{}, ErrConflict
 	default:
 		deviceID = existingID
-		_, err = tx.ExecContext(ctx, `UPDATE remote_devices SET user_id=?,device_token_hash=?,device_name=?,manufacturer=?,model=?,android_version=?,android_sdk=?,app_version=?,app_native_code=?,plugin_version=?,status=1,revoked_at=NULL,service_status='stopped',rustdesk_id='',permission_status=NULL,capabilities=NULL,last_seen_at=NULL WHERE id=?`, userID, tokenHash, bounded(request.DeviceName, 120), bounded(request.Manufacturer, 80), bounded(request.Model, 120), bounded(request.AndroidVersion, 32), request.AndroidSDK, bounded(request.AppVersion, 40), positive(request.AppNativeCode), bounded(request.PluginVersion, 40), deviceID)
+		_, err = tx.ExecContext(ctx, `UPDATE remote_devices SET user_id=?,device_token_hash=?,device_name=?,manufacturer=?,model=?,android_version=?,android_sdk=?,app_version=?,app_native_code=?,plugin_version=?,status=1,revoked_at=NULL,service_status='stopped',device_code='',permission_status=NULL,capabilities=NULL,last_seen_at=NULL WHERE id=?`, userID, tokenHash, bounded(request.DeviceName, 120), bounded(request.Manufacturer, 80), bounded(request.Model, 120), bounded(request.AndroidVersion, 32), request.AndroidSDK, bounded(request.AppVersion, 40), positive(request.AppNativeCode), bounded(request.PluginVersion, 40), deviceID)
 	}
 	if err != nil {
 		return Enrollment{}, err
@@ -248,7 +229,7 @@ func (s *Service) Enroll(ctx context.Context, userID int64, request EnrollReques
 	if err = tx.Commit(); err != nil {
 		return Enrollment{}, err
 	}
-	return Enrollment{DeviceID: deviceID, DeviceToken: token, IDServer: s.config.IDServer, RelayServer: s.config.RelayServer, APIServer: s.config.APIServer, PublicKey: s.config.PublicKey, HeartbeatSeconds: 5}, nil
+	return Enrollment{DeviceID: deviceID, DeviceToken: token, HeartbeatSeconds: 2}, nil
 }
 
 func (s *Service) Current(ctx context.Context, userID int64, installID string) (Device, error) {
@@ -259,7 +240,7 @@ func (s *Service) Current(ctx context.Context, userID int64, installID string) (
 	if userID < 1 || installID == "" {
 		return Device{}, ErrInvalid
 	}
-	return s.scanDevice(s.db.QueryRowContext(ctx, `SELECT id,user_id,'',install_id,device_name,manufacturer,model,android_version,android_sdk,app_version,app_native_code,plugin_version,rustdesk_id,service_status,permission_status,capabilities,status,last_seen_at,created_at,EXISTS(SELECT 1 FROM remote_sessions rs WHERE rs.remote_device_id=remote_devices.id AND rs.event_type='connected' AND rs.status='active') FROM remote_devices WHERE user_id=? AND install_id=? AND status<>3`, userID, installID))
+	return s.scanDevice(s.db.QueryRowContext(ctx, `SELECT id,user_id,'',install_id,device_name,manufacturer,model,android_version,android_sdk,app_version,app_native_code,plugin_version,device_code,service_status,permission_status,capabilities,status,last_seen_at,created_at,EXISTS(SELECT 1 FROM remote_sessions rs WHERE rs.remote_device_id=remote_devices.id AND rs.event_type='connected' AND rs.status='active') FROM remote_devices WHERE user_id=? AND install_id=? AND status<>3`, userID, installID))
 }
 
 func (s *Service) Unbind(ctx context.Context, userID int64, installID string) error {
@@ -294,7 +275,7 @@ func (s *Service) AuthenticateDevice(ctx context.Context, token string) (Device,
 	if strings.TrimSpace(token) == "" {
 		return Device{}, ErrNotFound
 	}
-	return s.scanDevice(s.db.QueryRowContext(ctx, `SELECT id,user_id,'',install_id,device_name,manufacturer,model,android_version,android_sdk,app_version,app_native_code,plugin_version,rustdesk_id,service_status,permission_status,capabilities,status,last_seen_at,created_at,FALSE FROM remote_devices WHERE device_token_hash=? AND status IN (1,2)`, hex.EncodeToString(sum[:])))
+	return s.scanDevice(s.db.QueryRowContext(ctx, `SELECT id,user_id,'',install_id,device_name,manufacturer,model,android_version,android_sdk,app_version,app_native_code,plugin_version,device_code,service_status,permission_status,capabilities,status,last_seen_at,created_at,FALSE FROM remote_devices WHERE device_token_hash=? AND status IN (1,2)`, hex.EncodeToString(sum[:])))
 }
 
 func (s *Service) Heartbeat(ctx context.Context, device Device, report Heartbeat) ([]Command, error) {
@@ -319,12 +300,12 @@ func (s *Service) Heartbeat(ctx context.Context, device Device, report Heartbeat
 	if status == "" {
 		status = "unknown"
 	}
-	rustDeskID := bounded(report.RustDeskID, 80)
-	if rustDeskID != "" && !validRustDeskID(rustDeskID) {
+	deviceCode := bounded(report.DeviceCode, 80)
+	if deviceCode != "" && !validDeviceCode(deviceCode) {
 		return nil, ErrInvalid
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE remote_devices SET
-		rustdesk_id=COALESCE(NULLIF(?,''),rustdesk_id),service_status=?,
+		device_code=COALESCE(NULLIF(?,''),device_code),service_status=?,
 		permission_status=COALESCE(?,permission_status),capabilities=COALESCE(?,capabilities),
 		device_name=COALESCE(NULLIF(?,''),device_name),
 		manufacturer=COALESCE(NULLIF(?,''),manufacturer),
@@ -334,7 +315,7 @@ func (s *Service) Heartbeat(ctx context.Context, device Device, report Heartbeat
 		app_version=COALESCE(NULLIF(?,''),app_version),
 		app_native_code=COALESCE(NULLIF(?,0),app_native_code),
 		plugin_version=COALESCE(NULLIF(?,''),plugin_version),
-		last_seen_at=? WHERE id=? AND status IN (1,2)`, rustDeskID, status, nullableJSON(permissions), nullableJSON(capabilities), bounded(report.DeviceName, 120), bounded(report.Manufacturer, 80), bounded(report.Model, 120), bounded(report.AndroidVersion, 32), positive(report.AndroidSDK), bounded(report.AppVersion, 40), positive(report.AppNativeCode), bounded(report.PluginVersion, 40), s.now(), device.ID)
+			last_seen_at=? WHERE id=? AND status IN (1,2)`, deviceCode, status, nullableJSON(permissions), nullableJSON(capabilities), bounded(report.DeviceName, 120), bounded(report.Manufacturer, 80), bounded(report.Model, 120), bounded(report.AndroidVersion, 32), positive(report.AndroidSDK), bounded(report.AppVersion, 40), positive(report.AppNativeCode), bounded(report.PluginVersion, 40), s.now(), device.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +411,7 @@ func (s *Service) AckCommand(ctx context.Context, device Device, commandID strin
 	if err != nil {
 		return err
 	}
-	if commandType == "set_temporary_password" {
+	if commandType == "authorize_session" {
 		credentialStatus := "ready"
 		if status == "failed" {
 			credentialStatus = "failed"
@@ -539,11 +520,11 @@ func (s *Service) ListDevices(ctx context.Context, search string, online *bool, 
 		permissionValue = map[bool]string{true: "true", false: "false"}[*permissionGranted]
 	}
 	var total int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM remote_devices device JOIN users user ON user.id=device.user_id WHERE device.status<>3 AND (?='' OR user.username LIKE ? OR user.nickname LIKE ? OR device.device_name LIKE ? OR device.model LIKE ? OR device.rustdesk_id LIKE ?) AND (?=-1 OR (?=1 AND device.last_seen_at>?) OR (?=0 AND (device.last_seen_at IS NULL OR device.last_seen_at<=?))) AND (?='' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(device.permission_status,CONCAT('$.',?))),'false')=?)`, search, like, like, like, like, like, onlineFilter, onlineFilter, cutoff, onlineFilter, cutoff, permission, permission, permissionValue).Scan(&total)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM remote_devices device JOIN users user ON user.id=device.user_id WHERE device.status<>3 AND (?='' OR user.username LIKE ? OR user.nickname LIKE ? OR device.device_name LIKE ? OR device.model LIKE ? OR device.device_code LIKE ?) AND (?=-1 OR (?=1 AND device.last_seen_at>?) OR (?=0 AND (device.last_seen_at IS NULL OR device.last_seen_at<=?))) AND (?='' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(device.permission_status,CONCAT('$.',?))),'false')=?)`, search, like, like, like, like, like, onlineFilter, onlineFilter, cutoff, onlineFilter, cutoff, permission, permission, permissionValue).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT device.id,device.user_id,user.username,device.install_id,device.device_name,device.manufacturer,device.model,device.android_version,device.android_sdk,device.app_version,device.app_native_code,device.plugin_version,device.rustdesk_id,device.service_status,device.permission_status,device.capabilities,device.status,device.last_seen_at,device.created_at,EXISTS(SELECT 1 FROM remote_sessions rs WHERE rs.remote_device_id=device.id AND rs.status='active') FROM remote_devices device JOIN users user ON user.id=device.user_id WHERE device.status<>3 AND (?='' OR user.username LIKE ? OR user.nickname LIKE ? OR device.device_name LIKE ? OR device.model LIKE ? OR device.rustdesk_id LIKE ?) AND (?=-1 OR (?=1 AND device.last_seen_at>?) OR (?=0 AND (device.last_seen_at IS NULL OR device.last_seen_at<=?))) AND (?='' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(device.permission_status,CONCAT('$.',?))),'false')=?) ORDER BY device.last_seen_at DESC,device.created_at DESC LIMIT ? OFFSET ?`, search, like, like, like, like, like, onlineFilter, onlineFilter, cutoff, onlineFilter, cutoff, permission, permission, permissionValue, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT device.id,device.user_id,user.username,device.install_id,device.device_name,device.manufacturer,device.model,device.android_version,device.android_sdk,device.app_version,device.app_native_code,device.plugin_version,device.device_code,device.service_status,device.permission_status,device.capabilities,device.status,device.last_seen_at,device.created_at,EXISTS(SELECT 1 FROM remote_sessions rs WHERE rs.remote_device_id=device.id AND rs.status='active') FROM remote_devices device JOIN users user ON user.id=device.user_id WHERE device.status<>3 AND (?='' OR user.username LIKE ? OR user.nickname LIKE ? OR device.device_name LIKE ? OR device.model LIKE ? OR device.device_code LIKE ?) AND (?=-1 OR (?=1 AND device.last_seen_at>?) OR (?=0 AND (device.last_seen_at IS NULL OR device.last_seen_at<=?))) AND (?='' OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(device.permission_status,CONCAT('$.',?))),'false')=?) ORDER BY device.last_seen_at DESC,device.created_at DESC LIMIT ? OFFSET ?`, search, like, like, like, like, like, onlineFilter, onlineFilter, cutoff, onlineFilter, cutoff, permission, permission, permissionValue, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -570,7 +551,7 @@ func (s *Service) CreateCredential(ctx context.Context, deviceID string, adminID
 	if !s.userEnabled(device.UserID) {
 		return Credential{}, ErrDisabled
 	}
-	if device.Status != 1 || !device.Online || strings.TrimSpace(device.RustDeskID) == "" || device.ServiceStatus != "running" {
+	if device.Status != 1 || !device.Online || strings.TrimSpace(device.DeviceCode) == "" || device.ServiceStatus != "running" {
 		return Credential{}, ErrOffline
 	}
 	password, err := randomPassword(20)
@@ -590,7 +571,7 @@ func (s *Service) CreateCredential(ctx context.Context, deviceID string, adminID
 	if err != nil {
 		return Credential{}, err
 	}
-	payload, _ := json.Marshal(map[string]any{"credential_request_id": credentialID, "password": password, "expires_at": expires})
+	payload, _ := json.Marshal(map[string]any{"credential_request_id": credentialID, "expires_at": expires})
 	commandCipher, err := s.cipher.encrypt("command/"+commandID, payload)
 	if err != nil {
 		return Credential{}, err
@@ -602,15 +583,15 @@ func (s *Service) CreateCredential(ctx context.Context, deviceID string, adminID
 	defer tx.Rollback() //nolint:errcheck
 	var lockedStatus int
 	var lockedLastSeen *time.Time
-	var lockedServiceStatus, lockedRustDeskID string
-	err = tx.QueryRowContext(ctx, `SELECT status,last_seen_at,service_status,rustdesk_id FROM remote_devices WHERE id=? FOR UPDATE`, device.ID).Scan(&lockedStatus, &lockedLastSeen, &lockedServiceStatus, &lockedRustDeskID)
+	var lockedServiceStatus, lockedDeviceCode string
+	err = tx.QueryRowContext(ctx, `SELECT status,last_seen_at,service_status,device_code FROM remote_devices WHERE id=? FOR UPDATE`, device.ID).Scan(&lockedStatus, &lockedLastSeen, &lockedServiceStatus, &lockedDeviceCode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Credential{}, ErrNotFound
 	}
 	if err != nil {
 		return Credential{}, err
 	}
-	if lockedStatus != 1 || lockedLastSeen == nil || !lockedLastSeen.After(s.now().Add(-onlineWindow)) || lockedServiceStatus != "running" || strings.TrimSpace(lockedRustDeskID) == "" {
+	if lockedStatus != 1 || lockedLastSeen == nil || !lockedLastSeen.After(s.now().Add(-onlineWindow)) || lockedServiceStatus != "running" || strings.TrimSpace(lockedDeviceCode) == "" {
 		return Credential{}, ErrOffline
 	}
 	_, _ = tx.ExecContext(ctx, `UPDATE remote_credential_requests SET status='expired' WHERE remote_device_id=? AND status IN ('pending','ready')`, device.ID)
@@ -618,11 +599,11 @@ func (s *Service) CreateCredential(ctx context.Context, deviceID string, adminID
 		JOIN remote_credential_requests credential ON credential.command_id=command_row.id
 		SET command_row.status='cancelled'
 		WHERE credential.remote_device_id=? AND credential.id<>? AND command_row.status IN ('pending','delivered')`, device.ID, credentialID)
-	_, err = tx.ExecContext(ctx, `INSERT INTO remote_commands(id,remote_device_id,command_type,payload_ciphertext,status,expires_at) VALUES(?,?, 'set_temporary_password',?,'pending',?)`, commandID, device.ID, commandCipher, expires)
+	_, err = tx.ExecContext(ctx, `INSERT INTO remote_commands(id,remote_device_id,command_type,payload_ciphertext,status,expires_at) VALUES(?,?, 'authorize_session',?,'pending',?)`, commandID, device.ID, commandCipher, expires)
 	if err != nil {
 		return Credential{}, err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO remote_credential_requests(id,remote_device_id,requested_by,command_id,password_ciphertext,status,expires_at) VALUES(?,?,?,?,?,'pending',?)`, credentialID, device.ID, adminID, commandID, passwordCipher, expires)
+	_, err = tx.ExecContext(ctx, `INSERT INTO remote_credential_requests(id,remote_device_id,requested_by,command_id,authorization_ciphertext,status,expires_at) VALUES(?,?,?,?,?,'pending',?)`, credentialID, device.ID, adminID, commandID, passwordCipher, expires)
 	if err != nil {
 		return Credential{}, err
 	}
@@ -649,9 +630,9 @@ func (s *Service) RevealCredential(ctx context.Context, id string, adminID int64
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var encrypted []byte
-	var status, rustdeskID string
+	var status, deviceID string
 	var expires time.Time
-	err = tx.QueryRowContext(ctx, `SELECT credential.password_ciphertext,credential.status,credential.expires_at,device.rustdesk_id FROM remote_credential_requests credential JOIN remote_devices device ON device.id=credential.remote_device_id WHERE credential.id=? AND credential.requested_by=? FOR UPDATE`, id, adminID).Scan(&encrypted, &status, &expires, &rustdeskID)
+	err = tx.QueryRowContext(ctx, `SELECT credential.authorization_ciphertext,credential.status,credential.expires_at,device.id FROM remote_credential_requests credential JOIN remote_devices device ON device.id=credential.remote_device_id WHERE credential.id=? AND credential.requested_by=? FOR UPDATE`, id, adminID).Scan(&encrypted, &status, &expires, &deviceID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return RevealedCredential{}, ErrNotFound
 	}
@@ -669,19 +650,24 @@ func (s *Service) RevealCredential(ctx context.Context, id string, adminID int64
 	if status != "ready" {
 		return RevealedCredential{}, ErrNotReady
 	}
-	plaintext, err := s.cipher.decrypt("credential/"+id, encrypted)
+	_, err = s.cipher.decrypt("credential/"+id, encrypted)
+	if err != nil {
+		return RevealedCredential{}, err
+	}
+	controlToken, controlExpires, err := s.startControlSession(ctx, deviceID, adminID, id)
 	if err != nil {
 		return RevealedCredential{}, err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE remote_credential_requests SET status='revealed',revealed_at=? WHERE id=? AND status='ready'`, s.now(), id)
 	if err != nil {
+		_ = s.endControlSession(ctx, deviceID, adminID, controlToken)
 		return RevealedCredential{}, err
 	}
 	if err = tx.Commit(); err != nil {
+		_ = s.endControlSession(ctx, deviceID, adminID, controlToken)
 		return RevealedCredential{}, err
 	}
-	connectionURI := "rustdesk://connect/" + url.PathEscape(rustdeskID) + "@" + s.config.IDServer + "?key=" + url.QueryEscape(s.config.PublicKey)
-	return RevealedCredential{ID: id, Password: string(plaintext), ConnectionURI: connectionURI, ExpiresAt: expires, HideAfterSeconds: 60}, nil
+	return RevealedCredential{ID: id, ControlToken: controlToken, ExpiresAt: controlExpires, HideAfterSeconds: 60}, nil
 }
 
 func (s *Service) RevokeDevice(ctx context.Context, deviceID string) error {
@@ -715,7 +701,7 @@ func (s *Service) RevokeDevice(ctx context.Context, deviceID string) error {
 }
 
 func (s *Service) deviceByID(ctx context.Context, id string) (Device, error) {
-	return s.scanDevice(s.db.QueryRowContext(ctx, `SELECT id,user_id,'',install_id,device_name,manufacturer,model,android_version,android_sdk,app_version,app_native_code,plugin_version,rustdesk_id,service_status,permission_status,capabilities,status,last_seen_at,created_at,EXISTS(SELECT 1 FROM remote_sessions rs WHERE rs.remote_device_id=remote_devices.id AND rs.status='active') FROM remote_devices WHERE id=?`, id))
+	return s.scanDevice(s.db.QueryRowContext(ctx, `SELECT id,user_id,'',install_id,device_name,manufacturer,model,android_version,android_sdk,app_version,app_native_code,plugin_version,device_code,service_status,permission_status,capabilities,status,last_seen_at,created_at,EXISTS(SELECT 1 FROM remote_sessions rs WHERE rs.remote_device_id=remote_devices.id AND rs.status='active') FROM remote_devices WHERE id=?`, id))
 }
 
 type scanner interface{ Scan(...any) error }
@@ -723,7 +709,7 @@ type scanner interface{ Scan(...any) error }
 func (s *Service) scanDevice(row scanner) (Device, error) {
 	var item Device
 	var permissions, capabilities []byte
-	err := row.Scan(&item.ID, &item.UserID, &item.Username, &item.InstallID, &item.DeviceName, &item.Manufacturer, &item.Model, &item.AndroidVersion, &item.AndroidSDK, &item.AppVersion, &item.AppNativeCode, &item.PluginVersion, &item.RustDeskID, &item.ServiceStatus, &permissions, &capabilities, &item.Status, &item.LastSeenAt, &item.CreatedAt, &item.CurrentSession)
+	err := row.Scan(&item.ID, &item.UserID, &item.Username, &item.InstallID, &item.DeviceName, &item.Manufacturer, &item.Model, &item.AndroidVersion, &item.AndroidSDK, &item.AppVersion, &item.AppNativeCode, &item.PluginVersion, &item.DeviceCode, &item.ServiceStatus, &permissions, &capabilities, &item.Status, &item.LastSeenAt, &item.CreatedAt, &item.CurrentSession)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Device{}, ErrNotFound
 	}
@@ -870,22 +856,14 @@ func safeAckResult(value map[string]any) ([]byte, error) {
 		return nil, ErrInvalid
 	}
 	switch code {
-	case "", "unsupported_command", "apply_failed", "invalid_payload", "expired", "core_unavailable":
+	case "", "unsupported_command", "apply_failed", "invalid_payload", "expired", "core_unavailable", "input_unavailable", "gesture_failed":
 		return safeJSON(value, 256)
 	default:
 		return nil, ErrInvalid
 	}
 }
 
-func validServerAddress(value string) bool {
-	if value == "" || len(value) > 253 || strings.ContainsAny(value, "/?#@ \\") {
-		return false
-	}
-	parsed, err := url.Parse("//" + value)
-	return err == nil && parsed.Host == value && parsed.Hostname() != ""
-}
-
-func validRustDeskID(value string) bool {
+func validDeviceCode(value string) bool {
 	if value == "" || len(value) > 80 {
 		return false
 	}

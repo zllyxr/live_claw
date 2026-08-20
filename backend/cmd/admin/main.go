@@ -27,7 +27,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	dependencies, err := servicehost.Open(ctx, cfg, false)
+	dependencies, err := servicehost.Open(ctx, cfg, true)
 	if err != nil {
 		logger.Error("open dependencies", "error", err)
 		os.Exit(1)
@@ -46,11 +46,9 @@ func main() {
 		os.Exit(1)
 	}
 	remoteService, err := remoteassist.New(dependencies.DB, cfg.DataEncryptionKey, remoteassist.Config{
-		Enabled: cfg.RemoteAssistanceEnabled, IDServer: cfg.RustDeskIDServer,
+		Enabled:        cfg.RemoteAssistanceEnabled,
 		AllowedUserIDs: cfg.RemoteAssistanceAllowedUserIDs,
-		RelayServer:    cfg.RustDeskRelayServer, APIServer: cfg.RustDeskAPIServer,
-		PublicKey: cfg.RustDeskPublicKey,
-	})
+	}, dependencies.Redis)
 	if err != nil {
 		logger.Error("initialize remote assistance", "error", err)
 		os.Exit(1)

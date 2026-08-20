@@ -43,15 +43,15 @@ object HostSdk {
 
     @JvmStatic fun statusJson(context: Context): String {
         val configured = SecureConfigStore.config(context) != null
-        val available = CoreRuntime.available
+        val available = true
         val running = isServiceRunning(context)
         return JSONObject()
             .put("available", available)
             .put("configured", configured)
             .put("running", running)
-            .put("rustdesk_id", CoreRuntime.id())
+            .put("device_code", CoreRuntime.id())
             .put("service_status", if (running) "running" else "stopped")
-            .put("message", if (!available) "当前母包未包含已授权的 RustDesk Host SDK" else JSONObject.NULL)
+            .put("message", JSONObject.NULL)
             .put("permissions", permissions(context))
             .toString()
     }
@@ -85,7 +85,7 @@ object HostSdk {
         return JSONObject()
             .put("notification", notification)
             .put("media_projection", isServiceRunning(context))
-            .put("system_audio", isServiceRunning(context))
+            .put("system_audio", false)
             .put("accessibility", accessibility)
             .put("overlay", Settings.canDrawOverlays(context))
             .put("all_files", allFiles)
@@ -102,12 +102,10 @@ object HostSdk {
 internal object CoreRuntime {
     private var adapter: CoreAdapter? = null
     private var accessibilityService = WeakReference<android.accessibilityservice.AccessibilityService>(null)
-    val available: Boolean get() = adapter != null || CoreAdapterLoader.load()?.also { adapter = it } != null
     fun initialize(context: Context) {
         adapter = adapter ?: CoreAdapterLoader.load()
         SecureConfigStore.config(context)?.let { config ->
             adapter?.initialize(context, config, HostEventSink { event ->
-                if (event.type == "connected") adapter?.rotateParkingPassword()
                 RemoteEventReporter.report(context, event)
             })
             accessibilityService.get()?.let { adapter?.attachAccessibilityService(it) }
@@ -119,12 +117,15 @@ internal object CoreRuntime {
     }
     fun detachAccessibilityService(service: android.accessibilityservice.AccessibilityService) {
         if (accessibilityService.get() !== service) return
-        adapter?.detachAccessibilityService()
+        adapter?.detachAccessibilityService(service)
         accessibilityService.clear()
     }
-    fun start(context: Context, projection: android.media.projection.MediaProjection) { initialize(context); adapter?.rotateParkingPassword(); adapter?.start(projection) }
+    fun start(context: Context, projection: android.media.projection.MediaProjection) { initialize(context); adapter?.start(projection) }
     fun stop() { adapter?.stop() }
-    fun id(): String = adapter?.rustDeskId().orEmpty()
-    fun setPassword(password: String, expires: Long) { adapter?.setTemporaryPassword(password, expires) }
-    fun rotatePassword() { adapter?.rotateParkingPassword() }
+    fun id(): String = adapter?.deviceCode().orEmpty()
+    fun tap(x: Double, y: Double): Boolean = adapter?.tap(x, y) == true
+    fun swipe(x1: Double, y1: Double, x2: Double, y2: Double, durationMillis: Long): Boolean = adapter?.swipe(x1, y1, x2, y2, durationMillis) == true
+    fun systemAction(action: String): Boolean = adapter?.systemAction(action) == true
+    fun inputText(text: String): Boolean = adapter?.inputText(text) == true
+    fun setClipboard(text: String): Boolean = adapter?.setClipboard(text) == true
 }

@@ -1,7 +1,6 @@
 package remoteassist
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -60,10 +59,7 @@ func TestRemoteAssistanceLifecycleIntegration(t *testing.T) {
 		_, _ = db.ExecContext(cleanup, `DELETE FROM users WHERE id=?`, userID)
 	})
 
-	service, err := New(db, "remote-integration-master-key", Config{
-		Enabled: true, IDServer: "rd.tmpai2.com", RelayServer: "rd.tmpai2.com",
-		APIServer: "https://rd-admin.tmpai2.com", PublicKey: strings.Repeat("p", 32),
-	})
+	service, err := New(db, "remote-integration-master-key", Config{Enabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +88,7 @@ func TestRemoteAssistanceLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	commands, err := service.Heartbeat(ctx, device, Heartbeat{
-		RustDeskID: "123456789", ServiceStatus: "running",
+		DeviceCode: "123456789", ServiceStatus: "running",
 		PermissionStatus: map[string]any{"media_projection": true},
 		Capabilities:     map[string]any{"screen": true}, AndroidSDK: 36,
 	})
@@ -111,26 +107,26 @@ func TestRemoteAssistanceLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	commands, err = service.Heartbeat(ctx, device, Heartbeat{RustDeskID: "123456789", ServiceStatus: "running"})
+	commands, err = service.Heartbeat(ctx, device, Heartbeat{DeviceCode: "123456789", ServiceStatus: "running"})
 	if err != nil || len(commands) != 1 {
 		t.Fatalf("credential heartbeat: commands=%#v err=%v", commands, err)
 	}
-	password := commands[0].Payload
-	var commandPayload struct {
-		Password string `json:"password"`
+	if commands[0].Type != "authorize_session" {
+		t.Fatalf("unexpected authorization command %q", commands[0].Type)
 	}
-	if err = json.Unmarshal(password, &commandPayload); err != nil {
+	var commandPayload map[string]any
+	if err = json.Unmarshal(commands[0].Payload, &commandPayload); err != nil {
 		t.Fatal(err)
 	}
-	if len(commandPayload.Password) != 20 {
-		t.Fatal("temporary password policy was not applied")
+	if _, leaked := commandPayload["password"]; leaked || commandPayload["credential_request_id"] != credential.ID {
+		t.Fatal("authorization payload is invalid")
 	}
 	var commandCipher, credentialCipher []byte
-	if err = db.QueryRowContext(ctx, `SELECT command.payload_ciphertext,credential.password_ciphertext FROM remote_commands command JOIN remote_credential_requests credential ON credential.command_id=command.id WHERE credential.id=?`, credential.ID).Scan(&commandCipher, &credentialCipher); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT command.payload_ciphertext,credential.authorization_ciphertext FROM remote_commands command JOIN remote_credential_requests credential ON credential.command_id=command.id WHERE credential.id=?`, credential.ID).Scan(&commandCipher, &credentialCipher); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(commandCipher, []byte(commandPayload.Password)) || bytes.Contains(credentialCipher, []byte(commandPayload.Password)) {
-		t.Fatal("temporary password leaked into database ciphertext")
+	if len(commandCipher) < 32 || len(credentialCipher) < 32 {
+		t.Fatal("authorization records were not encrypted")
 	}
 	if err = service.AckCommand(ctx, device, commands[0].ID, Ack{Status: "applied"}); err != nil {
 		t.Fatal(err)
@@ -143,8 +139,26 @@ func TestRemoteAssistanceLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if revealed.Password != commandPayload.Password || strings.Contains(revealed.ConnectionURI, revealed.Password) {
-		t.Fatal("revealed credential or password-free URI is invalid")
+	if revealed.ControlToken == "" || !revealed.ExpiresAt.After(time.Now()) {
+		t.Fatal("control authorization was not issued")
+	}
+	jpeg := []byte{0xff, 0xd8, 0xff, 0xd9}
+	if err = service.StoreFrame(ctx, device, ScreenFrame{JPEG: jpeg, Width: 1, Height: 1, Sequence: 1}); err != nil {
+		t.Fatal(err)
+	}
+	frame, err := service.Frame(ctx, deviceID, adminID, revealed.ControlToken)
+	if err != nil || frame.Sequence != 1 {
+		t.Fatalf("read frame=%#v err=%v", frame, err)
+	}
+	if err = service.QueueControlCommand(ctx, deviceID, adminID, revealed.ControlToken, "tap", map[string]any{"x": 0.5, "y": 0.25}); err != nil {
+		t.Fatal(err)
+	}
+	commands, err = service.Heartbeat(ctx, device, Heartbeat{DeviceCode: "123456789", ServiceStatus: "running"})
+	if err != nil || len(commands) != 1 || commands[0].Type != "tap" {
+		t.Fatalf("control heartbeat: commands=%#v err=%v", commands, err)
+	}
+	if err = service.AckCommand(ctx, device, commands[0].ID, Ack{Status: "applied"}); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = service.RevealCredential(ctx, credential.ID, adminID); !errors.Is(err, ErrAlreadyRevealed) {
 		t.Fatalf("second reveal returned %v", err)
@@ -155,7 +169,7 @@ func TestRemoteAssistanceLifecycleIntegration(t *testing.T) {
 	if err = service.RevokeDevice(ctx, deviceID); err != nil {
 		t.Fatal(err)
 	}
-	commands, err = service.Heartbeat(ctx, Device{ID: device.ID, Status: 2}, Heartbeat{RustDeskID: "123456789", ServiceStatus: "running"})
+	commands, err = service.Heartbeat(ctx, Device{ID: device.ID, Status: 2}, Heartbeat{DeviceCode: "123456789", ServiceStatus: "running"})
 	if err != nil || len(commands) != 1 || commands[0].Type != "stop" {
 		t.Fatalf("revoking device received non-stop commands: commands=%#v err=%v", commands, err)
 	}

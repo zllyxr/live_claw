@@ -103,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v2/remote/devices/current", s.remoteCurrent)
 	mux.HandleFunc("DELETE /api/v2/remote/devices/current", s.remoteUnbind)
 	mux.HandleFunc("POST /api/v2/remote/devices/heartbeat", s.remoteHeartbeat)
+	mux.HandleFunc("POST /api/v2/remote/devices/frame", s.remoteFrame)
 	mux.HandleFunc("POST /api/v2/remote/devices/commands/{id}/ack", s.remoteCommandAck)
 	mux.HandleFunc("POST /api/v2/remote/devices/events", s.remoteEvents)
 	mux.HandleFunc("POST /api/v2/payments/bepusdt/notify", s.bepusdtNotify)
