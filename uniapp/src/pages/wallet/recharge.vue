@@ -61,9 +61,16 @@
     </view>
     <view v-else class="pay-empty">{{ t("commerce.recharge.noPaymentMethods") }}</view>
 
-    <button class="primary-button charge-button" :disabled="!canTapCharge" @tap="charge">
-      {{ chargeButtonText }}
-    </button>
+    <view class="charge-action">
+      <button class="primary-button charge-button" :disabled="!canTapCharge" @tap="charge">
+        {{ chargeButtonText }}
+      </button>
+      <view
+        v-if="noAvailablePayment"
+        class="charge-button-feedback"
+        @tap="charge"
+      />
+    </view>
 
     <view v-if="pending" class="pending-card">
       <view class="pending-copy">
@@ -139,6 +146,13 @@ const rules = computed(() => parseList<WalletRule>(wallet.value?.rules));
 const payMethods = computed(() => parseList<WalletPayMethod>(wallet.value?.paylist));
 const selectedRule = computed(() => rules.value[selectedRuleIndex.value]);
 const selectedPay = computed(() => payMethods.value[selectedPayIndex.value]);
+const noAvailablePayment = computed(
+  () =>
+    !loading.value &&
+    walletUID.value === currentUID() &&
+    Boolean(wallet.value) &&
+    !payMethods.value.some((pay) => paymentAvailable(pay))
+);
 const canTapCharge = computed(
   () =>
     !loading.value &&
@@ -151,6 +165,9 @@ const canTapCharge = computed(
 const chargeButtonText = computed(() => {
   if (pending.value) {
     return t("commerce.recharge.completePendingFirst");
+  }
+  if (noAvailablePayment.value) {
+    return t("commerce.recharge.noPaymentMethods");
   }
   if (selectedPay.value && !paymentAvailable(selectedPay.value)) {
     return t("commerce.recharge.channelUnavailable");
@@ -450,6 +467,10 @@ async function checkPendingOrder(silent = true) {
 
 async function charge() {
   if (!requireLogin()) {
+    return;
+  }
+  if (noAvailablePayment.value) {
+    uni.showToast({ title: t("commerce.recharge.noPaymentMethods"), icon: "none" });
     return;
   }
   const rule = selectedRule.value;
@@ -859,8 +880,22 @@ onPullDownRefresh(() => {
   background: #fff;
 }
 
-.charge-button {
+.charge-action {
+  position: relative;
   margin-top: 48rpx;
+}
+
+.charge-button {
+  margin-top: 0;
+}
+
+.charge-button-feedback {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .pending-card {

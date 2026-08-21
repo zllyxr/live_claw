@@ -526,15 +526,24 @@ func (s *Server) compatUserProfile(ctx context.Context, userID int64, token stri
 }
 
 func (s *Server) compatWalletBalance(ctx context.Context, userID int64) (map[string]any, error) {
+	return compatWalletBalance(ctx, s.db, userID)
+}
+
+type compatWalletQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func compatWalletBalance(ctx context.Context, db compatWalletQuerier, userID int64) (map[string]any, error) {
 	var coin int64
-	err := s.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE((SELECT available FROM wallet_accounts WHERE user_id=? AND currency='COIN'),0)`,
 		userID,
 	).Scan(&coin)
 	if err != nil {
 		return nil, err
 	}
-	channelRows, err := s.db.QueryContext(ctx, `
+	channelRows, err := db.QueryContext(ctx, `
 		SELECT channel_key,name FROM payment_channels WHERE status=1 ORDER BY sort_order DESC,id`)
 	if err != nil {
 		return nil, err
@@ -551,21 +560,27 @@ func (s *Server) compatWalletBalance(ctx context.Context, userID int64) (map[str
 	if err = channelRows.Err(); err != nil {
 		return nil, err
 	}
-	productRows, err := s.db.QueryContext(ctx, `
+	productRows, err := db.QueryContext(ctx, `
 		SELECT product.id,product.coin_amount,product.amount_minor,
 		       product.bonus_coin,product.currency_scale
 		FROM recharge_products product
 		WHERE product.status=1
-		  AND EXISTS (
-		      SELECT 1
-		      FROM payment_channels channel
-		      WHERE channel.status=1
-		        AND channel.currency=product.fiat_currency
-		        AND channel.currency_scale=product.currency_scale
-		        AND (channel.min_amount_minor=0
-		             OR product.amount_minor>=channel.min_amount_minor)
-		        AND (channel.max_amount_minor=0
-		             OR product.amount_minor<=channel.max_amount_minor)
+		  AND (
+		      NOT EXISTS (
+		          SELECT 1 FROM payment_channels enabled_channel
+		          WHERE enabled_channel.status=1
+		      )
+		      OR EXISTS (
+		          SELECT 1
+		          FROM payment_channels channel
+		          WHERE channel.status=1
+		            AND channel.currency=product.fiat_currency
+		            AND channel.currency_scale=product.currency_scale
+		            AND (channel.min_amount_minor=0
+		                 OR product.amount_minor>=channel.min_amount_minor)
+		            AND (channel.max_amount_minor=0
+		                 OR product.amount_minor<=channel.max_amount_minor)
+		      )
 		  )
 		ORDER BY product.sort_order DESC,product.id`)
 	if err != nil {
