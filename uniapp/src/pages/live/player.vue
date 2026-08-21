@@ -1,7 +1,31 @@
 <template>
   <view class="live-room">
-    <video v-if="playSrc" id="liveVideo" class="live-video" :src="playSrc" :poster="cover" autoplay :muted="isMuted" object-fit="cover" :controls="false" :show-center-play-btn="false" @canplay="onLiveVideoCanPlay" @error="onLiveVideoError"/>
-    <view v-else class="live-fallback">
+    <!-- #ifdef APP-PLUS -->
+    <!-- @vue-ignore -->
+    <AppLiveVideo
+      class="live-video"
+      :state="appVideoState"
+      @canplay="onLiveVideoCanPlay"
+      @error="onLiveVideoError"
+    />
+    <!-- #endif -->
+    <!-- #ifndef APP-PLUS -->
+    <video
+      v-if="playSrc"
+      id="liveVideo"
+      class="live-video"
+      :src="playSrc"
+      :poster="cover"
+      autoplay
+      :muted="isMuted"
+      object-fit="cover"
+      :controls="false"
+      :show-center-play-btn="false"
+      @canplay="onLiveVideoCanPlay"
+      @error="onLiveVideoError"
+    />
+    <!-- #endif -->
+    <view v-if="!playSrc" class="live-fallback">
       <image class="fallback-cover" src="/static/art/live/stream-away-v1.webp" mode="aspectFill" />
       <view class="fallback-mask" />
       <view class="fallback-content">
@@ -488,6 +512,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
+// #ifdef APP-PLUS
+import AppLiveVideo from "@/components/AppLiveVideo.vue";
+// #endif
 import {
   enterLiveRoom,
   getGuardList,
@@ -598,6 +625,12 @@ let directRefreshAttempts = 0;
 let directHlsRecoveryAttempts = 0;
 let directRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 let giftRequestSerial = 0;
+
+const appVideoState = computed(() => ({
+  src: playSrc.value,
+  poster: cover.value,
+  muted: isMuted.value
+}));
 
 const giftCountOptions = [1, 10, 66, 188, 520, 999];
 const gifts = computed(() => [...(giftBundle.value?.giftlist || []), ...(giftBundle.value?.proplist || [])]);

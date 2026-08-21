@@ -112,6 +112,14 @@ function websocketURL(path = "/ws/im") {
     .replace(/^https:/i, "wss:");
 }
 
+function websocketOrigin(url: string) {
+  const httpURL = String(url || "")
+    .replace(/^ws:/i, "http:")
+    .replace(/^wss:/i, "https:");
+  const match = httpURL.match(/^https?:\/\/[^/]+/i);
+  return match?.[0] || API_HOST.replace(/\/$/, "");
+}
+
 function imURL(path: string) {
   return `${API_HOST.replace(/\/$/, "")}/api/v2/im${path}`;
 }
@@ -486,8 +494,13 @@ function openSocket(
   previous?.close({});
   socketGeneration += 1;
   const expectedSocketGeneration = socketGeneration;
+  const socketAddress = websocketURL(activeWebsocketPath);
   const task = uni.connectSocket({
-    url: websocketURL(activeWebsocketPath),
+    url: socketAddress,
+    // HBuilderX's Android WebSocket adapter otherwise injects
+    // `Origin: http://localhost`, which the production same-origin gate
+    // correctly rejects. App 2.9.6+ forwards this explicit header.
+    header: { Origin: websocketOrigin(socketAddress) },
     complete: () => undefined
   });
   socket = task;
