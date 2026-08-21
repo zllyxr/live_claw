@@ -25,16 +25,8 @@ type NativeMessage = {
 
 type ServerMessage = {
   type?: "ready" | "message" | "ack" | "error";
-  code?: number;
   message?: string;
-  client_message_id?: string;
   data?: NativeMessage;
-};
-
-type PendingAck = {
-  resolve: (value: { payload: Record<string, unknown> }) => void;
-  reject: (reason: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
 };
 
 export type NativeLiveConnectionState =
@@ -61,7 +53,6 @@ const messageListeners = new Map<
 const connectionListeners = new Set<
   (snapshot: NativeLiveConnectionSnapshot) => void
 >();
-const pending = new Map<string, PendingAck>();
 const seenIDs = new Map<string, Set<string>>();
 const pendingPayloads = new Map<string, Record<string, unknown>[]>();
 const latestSequences = new Map<string, number>();
@@ -156,14 +147,6 @@ function clearReconnectTimer() {
   }
 }
 
-function rejectPending(message: string) {
-  for (const item of pending.values()) {
-    clearTimeout(item.timer);
-    item.reject(new Error(message));
-  }
-  pending.clear();
-}
-
 function clearConversationRuntime(conversationID: string) {
   if (!conversationID) {
     return;
@@ -183,7 +166,6 @@ function invalidateSocket(message: string) {
   socketGeneration += 1;
   const activeSocket = socket;
   socket = undefined;
-  rejectPending(message);
   activeSocket?.close({});
 }
 
@@ -297,20 +279,6 @@ function deliverMessage(message: NativeMessage) {
 }
 
 function dispatch(message: ServerMessage) {
-  if (message.type === "ack" && message.client_message_id) {
-    const item = pending.get(message.client_message_id);
-    if (!item) {
-      return;
-    }
-    clearTimeout(item.timer);
-    pending.delete(message.client_message_id);
-    if (Number(message.code || 0) !== 0) {
-      item.reject(new Error(message.message || t("core.liveMessageFailed")));
-      return;
-    }
-    item.resolve({ payload: {} });
-    return;
-  }
   if (message.type === "message" && message.data?.conversation_id) {
     deliverMessage(message.data);
   }
@@ -530,7 +498,6 @@ function openSocket(
       historySyncGeneration = 0;
       liveMessagesDuringHistory = [];
       task.close({});
-      rejectPending(t("core.liveChatDisconnected"));
       setConnectionState("offline");
       cancelThisConnect?.(new Error(t("core.liveChatTimeout")));
       scheduleReconnect(expectedLifecycle);
@@ -554,7 +521,6 @@ function openSocket(
       ready = false;
       historySyncGeneration = 0;
       liveMessagesDuringHistory = [];
-      rejectPending(t("core.liveChatDisconnected"));
       cancelThisConnect?.(new Error(message));
       setConnectionState("offline");
       scheduleReconnect(expectedLifecycle);
@@ -720,6 +686,29 @@ export function onNativeLiveMessage(
   };
 }
 
+function validateSentMessage(
+  value: unknown,
+  conversationID: string,
+  clientMessageID: string,
+  senderUserID: string
+) {
+  const message = parseRecord(value) as NativeMessage;
+  const sequence = Number(message.sequence || 0);
+  if (
+    !String(message.id || "") ||
+    String(message.conversation_id || "") !== conversationID ||
+    String(message.client_message_id || "") !== clientMessageID ||
+    String(message.sender_user_id || "") !== senderUserID ||
+    sequence < 1 ||
+    sequence !== Math.floor(sequence) ||
+    Number(message.message_type || 0) !== 1 ||
+    typeof message.text_content !== "string"
+  ) {
+    throw new Error(t("core.liveMessageFailed"));
+  }
+  return message;
+}
+
 export function sendNativeLiveMessage(payload: Record<string, unknown>) {
   if (
     !socket ||
@@ -729,34 +718,95 @@ export function sendNativeLiveMessage(payload: Record<string, unknown>) {
   ) {
     return Promise.reject(new Error(t("core.liveChatNotConnected")));
   }
-  const activeSocket = socket;
+  const session = getSession();
+  const expectedAccount = ownerAccountKey;
+  const expectedLifecycle = lifecycleGeneration;
+  const conversationID = activeConversationID;
+  const senderUserID = String(session.uid || "");
   serial += 1;
   const clientMessageID = `live_${Date.now()}_${serial}`;
-  return new Promise<{ payload: Record<string, unknown> }>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(clientMessageID);
-      reject(new Error(t("core.liveMessageTimeout")));
-    }, 10000);
-    pending.set(clientMessageID, { resolve, reject, timer });
-    activeSocket.send({
-      data: JSON.stringify({
-        type: "send",
-        conversation_id: activeConversationID,
-        client_message_id: clientMessageID,
-        message_type: 1,
-        text_content: JSON.stringify(payload),
-        metadata: { kind: "live" }
-      }),
-      fail: () => {
-        const item = pending.get(clientMessageID);
-        if (item) {
-          clearTimeout(item.timer);
-          pending.delete(clientMessageID);
-          item.reject(new Error(t("core.liveMessageFailed")));
+  const body = {
+    client_message_id: clientMessageID,
+    message_type: 1,
+    text_content: JSON.stringify(payload),
+    asset_id: 0,
+    metadata: { kind: "live" }
+  };
+
+  const contextIsCurrent = () =>
+    lifecycleGeneration === expectedLifecycle &&
+    activeConversationID === conversationID &&
+    currentAccountMatches(expectedAccount);
+
+  const request = (attempt: number): Promise<void> =>
+    new Promise((resolve, reject) => {
+      uni.request({
+        url: imURL(
+          `/conversations/${encodeURIComponent(conversationID)}/messages`
+        ),
+        method: "POST",
+        data: body,
+        timeout: 12000,
+        header: {
+          "Content-Type": "application/json",
+          "X-User-ID": senderUserID,
+          Authorization: `Bearer ${session.token}`
+        },
+        success: (response) => {
+          if (!contextIsCurrent()) {
+            reject(new Error(t("core.accountChanged")));
+            return;
+          }
+          const responseBody = parseRecord(response.data);
+          const status = Number(response.statusCode || 0);
+          if (status >= 500 && attempt === 0) {
+            void request(1).then(resolve, reject);
+            return;
+          }
+          if (
+            status < 200 ||
+            status >= 300 ||
+            Number(responseBody.code || 0) !== 0
+          ) {
+            reject(
+              new Error(
+                String(responseBody.message || t("core.liveMessageFailed"))
+              )
+            );
+            return;
+          }
+          try {
+            const message = validateSentMessage(
+              responseBody.data,
+              conversationID,
+              clientMessageID,
+              senderUserID
+            );
+            deliverMessage(message);
+            resolve();
+          } catch (error) {
+            reject(
+              error instanceof Error
+                ? error
+                : new Error(t("core.liveMessageFailed"))
+            );
+          }
+        },
+        fail: (error) => {
+          if (!contextIsCurrent()) {
+            reject(new Error(t("core.accountChanged")));
+            return;
+          }
+          if (attempt === 0) {
+            void request(1).then(resolve, reject);
+            return;
+          }
+          reject(new Error(error.errMsg || t("core.liveMessageFailed")));
         }
-      }
+      });
     });
-  });
+
+  return request(0);
 }
 
 export function disconnectNativeLive() {

@@ -217,7 +217,9 @@ export class LiveSocketClient {
       this.options.onConnect?.(this.connected, snapshot.state);
       if (this.connected && !this.presenceSent) {
         this.presenceSent = true;
-        void this.emitConn().catch(() => undefined);
+        void this.emitConn().catch(() => {
+          this.presenceSent = false;
+        });
       }
     });
     try {
@@ -372,8 +374,7 @@ export class LiveSocketClient {
       throw error;
     }
     try {
-      const result = await sendNativeLiveMessage(payload);
-      this.handlePayload(result.payload);
+      await sendNativeLiveMessage(payload);
     } catch (error: any) {
       const normalized = error instanceof Error
         ? error
