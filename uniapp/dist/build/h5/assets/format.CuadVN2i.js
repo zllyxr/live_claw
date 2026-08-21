@@ -1,1 +1,0 @@
-import{t as e}from"./index-vKc0RHIz.js";function n(n){const t=Number(n||0);return Number.isFinite(t)?t>=1e4?e("core.tenThousand",{value:(t/1e4).toFixed(t>=1e5?0:1)}):String(t):"0"}function t(e){return new Promise(n=>setTimeout(n,e))}export{n as d,t as s};

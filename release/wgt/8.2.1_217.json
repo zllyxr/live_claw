@@ -1,8 +1,8 @@
 {
-  "note": "修复直播播放菜单与聊天连接",
+  "note": "恢复充值档位展示，修复直播菜单与聊天发送",
   "min_app_code": 216,
   "force": false,
   "silent": true,
-  "size": 8181322,
-  "sha256": "22bd4797e2b1f185eeccbaa7d2e048a55000ff3f8764f3a1c0b04132d985b9c0"
+  "size": 8181603,
+  "sha256": "5c0d4b7affe39b266e385a041e98157f311cf57e16bc8879760197f278144de2"
 }
