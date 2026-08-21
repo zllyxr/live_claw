@@ -88,7 +88,7 @@
 
     <view class="section-row data-title">
       <view class="section-dot" />
-      <text class="section-title">{{ home?.quick_stats_title || t("commerce.sportsHome.todayData") }}</text>
+      <text class="section-title">{{ quickStatsTitle }}</text>
     </view>
     <view class="stats-grid">
       <view v-for="(stat, index) in statCards" :key="String(stat.name || index)" class="stat-card">
@@ -142,21 +142,87 @@ let clockTimer: ReturnType<typeof setInterval> | undefined;
 
 const matches = computed(() => home.value?.matches || []);
 const matchesTitle = computed(() =>
-  home.value?.matches_title || t("commerce.sportsHome.liveMatches").replace("{count}", String(matches.value.length))
+  localizedHomeTitle("matches_title") || t("commerce.sportsHome.liveMatches").replace("{count}", String(matches.value.length))
+);
+const quickStatsTitle = computed(() =>
+  localizedHomeTitle("quick_stats_title") || t("commerce.sportsHome.todayData")
 );
 const leagueCards = computed(() => (home.value?.top_leagues?.length ? home.value.top_leagues : defaultLeagues));
 const statCards = computed(() => (home.value?.quick_stats?.length ? home.value.quick_stats : defaultStats.value));
 
+function localizedHomeTitle(base: "matches_title" | "quick_stats_title") {
+  const source = (home.value || {}) as Record<string, unknown>;
+  const suffixes = locale.value === "zh-CN"
+    ? ["cn", "zh", ""]
+    : locale.value === "ja"
+      ? ["ja", "jp"]
+      : locale.value === "ko"
+        ? ["ko", "kr"]
+        : ["en"];
+  for (const suffix of suffixes) {
+    const value = source[suffix ? `${base}_${suffix}` : base];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
+  }
+  return "";
+}
+
+function normalizedTimezoneOffset(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return undefined;
+  const absolute = Math.abs(numeric);
+  if (absolute <= 14) return numeric * 3600;
+  if (absolute <= 14 * 60) return numeric * 60;
+  return numeric;
+}
+
+function parsedTimezoneOffset(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text) return undefined;
+
+  const clockOffset = text.match(/^(?:UTC|GMT)?\s*([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  if (clockOffset) {
+    const sign = clockOffset[1] === "-" ? -1 : 1;
+    const hours = Number(clockOffset[2] || 0);
+    const minutes = Number(clockOffset[3] || 0);
+    if (hours <= 14 && minutes < 60) return sign * (hours * 3600 + minutes * 60);
+  }
+
+  return normalizedTimezoneOffset(text);
+}
+
+function sportsTimezoneOffset(date: Date) {
+  const direct = parsedTimezoneOffset(home.value?.timezone_offset);
+  if (direct !== undefined) return direct;
+
+  const zone = String(home.value?.timezone || "").trim();
+  const explicit = parsedTimezoneOffset(zone);
+  if (explicit !== undefined) return explicit;
+
+  const fixedOffsets: Record<string, number> = {
+    UTC: 0,
+    GMT: 0,
+    "Etc/UTC": 0,
+    "Asia/Shanghai": 8 * 3600,
+    "Asia/Chongqing": 8 * 3600,
+    "Asia/Hong_Kong": 8 * 3600,
+    "Asia/Singapore": 8 * 3600,
+    "Asia/Tokyo": 9 * 3600,
+    "Asia/Seoul": 9 * 3600
+  };
+  return fixedOffsets[zone] ?? -date.getTimezoneOffset() * 60;
+}
+
 function updateClock() {
   const timestamp = Math.floor(Date.now() / 1000) + serverOffsetSeconds.value;
   const date = new Date(timestamp * 1000);
-  currentTime.value = new Intl.DateTimeFormat(locale.value, {
-    timeZone: home.value?.timezone || "Asia/Shanghai",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23"
-  }).format(date);
+  const zonedDate = new Date(date.getTime() + sportsTimezoneOffset(date) * 1000);
+  currentTime.value = [
+    zonedDate.getUTCHours(),
+    zonedDate.getUTCMinutes(),
+    zonedDate.getUTCSeconds()
+  ]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
 }
 
 function syncServerClock() {
@@ -186,7 +252,7 @@ function isLiveText(text?: string) {
 }
 
 function tabName(tab: { key: string; name?: string }) {
-  if (["yesterday", "today", "tomorrow", "fixtures"].includes(tab.key)) {
+  if (["yesterday", "today", "tomorrow", "fixtures", "live", "upcoming"].includes(tab.key)) {
     return t(`commerce.sportsHome.tabs.${tab.key}`);
   }
   return String(tab.name || tab.key);

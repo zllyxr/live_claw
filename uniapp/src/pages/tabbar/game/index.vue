@@ -196,6 +196,11 @@ const selectedGame = computed<MiniGameItem | undefined>(() => {
 function localizedGameField(game: MiniGameItem | undefined, field: "name" | "remark") {
   if (!game) return "";
   const source = game as unknown as Record<string, unknown>;
+  if (locale.value !== "zh-CN" && String(game.code || "") === "deepsea_hunter") {
+    return field === "name"
+      ? t("commerce.gameHome.attractions.deepseaHunter")
+      : t("commerce.gameHome.deepseaRemark");
+  }
   const suffixes = locale.value === "zh-CN"
     ? ["", "zh", "cn", "en"]
     : locale.value === "ja"

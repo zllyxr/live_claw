@@ -67,7 +67,7 @@ const zhCN = {
   },
   launch: { checkingLogin: "正在校验登录", readingConfig: "正在读取配置", starting: "正在启动" },
   minigame: {
-    casual: "休闲", empty: "暂无可玩游戏", emptyDescription: "游戏正在准备中，敬请期待。", enterFailed: "进入游戏失败",
+    casual: "休闲", deepSeaHunter: "深海猎手", empty: "暂无可玩游戏", emptyDescription: "游戏正在准备中，敬请期待。", enterFailed: "进入游戏失败", fishing: "捕鱼",
     entering: "进入游戏", invalidUrl: "游戏地址无效", loadFailed: "游戏列表加载失败", localKeyboard: "同屏对战",
     onlineBattle: "联机对战", realtime: "实时联机", single: "单人", subtitle: "电子 · 休闲 · 对战，随时开一局",
     title: "小游戏", totalPrefix: "共", totalSuffix: "款游戏 · 更多陆续上线", turnBased: "回合制"
@@ -221,7 +221,7 @@ const en = {
   },
   launch: { checkingLogin: "Checking your session", readingConfig: "Loading configuration", starting: "Starting" },
   minigame: {
-    casual: "Casual", empty: "No games available", emptyDescription: "Games are being prepared. Stay tuned.", enterFailed: "Failed to open game",
+    casual: "Casual", deepSeaHunter: "Deep Sea Hunter", empty: "No games available", emptyDescription: "Games are being prepared. Stay tuned.", enterFailed: "Failed to open game", fishing: "Fishing",
     entering: "Opening game", invalidUrl: "Invalid game address", loadFailed: "Failed to load games", localKeyboard: "Local battle",
     onlineBattle: "Online battle", realtime: "Real-time online", single: "Single player", subtitle: "Arcade · Casual · Battle — play anytime",
     title: "Mini games", totalPrefix: "Total", totalSuffix: "games · More coming soon", turnBased: "Turn-based"
@@ -379,7 +379,7 @@ const ja = {
   },
   launch: { checkingLogin: "ログインを確認中", readingConfig: "設定を読み込み中", starting: "起動中" },
   minigame: {
-    casual: "カジュアル", empty: "プレイできるゲームはありません", emptyDescription: "ゲームを準備中です。しばらくお待ちください。", enterFailed: "ゲームを開けませんでした",
+    casual: "カジュアル", deepSeaHunter: "深海ハンター", empty: "プレイできるゲームはありません", emptyDescription: "ゲームを準備中です。しばらくお待ちください。", enterFailed: "ゲームを開けませんでした", fishing: "フィッシング",
     entering: "ゲームを開いています", invalidUrl: "ゲームのアドレスが無効です", loadFailed: "ゲーム一覧を読み込めませんでした", localKeyboard: "同じ画面で対戦",
     onlineBattle: "オンライン対戦", realtime: "リアルタイム対戦", single: "1人用", subtitle: "アーケード · カジュアル · 対戦、いつでもプレイ",
     title: "ミニゲーム", totalPrefix: "全", totalSuffix: "ゲーム · 順次追加予定", turnBased: "ターン制"
@@ -538,7 +538,7 @@ const ko = {
   },
   launch: { checkingLogin: "로그인 확인 중", readingConfig: "설정 불러오는 중", starting: "시작 중" },
   minigame: {
-    casual: "캐주얼", empty: "플레이 가능한 게임 없음", emptyDescription: "게임을 준비 중입니다. 기대해 주세요.", enterFailed: "게임에 들어가지 못했습니다",
+    casual: "캐주얼", deepSeaHunter: "심해 헌터", empty: "플레이 가능한 게임 없음", emptyDescription: "게임을 준비 중입니다. 기대해 주세요.", enterFailed: "게임에 들어가지 못했습니다", fishing: "낚시",
     entering: "게임 입장 중", invalidUrl: "게임 주소가 올바르지 않습니다", loadFailed: "게임 목록을 불러오지 못했습니다", localKeyboard: "한 화면 대전",
     onlineBattle: "온라인 대전", realtime: "실시간 온라인", single: "싱글 플레이", subtitle: "아케이드 · 캐주얼 · 대전, 언제든 한 판",
     title: "미니게임", totalPrefix: "총", totalSuffix: "개 게임 · 더 많은 게임 공개 예정", turnBased: "턴제"

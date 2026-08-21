@@ -378,6 +378,19 @@ function compactTime(message: ChatMessage) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+const englishShortMonths = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+function localizedMonthDay(date: Date) {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  if (locale.value === "en") return `${englishShortMonths[date.getMonth()]} ${day}`;
+  if (locale.value === "ko") return `${month}월 ${day}일`;
+  return `${month}月${day}日`;
+}
+
 function messageDateTime(message: ChatMessage) {
   const timestamp = messageTimestamp(message);
   if (!timestamp) return "";
@@ -387,7 +400,7 @@ function messageDateTime(message: ChatMessage) {
   if (date.toDateString() === now.toDateString()) return time;
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return `${t("social.chat.yesterday")} ${time}`;
-  return `${new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric" }).format(date)} ${time}`;
+  return `${localizedMonthDay(date)} ${time}`;
 }
 
 function shouldShowTime(index: number) {

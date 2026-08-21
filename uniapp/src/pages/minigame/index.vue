@@ -24,7 +24,7 @@
         :class="{ on: activeCat === cat.key }"
         @tap="activeCat = String(cat.key || '')"
       >
-        {{ cat.name }}
+        {{ categoryName(cat) }}
       </view>
     </scroll-view>
 
@@ -52,7 +52,7 @@
             </view>
           </view>
           <view class="mg-copy">
-            <text class="mg-name">{{ game.name }}</text>
+            <text class="mg-name">{{ gameName(game) }}</text>
             <view class="mg-meta">
               <text class="meta-pill">{{ game.players_text }}</text>
               <text class="meta-pill ghost">{{ modeText(game) }}</text>
@@ -91,7 +91,9 @@ import type {
 import { absolutizeUrl, localAssetUrl } from "@/utils/url";
 import { openGameView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
-import { t } from "@/i18n";
+import { useI18n } from "@/i18n";
+
+const { locale, t } = useI18n();
 
 const bundle = ref<MiniGameBundle>();
 const activeCat = ref("");
@@ -106,6 +108,20 @@ const shownGames = computed<MiniGameItem[]>(() => {
   const all = bundle.value?.games || [];
   return activeCat.value ? all.filter((g) => g.category === activeCat.value) : all;
 });
+
+function categoryName(category: MiniGameCategory) {
+  if (locale.value !== "zh-CN" && String(category.key || "") === "fishing") {
+    return t("misc.minigame.fishing");
+  }
+  return String(category.name || "");
+}
+
+function gameName(game: MiniGameItem) {
+  if (locale.value !== "zh-CN" && String(game.code || "") === "deepsea_hunter") {
+    return t("misc.minigame.deepSeaHunter");
+  }
+  return String(game.name || "");
+}
 
 /** 分类兜底封面：新游戏没配图也不会开天窗 */
 const CATEGORY_COVER: Record<string, string> = {

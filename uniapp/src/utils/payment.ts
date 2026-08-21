@@ -136,12 +136,18 @@ export function normalizePaymentUrl(value: unknown) {
     return "";
   }
   try {
-    const trustedOrigin = new URL(API_HOST);
+    const URLConstructor = (globalThis as unknown as {
+      URL?: typeof URL;
+    }).URL;
+    if (typeof URLConstructor !== "function") {
+      return normalizeNativePaymentUrl(raw);
+    }
+    const trustedOrigin = new URLConstructor(API_HOST);
     const target = raw.startsWith("//")
-      ? new URL(`https:${raw}`)
+      ? new URLConstructor(`https:${raw}`)
       : raw.startsWith("/")
-        ? new URL(raw, `${API_HOST}/`)
-        : new URL(raw);
+        ? new URLConstructor(raw, `${API_HOST}/`)
+        : new URLConstructor(raw);
     const localHTTP =
       trustedOrigin.protocol === "http:" &&
       (trustedOrigin.hostname === "localhost" ||
@@ -160,6 +166,77 @@ export function normalizePaymentUrl(value: unknown) {
   } catch {
     return "";
   }
+}
+
+interface NativeUrlParts {
+  protocol: string;
+  authority: string;
+  pathname: string;
+}
+
+function parseNativeAbsoluteUrl(value: string): NativeUrlParts | undefined {
+  if (/[\\\u0000-\u0020\u007f]/.test(value)) {
+    return undefined;
+  }
+  const matched = value.match(/^(https?):\/\/([^/?#]+)(\/[^?#]*)?(?:\?[^#]*)?(?:#.*)?$/i);
+  const [, scheme, authority, pathname] = matched || [];
+  if (!scheme || !authority || authority.includes("@")) {
+    return undefined;
+  }
+  return {
+    protocol: `${scheme.toLowerCase()}:`,
+    authority: authority.toLowerCase(),
+    pathname: pathname || "/"
+  };
+}
+
+function normalizedAuthority(parts: NativeUrlParts) {
+  if (parts.protocol === "https:" && parts.authority.endsWith(":443")) {
+    return parts.authority.slice(0, -4);
+  }
+  if (parts.protocol === "http:" && parts.authority.endsWith(":80")) {
+    return parts.authority.slice(0, -3);
+  }
+  return parts.authority;
+}
+
+function nativeHostname(parts: NativeUrlParts) {
+  const authority = normalizedAuthority(parts);
+  if (authority.startsWith("[")) {
+    return authority.slice(1, authority.indexOf("]"));
+  }
+  return authority.replace(/:\d+$/, "");
+}
+
+function normalizeNativePaymentUrl(raw: string) {
+  const trustedBase = API_HOST.replace(/\/+$/, "");
+  const trusted = parseNativeAbsoluteUrl(trustedBase);
+  if (!trusted) {
+    return "";
+  }
+  const candidate = raw.startsWith("//")
+    ? `https:${raw}`
+    : raw.startsWith("/")
+      ? `${trustedBase}${raw}`
+      : raw;
+  const target = parseNativeAbsoluteUrl(candidate);
+  if (!target) {
+    return "";
+  }
+  const localHTTP =
+    trusted.protocol === "http:" &&
+    ["localhost", "127.0.0.1", "0.0.0.0"].includes(nativeHostname(trusted));
+  if (
+    target.protocol !== trusted.protocol ||
+    normalizedAuthority(target) !== normalizedAuthority(trusted) ||
+    !target.pathname.startsWith("/pay/") ||
+    /(^|\/)\.{1,2}(\/|$)/.test(target.pathname) ||
+    /%(?:2e|2f|5c)/i.test(target.pathname) ||
+    (target.protocol !== "https:" && !localHTTP)
+  ) {
+    return "";
+  }
+  return candidate;
 }
 
 export function openPaymentCashier(value: unknown, title = t("core.payment")) {

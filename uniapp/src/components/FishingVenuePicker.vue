@@ -103,13 +103,31 @@ const defaultVenues = computed<FishingVenue[]>(() => [
   }
 ]);
 
+const VENUE_NAME_KEYS: Record<string, string> = {
+  novice: "misc.fishing.novice",
+  expert: "misc.fishing.expert",
+  master: "misc.fishing.master"
+};
+
+function venueCodeOf(venue: FishingVenue, index: number) {
+  return String(venue.venue_code || ["novice", "expert", "master"][index] || "");
+}
+
+function venueNameOf(venue: FishingVenue, index: number) {
+  const code = venueCodeOf(venue, index);
+  const messageKey = VENUE_NAME_KEYS[code];
+  return messageKey
+    ? t(messageKey)
+    : String(venue.venue_name || t("misc.fishing.venue"));
+}
+
 const normalizedVenues = computed<NormalizedVenue[]>(() => {
   const source = props.venues?.length ? props.venues : defaultVenues.value;
   return source
     .map((venue, index) => ({
       venue_id: String(venue.venue_id || ""),
-      venue_code: String(venue.venue_code || ["novice", "expert", "master"][index] || ""),
-      venue_name: String(venue.venue_name || [t("misc.fishing.novice"), t("misc.fishing.expert"), t("misc.fishing.master")][index] || t("misc.fishing.venue")),
+      venue_code: venueCodeOf(venue, index),
+      venue_name: venueNameOf(venue, index),
       multiplier: Math.max(1, Number(venue.multiplier || 1)),
       table_count: Math.max(1, Number(venue.table_count || 300)),
       seats_per_table: Math.max(1, Number(venue.seats_per_table || 4)),
@@ -121,7 +139,13 @@ const normalizedVenues = computed<NormalizedVenue[]>(() => {
 });
 
 function formatCoin(value: number) {
-  return new Intl.NumberFormat("zh-CN").format(value);
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return "0";
+  }
+  const [integer, fraction] = String(amount).split(".");
+  const grouped = String(integer || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fraction ? `${grouped}.${fraction}` : grouped;
 }
 
 function balanceState(venue: NormalizedVenue) {

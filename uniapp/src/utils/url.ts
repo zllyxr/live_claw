@@ -1,8 +1,11 @@
 import { API_HOST } from "@/constants/config";
 
 function appBaseUrl() {
-  const meta = import.meta as unknown as { env?: { BASE_URL?: string } };
-  const base = meta.env?.BASE_URL || "/";
+  // App-plus runs the service bundle in JavaScriptCore, where the browser URL
+  // constructor is not guaranteed to exist. Reading import.meta here makes
+  // Vite emit `new URL(..., document.baseURI)` into that bundle, so derive the
+  // same base from the runtime location instead.
+  const base = appBase();
   return base.endsWith("/") ? base : `${base}/`;
 }
 

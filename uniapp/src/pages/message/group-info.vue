@@ -311,19 +311,42 @@ function canManageMember(member: ChatGroupMember) {
   return isOwner.value ? role < 100 : role < 60;
 }
 
+const englishShortMonths = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+function localizedMonthDay(date: Date) {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  if (locale.value === "en") return `${englishShortMonths[date.getMonth()]} ${day}`;
+  if (locale.value === "ko") return `${month}월 ${day}일`;
+  return `${month}月${day}日`;
+}
+
+function localizedFullDate(date: Date) {
+  const year = date.getFullYear();
+  if (locale.value === "en") return `${localizedMonthDay(date)}, ${year}`;
+  if (locale.value === "ko") return `${year}년 ${localizedMonthDay(date)}`;
+  return `${year}年${localizedMonthDay(date)}`;
+}
+
 function joinedText(member: ChatGroupMember) {
   const raw = Number(member.joinTime || 0);
   if (!raw) return t("social.groupInfo.member");
   const timestamp = raw < 1_000_000_000_000 ? raw * 1000 : raw;
   const date = new Date(timestamp);
-  return `${new Intl.DateTimeFormat(locale.value, { year: "numeric", month: "numeric", day: "numeric" }).format(date)} ${t("social.groupInfo.joined")}`;
+  const formatted = localizedFullDate(date);
+  return locale.value === "en"
+    ? `${t("social.groupInfo.joined")} ${formatted}`
+    : `${formatted} ${t("social.groupInfo.joined")}`;
 }
 
 function formatTime(raw?: number) {
   if (!raw) return "";
   const timestamp = raw < 1_000_000_000_000 ? raw * 1000 : raw;
   const date = new Date(timestamp);
-  return `${new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric" }).format(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${localizedMonthDay(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 async function load() {

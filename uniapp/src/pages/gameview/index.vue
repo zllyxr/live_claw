@@ -11,6 +11,27 @@ import { onLoad, onUnload } from "@dcloudio/uni-app";
 const url = ref("");
 let lockedLandscape = false;
 
+function gameUrlFromRoute(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  // uni-app may already decode page query values before onLoad. Decoding an
+  // absolute launch URL again corrupts escaped ticket/signature parameters.
+  if (/^https?:\/\//i.test(raw) || raw.startsWith("//") || raw.startsWith("/")) {
+    return raw.startsWith("//") ? `https:${raw}` : raw;
+  }
+  try {
+    const decoded = decodeURIComponent(raw);
+    if (/^https?:\/\//i.test(decoded) || decoded.startsWith("//") || decoded.startsWith("/")) {
+      return decoded.startsWith("//") ? `https:${decoded}` : decoded;
+    }
+  } catch {
+    // Invalid route encoding is handled as an empty game address below.
+  }
+  return "";
+}
+
 function messageRequestsBack(payload: any) {
   const value = payload?.detail?.data ?? payload?.data ?? payload;
   const messages = Array.isArray(value) ? value : [value];
@@ -58,7 +79,7 @@ async function enterFullscreenLandscape() {
 }
 
 onLoad((query) => {
-  url.value = decodeURIComponent(String(query?.url || ""));
+  url.value = gameUrlFromRoute(query?.url);
   void enterFullscreenLandscape();
 });
 

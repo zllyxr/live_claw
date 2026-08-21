@@ -379,7 +379,7 @@ const zhCN = {
     noMarket: "暂无盘口",
     team: "球队",
     loadFailed: "体育加载失败",
-    tabs: { yesterday: "昨日", today: "今日", tomorrow: "明日", fixtures: "赛程" },
+    tabs: { yesterday: "昨日", today: "今日", tomorrow: "明日", fixtures: "赛程", live: "滚球", upcoming: "近期" },
     status: {
       inProgress: "进行中",
       notStarted: "未开始",
@@ -794,7 +794,7 @@ const enUS = {
     noMarket: "No markets",
     team: "Team",
     loadFailed: "Failed to load sports",
-    tabs: { yesterday: "Yesterday", today: "Today", tomorrow: "Tomorrow", fixtures: "Fixtures" },
+    tabs: { yesterday: "Yesterday", today: "Today", tomorrow: "Tomorrow", fixtures: "Fixtures", live: "Live", upcoming: "Upcoming" },
     status: {
       inProgress: "In progress",
       notStarted: "Not started",
@@ -1208,7 +1208,7 @@ const jaJP = {
     noMarket: "マーケットなし",
     team: "チーム",
     loadFailed: "スポーツ情報を読み込めませんでした",
-    tabs: { yesterday: "昨日", today: "今日", tomorrow: "明日", fixtures: "日程" },
+    tabs: { yesterday: "昨日", today: "今日", tomorrow: "明日", fixtures: "日程", live: "ライブ", upcoming: "近日" },
     status: {
       inProgress: "試合中",
       notStarted: "開始前",
@@ -1622,7 +1622,7 @@ const koKR = {
     noMarket: "마켓 없음",
     team: "팀",
     loadFailed: "스포츠 정보를 불러오지 못했습니다",
-    tabs: { yesterday: "어제", today: "오늘", tomorrow: "내일", fixtures: "일정" },
+    tabs: { yesterday: "어제", today: "오늘", tomorrow: "내일", fixtures: "일정", live: "라이브", upcoming: "예정" },
     status: {
       inProgress: "진행 중",
       notStarted: "시작 전",
