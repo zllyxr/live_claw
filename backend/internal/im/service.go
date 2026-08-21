@@ -356,23 +356,35 @@ func (s *Service) Send(ctx context.Context, request SendRequest) (Message, error
 	err = tx.QueryRowContext(ctx, `
 		SELECT conversation.message_seq,conversation.conversation_type,
 		       member.role,member.member_status,member.mute_until,
-		       COALESCE(group_info.all_muted,0),
-		       COALESCE(NULLIF(sender.nickname,''),sender.username),
-		       COALESCE(sender_asset.object_key,'')
+		       COALESCE(group_info.all_muted,0)
 		FROM im_conversations conversation
 		JOIN im_conversation_members member ON member.conversation_id=conversation.id
-		JOIN users sender ON sender.id=member.user_id
-		LEFT JOIN media_assets sender_asset
-		  ON sender_asset.id=sender.avatar_asset_id AND sender_asset.status=1
 		LEFT JOIN im_groups group_info ON group_info.conversation_id=conversation.id
 		WHERE conversation.id=? AND conversation.status=1 AND member.user_id=?
 		FOR UPDATE`,
 		request.ConversationID, request.SenderUserID,
 	).Scan(
 		&sequence, &conversationType, &memberRole, &memberStatus, &muteUntil, &allMuted,
-		&senderName, &senderAvatar,
 	)
-	if errors.Is(err, sql.ErrNoRows) || memberStatus != 1 {
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotConversationMember
+	}
+	if err != nil {
+		return Message{}, err
+	}
+	if memberStatus != 1 {
+		return Message{}, ErrNotConversationMember
+	}
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(NULLIF(sender.nickname,''),sender.username),
+		       COALESCE(sender_asset.object_key,'')
+		FROM users sender
+		LEFT JOIN media_assets sender_asset
+		  ON sender_asset.id=sender.avatar_asset_id AND sender_asset.status=1
+		WHERE sender.id=?`,
+		request.SenderUserID,
+	).Scan(&senderName, &senderAvatar)
+	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrNotConversationMember
 	}
 	if err != nil {

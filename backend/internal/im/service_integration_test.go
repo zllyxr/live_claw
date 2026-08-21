@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,107 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/database"
 	"github.com/zllyxr/live_claw/backend/migrations"
 )
+
+func TestSendWithRestrictedRuntimePermissionsIntegration(t *testing.T) {
+	setupDSN := strings.TrimSpace(os.Getenv("CLAW_TEST_MYSQL_DSN"))
+	runtimeDSN := strings.TrimSpace(os.Getenv("CLAW_TEST_IM_MYSQL_DSN"))
+	if setupDSN == "" || runtimeDSN == "" {
+		t.Skip("CLAW_TEST_MYSQL_DSN and CLAW_TEST_IM_MYSQL_DSN are not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	setupDB, err := database.Open(ctx, setupDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setupDB.Close()
+	if err = migrations.Apply(ctx, setupDB); err != nil {
+		t.Fatal(err)
+	}
+	runtimeDB, err := database.Open(ctx, runtimeDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtimeDB.Close()
+
+	userA := time.Now().UnixNano() & 0x3fffffffffffffff
+	userB := userA + 1
+	suffix := time.Now().Format("150405.000000000")
+	if _, err = setupDB.ExecContext(ctx, `
+		INSERT INTO users(id,username,password_hash,nickname,status)
+		VALUES(?,?,'test','受限 IM 用户 A',1),(?,?,'test','受限 IM 用户 B',1)`,
+		userA, "im_restricted_a_"+suffix,
+		userB, "im_restricted_b_"+suffix,
+	); err != nil {
+		t.Fatal(err)
+	}
+	conversationID := ""
+	defer func() {
+		cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, _ = setupDB.ExecContext(cleanup, "DELETE FROM outbox_events WHERE aggregate_id=?", conversationID)
+		_, _ = setupDB.ExecContext(cleanup, "DELETE FROM im_messages WHERE conversation_id=?", conversationID)
+		_, _ = setupDB.ExecContext(cleanup, "DELETE FROM im_conversation_members WHERE conversation_id=?", conversationID)
+		_, _ = setupDB.ExecContext(cleanup, "DELETE FROM im_conversations WHERE id=?", conversationID)
+		_, _ = setupDB.ExecContext(cleanup, "DELETE FROM users WHERE id IN (?,?)", userA, userB)
+	}()
+	setupService := New(setupDB, nil)
+	conversation, err := setupService.DirectConversation(ctx, userA, userB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversationID = conversation.ID
+
+	var lockedProfileID int64
+	profileLockErr := runtimeDB.QueryRowContext(ctx, `
+		SELECT sender.id
+		FROM users sender
+		LEFT JOIN media_assets sender_asset
+		  ON sender_asset.id=sender.avatar_asset_id AND sender_asset.status=1
+		WHERE sender.id=?
+		FOR UPDATE`,
+		userA,
+	).Scan(&lockedProfileID)
+	if profileLockErr == nil ||
+		!strings.Contains(strings.ToLower(profileLockErr.Error()), "denied") {
+		t.Fatalf(
+			"CLAW_TEST_IM_MYSQL_DSN must deny profile-table row locks; got id=%d error=%v",
+			lockedProfileID, profileLockErr,
+		)
+	}
+
+	runtimeService := New(runtimeDB, nil)
+	request := SendRequest{
+		ConversationID: conversation.ID, ClientMessageID: "restricted-runtime-send",
+		SenderUserID: userA, MessageType: 1, TextContent: "受限权限发送成功",
+	}
+	message, err := runtimeService.Send(ctx, request)
+	if err != nil {
+		t.Fatalf("send with restricted runtime permissions: %v", err)
+	}
+	replayed, err := runtimeService.Send(ctx, request)
+	if err != nil || replayed.ID != message.ID || replayed.Sequence != message.Sequence {
+		t.Fatalf("restricted send was not idempotent: %#v %v", replayed, err)
+	}
+	history, err := runtimeService.Messages(ctx, userB, conversation.ID, 0, 20)
+	if err != nil || len(history) != 1 || history[0].ID != message.ID {
+		t.Fatalf("restricted send was not visible in history: %#v %v", history, err)
+	}
+	var messageCount, outboxCount int
+	if err = setupDB.QueryRowContext(ctx, `
+		SELECT
+		  (SELECT COUNT(*) FROM im_messages
+		   WHERE conversation_id=? AND sender_user_id=? AND client_message_id=?),
+		  (SELECT COUNT(*) FROM outbox_events
+		   WHERE aggregate_id=? AND event_type='im.message.created')`,
+		conversation.ID, userA, request.ClientMessageID, conversation.ID,
+	).Scan(&messageCount, &outboxCount); err != nil {
+		t.Fatal(err)
+	}
+	if messageCount != 1 || outboxCount != 1 {
+		t.Fatalf("restricted send was not persisted once: messages=%d outbox=%d", messageCount, outboxCount)
+	}
+}
 
 func TestDirectAndGroupMessagingIntegration(t *testing.T) {
 	dsn := os.Getenv("CLAW_TEST_MYSQL_DSN")
