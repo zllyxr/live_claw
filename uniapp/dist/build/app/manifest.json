@@ -90,8 +90,7 @@
           "NSCameraUsageDescription": "用于拍摄头像、动态图片和视频",
           "NSPhotoLibraryUsageDescription": "用于选择头像、动态图片和视频",
           "NSPhotoLibraryAddUsageDescription": "用于保存聊天和直播中的图片与视频"
-        },
-        "dSYMs": false
+        }
       },
       "plugins": {
         "audio": {

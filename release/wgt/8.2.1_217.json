@@ -1,8 +1,8 @@
 {
-  "note": "新增中文、英文、日语、韩语全页面多语言",
+  "note": "修复 Android 体育日期切换和游戏入口兼容性",
   "min_app_code": 216,
   "force": false,
   "silent": true,
-  "size": 8824122,
-  "sha256": "917487b6257ebc8daf7df35588623d10f33af8a5489e6ac969c4aac82661c234"
+  "size": 8018791,
+  "sha256": "09501c1a25934f57efdd00c9e965be0efe3aa82228dd13b2fede3596c28dbd14"
 }
