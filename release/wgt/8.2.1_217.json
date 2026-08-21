@@ -1,8 +1,8 @@
 {
-  "note": "修复 Android 体育日期切换和游戏入口兼容性",
+  "note": "修复直播播放菜单与聊天连接",
   "min_app_code": 216,
   "force": false,
   "silent": true,
-  "size": 8018791,
-  "sha256": "09501c1a25934f57efdd00c9e965be0efe3aa82228dd13b2fede3596c28dbd14"
+  "size": 8181322,
+  "sha256": "22bd4797e2b1f185eeccbaa7d2e048a55000ff3f8764f3a1c0b04132d985b9c0"
 }
