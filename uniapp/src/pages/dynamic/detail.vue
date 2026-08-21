@@ -7,7 +7,7 @@
           <text class="name">{{ authorName(detail) }}</text>
           <text class="time">{{ detail.datetime || "" }}</text>
         </view>
-        <button v-if="!isSelf(authorId(detail))" class="ghost-button mini" @tap="followAuthor">关注</button>
+        <button v-if="!isSelf(authorId(detail))" class="ghost-button mini" @tap="followAuthor">{{ t("social.common.follow") }}</button>
         <button class="more-button" @tap="openMore">•••</button>
       </view>
 
@@ -33,12 +33,12 @@
       />
 
       <view v-if="detail.voice" class="voice-row">
-        <text>语音 {{ detail.length || 0 }}s</text>
+        <text>{{ t("social.common.voice") }} {{ detail.length || 0 }}s</text>
       </view>
 
       <view class="meta-row">
-        <button class="meta" @tap="like">{{ Number(detail.islike || 0) ? "已赞" : "点赞" }} {{ detail.likes || 0 }}</button>
-        <text class="meta-text">评论 {{ commentTotal }}</text>
+        <button class="meta" @tap="like">{{ Number(detail.islike || 0) ? t("social.dynamicDetail.liked") : t("social.dynamicDetail.like") }} {{ detail.likes || 0 }}</button>
+        <text class="meta-text">{{ t("social.common.comments") }} {{ commentTotal }}</text>
       </view>
     </view>
 
@@ -46,17 +46,17 @@
       <textarea
         v-model="draft"
         class="comment-input"
-        :placeholder="replyTarget ? `回复 ${commentName(replyTarget)}` : '说点什么...'"
+        :placeholder="replyTarget ? `${t('social.dynamicDetail.reply')} ${commentName(replyTarget)}` : t('social.dynamicDetail.commentPlaceholder')"
         maxlength="300"
         auto-height
       />
       <view class="comment-actions">
-        <button v-if="replyTarget" class="ghost-button" @tap="clearReply">取消回复</button>
-        <button class="pill-button" :disabled="submitting" @tap="submitComment">发送</button>
+        <button v-if="replyTarget" class="ghost-button" @tap="clearReply">{{ t("social.dynamicDetail.cancelReply") }}</button>
+        <button class="pill-button" :disabled="submitting" @tap="submitComment">{{ t("social.common.send") }}</button>
       </view>
     </view>
 
-    <view class="section-title">评论</view>
+    <view class="section-title">{{ t("social.common.comments") }}</view>
     <view v-if="comments.length" class="comments">
       <view v-for="comment in comments" :key="String(comment.id || comment.commentid)" class="comment-card card">
         <image class="comment-avatar" :src="commentAvatar(comment)" mode="aspectFill" @tap="openUser(commentUid(comment))" />
@@ -67,23 +67,27 @@
           </view>
           <text class="comment-content">{{ comment.content || "" }}</text>
           <view class="comment-tools">
-            <button @tap="replyTo(comment)">回复</button>
-            <button v-if="canDeleteComment(comment)" @tap="confirmDeleteComment(comment)">删除</button>
+            <button @tap="replyTo(comment)">{{ t("social.dynamicDetail.reply") }}</button>
+            <button v-if="canDeleteComment(comment)" @tap="confirmDeleteComment(comment)">{{ t("social.common.delete") }}</button>
           </view>
           <view v-if="comment.replylist?.length" class="reply-box">
             <view v-for="reply in comment.replylist" :key="String(reply.id || reply.commentid)" class="reply-row">
               <text class="reply-name">{{ commentName(reply) }}</text>
               <text class="reply-text">{{ reply.content || "" }}</text>
-              <button v-if="canDeleteComment(reply)" class="reply-delete" @tap="confirmDeleteComment(reply)">删除</button>
+              <button v-if="canDeleteComment(reply)" class="reply-delete" @tap="confirmDeleteComment(reply)">{{ t("social.common.delete") }}</button>
             </view>
           </view>
           <button v-if="Number(comment.replys || 0) > 0" class="load-reply" @tap="loadReplies(comment)">
-            查看全部 {{ comment.replys }} 条回复
+            {{ t("social.dynamicDetail.viewAll") }} {{ comment.replys }} {{ t("social.dynamicDetail.replyUnit") }}
           </button>
         </view>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载评论' : '暂无评论'" description="成为第一个评论的人。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('social.dynamicDetail.loadingComments') : t('social.dynamicDetail.noComments')"
+      :description="t('social.dynamicDetail.noCommentsDescription')"
+    />
   </view>
 </template>
 
@@ -106,6 +110,9 @@ import type { DynamicComment, DynamicItem } from "@/types/api";
 import { displayCount } from "@/utils/format";
 import { requireLogin, getSession } from "@/utils/session";
 import { absolutizeUrl } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const dynamicId = ref("");
 const detail = ref<DynamicItem>();
@@ -127,7 +134,7 @@ function authorId(item?: DynamicItem) {
 }
 
 function authorName(item?: DynamicItem) {
-  return item?.userinfo?.user_nicename || item?.userinfo?.user_nickname || "星域用户";
+  return item?.userinfo?.user_nicename || item?.userinfo?.user_nickname || t("social.common.defaultUser");
 }
 
 function isSelf(uid: string | number | undefined) {
@@ -151,7 +158,7 @@ function commentUid(comment: DynamicComment) {
 }
 
 function commentName(comment: DynamicComment) {
-  return comment.userinfo?.user_nicename || comment.userinfo?.user_nickname || "星域用户";
+  return comment.userinfo?.user_nicename || comment.userinfo?.user_nickname || t("social.common.defaultUser");
 }
 
 function commentAvatar(comment: DynamicComment) {
@@ -193,7 +200,7 @@ async function loadComments(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "评论加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.dynamicDetail.commentLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -204,7 +211,7 @@ async function reload() {
   try {
     await Promise.all([loadDetail(), loadComments(true)]);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "动态加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.common.dynamicLoadFailed"), icon: "none" });
   } finally {
     uni.stopPullDownRefresh();
   }
@@ -219,7 +226,7 @@ async function like() {
     detail.value.islike = (res?.islike as string | number | undefined) ?? 1;
     detail.value.likes = (res?.likes as string | number | undefined) ?? Number(detail.value.likes || 0) + 1;
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
   }
 }
 
@@ -230,9 +237,9 @@ async function followAuthor() {
   try {
     const res = await setAttention(authorId(detail.value));
     detail.value.isattent = res?.isattent ?? 1;
-    uni.showToast({ title: Number(res?.isattent || 1) ? "已关注" : "已取消关注", icon: "none" });
+    uni.showToast({ title: Number(res?.isattent || 1) ? t("social.common.followed") : t("social.common.unfollowed"), icon: "none" });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "关注失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.common.followFailed"), icon: "none" });
   }
 }
 
@@ -242,7 +249,7 @@ function submitComment() {
   }
   const content = draft.value.trim();
   if (!content || submitting.value) {
-    uni.showToast({ title: "请输入评论内容", icon: "none" });
+    uni.showToast({ title: t("social.dynamicDetail.enterComment"), icon: "none" });
     return;
   }
   submitting.value = true;
@@ -257,11 +264,11 @@ function submitComment() {
     .then(() => {
       draft.value = "";
       replyTarget.value = undefined;
-      uni.showToast({ title: "已发送", icon: "none" });
+      uni.showToast({ title: t("social.common.sent"), icon: "none" });
       return loadComments(true);
     })
     .catch((error: any) => {
-      uni.showToast({ title: error?.message || "发送失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("social.common.sendFailed"), icon: "none" });
     })
     .finally(() => {
       submitting.value = false;
@@ -285,18 +292,19 @@ async function loadReplies(comment: DynamicComment) {
   try {
     comment.replylist = await getDynamicReplies(commentId(comment), 1);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "回复加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.dynamicDetail.replyLoadFailed"), icon: "none" });
   }
 }
 
 function openMore() {
   const own = isSelf(authorId(detail.value));
-  const itemList = own ? ["删除动态", "举报动态"] : ["举报动态"];
+  const itemList = own
+    ? [t("social.dynamicDetail.deleteDynamic"), t("social.dynamicDetail.reportDynamic")]
+    : [t("social.dynamicDetail.reportDynamic")];
   uni.showActionSheet({
     itemList,
     success: ({ tapIndex }) => {
-      const action = itemList[tapIndex];
-      if (action === "删除动态") {
+      if (own && tapIndex === 0) {
         confirmDeleteDynamic();
       } else {
         report();
@@ -307,8 +315,8 @@ function openMore() {
 
 function confirmDeleteDynamic() {
   uni.showModal({
-    title: "删除动态",
-    content: "删除后不可恢复，确认删除这条动态？",
+    title: t("social.dynamicDetail.deleteDynamic"),
+    content: t("social.dynamicDetail.deleteDynamicConfirm"),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm || !detail.value || !requireLogin()) {
@@ -316,11 +324,11 @@ function confirmDeleteDynamic() {
       }
       deleteDynamic(idOf(detail.value))
         .then(() => {
-          uni.showToast({ title: "已删除", icon: "none" });
+          uni.showToast({ title: t("social.common.deleted"), icon: "none" });
           setTimeout(() => uni.navigateBack(), 300);
         })
         .catch((error: any) => {
-          uni.showToast({ title: error?.message || "删除失败", icon: "none" });
+          uni.showToast({ title: error?.message || t("social.common.deleteFailed"), icon: "none" });
         });
     }
   });
@@ -330,16 +338,23 @@ function report() {
   if (!requireLogin()) {
     return;
   }
-  const reasons = ["内容违规", "垃圾广告", "骚扰或辱骂", "其他原因"];
+  const reasonLabels = [
+    t("social.report.illegalContent"),
+    t("social.report.spam"),
+    t("social.report.harassment"),
+    t("social.report.other")
+  ];
+  // The service stores these established Chinese reason values; only the displayed labels are localized.
+  const reasonValues = ["内容违规", "垃圾广告", "骚扰或辱骂", "其他原因"];
   uni.showActionSheet({
-    itemList: reasons,
+    itemList: reasonLabels,
     success: ({ tapIndex }) => {
-      reportDynamic(dynamicId.value, reasons[tapIndex] || "其他原因")
+      reportDynamic(dynamicId.value, reasonValues[tapIndex] || "其他原因")
         .then(() => {
-          uni.showToast({ title: "已举报", icon: "none" });
+          uni.showToast({ title: t("social.common.reported"), icon: "none" });
         })
         .catch((error: any) => {
-          uni.showToast({ title: error?.message || "举报失败", icon: "none" });
+          uni.showToast({ title: error?.message || t("social.common.reportFailed"), icon: "none" });
         });
     }
   });
@@ -347,8 +362,8 @@ function report() {
 
 function confirmDeleteComment(comment: DynamicComment) {
   uni.showModal({
-    title: "删除评论",
-    content: "确认删除这条评论？",
+    title: t("social.dynamicDetail.deleteComment"),
+    content: t("social.dynamicDetail.deleteCommentConfirm"),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm || !requireLogin()) {
@@ -356,11 +371,11 @@ function confirmDeleteComment(comment: DynamicComment) {
       }
       deleteDynamicComment(dynamicId.value, commentId(comment), commentUid(comment))
         .then(() => {
-          uni.showToast({ title: "已删除", icon: "none" });
+          uni.showToast({ title: t("social.common.deleted"), icon: "none" });
           return loadComments(true);
         })
         .catch((error: any) => {
-          uni.showToast({ title: error?.message || "删除失败", icon: "none" });
+          uni.showToast({ title: error?.message || t("social.common.deleteFailed"), icon: "none" });
         });
     }
   });
@@ -378,6 +393,7 @@ function openUser(uid: string) {
 
 onLoad((query) => {
   dynamicId.value = String(query?.id || query?.dynamicid || "");
+  uni.setNavigationBarTitle({ title: t("social.dynamicDetail.title") });
   void reload();
 });
 

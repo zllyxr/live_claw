@@ -2,8 +2,9 @@
   "name": "星域",
   "appid": "__UNI__D917A6C",
   "description": "星域 uni-app Android MVP",
-  "versionName": "8.2.0",
-  "versionCode": "216",
+  "versionName": "8.2.1",
+  "versionCode": "217",
+  "vueVersion": "3",
   "transformPx": false,
   "h5": {
     "publicPath": "/",

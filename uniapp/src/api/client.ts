@@ -1,6 +1,7 @@
-import { API_BASE, CORE_API_BASE, DEFAULT_LANGUAGE, GAME_API_BASE } from "@/constants/config";
+import { API_BASE, CORE_API_BASE, GAME_API_BASE } from "@/constants/config";
 import { clearSession, getSession } from "@/utils/session";
 import type { ApiEnvelope } from "@/types/api";
+import { getApiLanguage, t } from "@/i18n";
 
 type RequestMethod = "GET" | "POST";
 
@@ -9,7 +10,7 @@ export class ApiError<T = unknown> extends Error {
   info: T[];
 
   constructor(code: number, msg: string, info: T[] = []) {
-    super(msg || "请求失败");
+    super(msg || t("core.requestFailed"));
     this.name = "ApiError";
     this.code = code;
     this.info = info;
@@ -48,9 +49,9 @@ function handleLoginInvalid(msg: string, requestUID: unknown, requestToken: unkn
     return;
   }
   clearSession();
-  uni.showToast({ title: msg || "登录已失效", icon: "none" });
+  uni.showToast({ title: msg || t("core.sessionExpired"), icon: "none" });
   setTimeout(() => {
-    uni.navigateTo({ url: `/pages/auth/invalid?msg=${encodeURIComponent(msg || "登录已失效")}` });
+    uni.navigateTo({ url: `/pages/auth/invalid?msg=${encodeURIComponent(msg || t("core.sessionExpired"))}` });
   }, 250);
 }
 
@@ -96,7 +97,7 @@ function requestOnce<T = Record<string, unknown>>(
   const session = getSession();
   const data: Record<string, unknown> = {
     service,
-    language: DEFAULT_LANGUAGE,
+    language: getApiLanguage(),
     ...params
   };
   if (options.auth !== false) {
@@ -126,7 +127,7 @@ function requestOnce<T = Record<string, unknown>>(
         }
       },
       fail: (error) => {
-        reject(new ApiError(-1, error.errMsg || "网络请求失败"));
+        reject(new ApiError(-1, error.errMsg || t("core.networkFailed")));
       }
     });
   });

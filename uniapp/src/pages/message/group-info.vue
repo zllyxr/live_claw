@@ -8,14 +8,14 @@
       </view>
       <view class="hero-copy">
         <view class="hero-title-line">
-          <text class="hero-title">{{ group?.groupName || "群聊" }}</text>
+          <text class="hero-title">{{ group?.groupName || t("social.common.groupChat") }}</text>
           <view class="role-tag">{{ selfRoleName }}</view>
         </view>
         <text class="hero-meta">
-          {{ members.length }} / {{ group?.maxMemberCount || 500 }} 位成员
+          {{ members.length }} / {{ group?.maxMemberCount || 500 }} {{ t("social.common.members") }}
         </text>
         <button class="group-id-button" @tap="copyGroupID">
-          <text>群聊 ID：{{ groupID }}</text>
+          <text>{{ t("social.groupInfo.groupId") }}: {{ groupID }}</text>
           <view class="copy-mark" />
         </button>
       </view>
@@ -24,7 +24,7 @@
     <view v-if="notification" class="announcement-card">
       <view class="announcement-icon">!</view>
       <view class="announcement-copy">
-        <text>群公告</text>
+        <text>{{ t("social.groupInfo.announcement") }}</text>
         <text>{{ notification }}</text>
       </view>
     </view>
@@ -32,8 +32,8 @@
     <view v-if="canManage && applications.length" class="section applications-section">
       <view class="section-head">
         <view>
-          <text class="section-title">入群申请</text>
-          <text class="section-desc">{{ applications.length }} 条等待处理</text>
+          <text class="section-title">{{ t("social.groupInfo.applications") }}</text>
+          <text class="section-desc">{{ applications.length }} {{ t("social.groupInfo.awaitingReview") }}</text>
         </view>
         <view class="section-count">{{ applications.length }}</view>
       </view>
@@ -45,8 +45,8 @@
         >
           <image :src="applicationAvatar(application)" mode="aspectFill" />
           <view class="application-main">
-            <text>{{ application.nickname || `用户 ${application.userID}` }}</text>
-            <text>{{ application.reqMsg || "申请加入群聊" }}</text>
+            <text>{{ application.nickname || `${t("social.common.user")} ${application.userID}` }}</text>
+            <text>{{ application.reqMsg || t("social.groupInfo.requestToJoin") }}</text>
             <text>{{ formatTime(application.reqTime) }}</text>
           </view>
           <view class="application-actions">
@@ -55,14 +55,14 @@
               :disabled="handlingApplication === application.applicationID"
               @tap="handleApplication(application, false)"
             >
-              拒绝
+              {{ t("social.groupInfo.reject") }}
             </button>
             <button
               class="mini-button accept"
               :disabled="handlingApplication === application.applicationID"
               @tap="handleApplication(application, true)"
             >
-              同意
+              {{ t("social.groupInfo.accept") }}
             </button>
           </view>
         </view>
@@ -72,45 +72,45 @@
     <view class="section">
       <view class="section-head">
         <view>
-          <text class="section-title">群资料</text>
-          <text class="section-desc">{{ canManage ? "修改后记得保存" : "仅管理员可编辑" }}</text>
+          <text class="section-title">{{ t("social.groupInfo.profile") }}</text>
+          <text class="section-desc">{{ canManage ? t("social.groupInfo.rememberSave") : t("social.groupInfo.adminOnlyEdit") }}</text>
         </view>
-        <view v-if="saving" class="saving-tag">保存中</view>
+        <view v-if="saving" class="saving-tag">{{ t("social.groupInfo.saving") }}</view>
       </view>
       <view class="profile-panel panel">
         <view class="form-field">
-          <text class="field-label">群聊名称</text>
+          <text class="field-label">{{ t("social.newChat.groupName") }}</text>
           <input
             v-model="groupName"
             maxlength="200"
             :disabled="!canManage"
-            placeholder="输入群聊名称"
+            :placeholder="t('social.groupInfo.groupNamePlaceholder')"
           />
           <text class="field-count">{{ groupName.length }}/200</text>
         </view>
         <view class="form-field">
-          <text class="field-label">群简介</text>
+          <text class="field-label">{{ t("social.groupInfo.introduction") }}</text>
           <textarea
             v-model="introduction"
             maxlength="1000"
             :disabled="!canManage"
-            placeholder="介绍一下这个群聊"
+            :placeholder="t('social.groupInfo.introductionPlaceholder')"
           />
           <text class="field-count">{{ introduction.length }}/1000</text>
         </view>
         <view class="form-field">
-          <text class="field-label">群公告</text>
+          <text class="field-label">{{ t("social.groupInfo.announcement") }}</text>
           <textarea
             v-model="notification"
             maxlength="2000"
             :disabled="!canManage"
-            placeholder="暂无群公告"
+            :placeholder="t('social.groupInfo.noAnnouncement')"
           />
           <text class="field-count">{{ notification.length }}/2000</text>
         </view>
         <view v-if="canManage" class="policy-row" @tap="chooseJoinPolicy">
           <view>
-            <text>入群方式</text>
+            <text>{{ t("social.groupInfo.joinMethod") }}</text>
             <text>{{ joinPolicyDescription }}</text>
           </view>
           <view class="policy-value">
@@ -124,7 +124,7 @@
           :disabled="saving || !groupName.trim()"
           @tap="saveGroup"
         >
-          保存群资料
+          {{ t("social.groupInfo.saveProfile") }}
         </button>
       </view>
     </view>
@@ -132,18 +132,18 @@
     <view class="section">
       <view class="section-head member-section-head">
         <view>
-          <text class="section-title">群成员</text>
-          <text class="section-desc">共 {{ members.length }} 人</text>
+          <text class="section-title">{{ t("social.groupInfo.membersTitle") }}</text>
+          <text class="section-desc">{{ t("social.groupInfo.total") }} {{ members.length }} {{ t("social.common.people") }}</text>
         </view>
         <view class="invite-button" @tap="inviteMembers">
           <text>＋</text>
-          <text>邀请成员</text>
+          <text>{{ t("social.newChat.inviteMembers") }}</text>
         </view>
       </view>
 
       <view v-if="members.length > 8" class="member-search">
         <view class="search-mark" />
-        <input v-model.trim="memberKeyword" placeholder="搜索群成员" />
+        <input v-model.trim="memberKeyword" :placeholder="t('social.groupInfo.searchMembers')" />
         <button v-if="memberKeyword" class="clear-search" @tap="memberKeyword = ''">×</button>
       </view>
 
@@ -160,11 +160,11 @@
           </view>
           <view class="member-main">
             <view class="member-name-line">
-              <text class="member-name">{{ member.nickname || `用户 ${member.userID}` }}</text>
+              <text class="member-name">{{ member.nickname || `${t("social.common.user")} ${member.userID}` }}</text>
               <view v-if="roleName(member)" class="member-tag role">
                 {{ roleName(member) }}
               </view>
-              <view v-if="memberMuted(member)" class="member-tag muted">禁言中</view>
+              <view v-if="memberMuted(member)" class="member-tag muted">{{ t("social.groupInfo.muted") }}</view>
             </view>
             <text class="member-id">ID {{ member.userID }} · {{ joinedText(member) }}</text>
           </view>
@@ -175,22 +175,22 @@
           </view>
           <view v-else class="member-chevron" />
         </button>
-        <view v-if="!visibleMembers.length" class="member-empty">没有匹配的群成员</view>
+        <view v-if="!visibleMembers.length" class="member-empty">{{ t("social.groupInfo.noMatchingMembers") }}</view>
       </view>
     </view>
 
     <view v-if="canManage" class="section">
       <view class="section-head">
         <view>
-          <text class="section-title">群管理</text>
-          <text class="section-desc">仅群主与管理员可操作</text>
+          <text class="section-title">{{ t("social.groupInfo.management") }}</text>
+          <text class="section-desc">{{ t("social.groupInfo.ownerAdminOnly") }}</text>
         </view>
       </view>
       <view class="management panel">
         <view class="setting-row">
           <view>
-            <text>全员禁言</text>
-            <text>群主和管理员仍可发送消息</text>
+            <text>{{ t("social.groupInfo.muteAll") }}</text>
+            <text>{{ t("social.groupInfo.muteAllDescription") }}</text>
           </view>
           <switch color="#7a5cff" :checked="groupMuted" @change="changeGroupMute" />
         </view>
@@ -198,7 +198,7 @@
     </view>
 
     <button class="leave-button" :class="{ danger: isOwner }" @tap="leaveGroup">
-      {{ isOwner ? "解散群聊" : "退出群聊" }}
+      {{ isOwner ? t("social.groupInfo.dismissGroup") : t("social.groupInfo.leaveGroup") }}
     </button>
   </view>
 </template>
@@ -223,6 +223,9 @@ import {
 import type { ChatGroup, ChatGroupApplication, ChatGroupMember } from "@/types/api";
 import { getSession, requireLogin } from "@/utils/session";
 import { absolutizeUrl } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { locale, t } = useI18n();
 
 const groupID = ref("");
 const initialSection = ref("");
@@ -250,18 +253,26 @@ const isOwner = computed(
 );
 const canManage = computed(() => isOwner.value || selfRole.value >= 60);
 const selfRoleName = computed(() =>
-  isOwner.value ? "群主" : selfRole.value >= 60 ? "管理员" : "群成员"
+  isOwner.value
+    ? t("social.groupInfo.owner")
+    : selfRole.value >= 60
+      ? t("social.groupInfo.admin")
+      : t("social.groupInfo.member")
 );
 const joinPolicyLabel = computed(
-  () => ({ 1: "需要审核", 2: "允许加入", 3: "禁止加入" })[joinPolicy.value] || "需要审核"
+  () => ({
+    1: t("social.groupInfo.reviewRequired"),
+    2: t("social.groupInfo.joinAllowed"),
+    3: t("social.groupInfo.joinForbidden")
+  } as Record<number, string>)[joinPolicy.value] || t("social.groupInfo.reviewRequired")
 );
 const joinPolicyDescription = computed(
   () =>
     ({
-      1: "新成员提交申请，由管理员审核",
-      2: "输入群聊 ID 后可直接加入",
-      3: "暂时关闭外部入群入口"
-    })[joinPolicy.value] || ""
+      1: t("social.groupInfo.reviewDescription"),
+      2: t("social.groupInfo.directJoinDescription"),
+      3: t("social.groupInfo.closedDescription")
+    } as Record<number, string>)[joinPolicy.value] || ""
 );
 const visibleMembers = computed(() => {
   const query = memberKeyword.value.toLocaleLowerCase();
@@ -281,7 +292,11 @@ function applicationAvatar(application: ChatGroupApplication) {
 
 function roleName(member: ChatGroupMember) {
   const role = Number(member.roleLevel || 0);
-  return role === 100 ? "群主" : role === 60 ? "管理员" : "";
+  return role === 100
+    ? t("social.groupInfo.owner")
+    : role === 60
+      ? t("social.groupInfo.admin")
+      : "";
 }
 
 function memberMuted(member: ChatGroupMember) {
@@ -298,17 +313,17 @@ function canManageMember(member: ChatGroupMember) {
 
 function joinedText(member: ChatGroupMember) {
   const raw = Number(member.joinTime || 0);
-  if (!raw) return "群成员";
+  if (!raw) return t("social.groupInfo.member");
   const timestamp = raw < 1_000_000_000_000 ? raw * 1000 : raw;
   const date = new Date(timestamp);
-  return `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()} 加入`;
+  return `${new Intl.DateTimeFormat(locale.value, { year: "numeric", month: "numeric", day: "numeric" }).format(date)} ${t("social.groupInfo.joined")}`;
 }
 
 function formatTime(raw?: number) {
   if (!raw) return "";
   const timestamp = raw < 1_000_000_000_000 ? raw * 1000 : raw;
   const date = new Date(timestamp);
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric" }).format(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 async function load() {
@@ -329,7 +344,7 @@ async function load() {
     notification.value = String(groupInfo.notification || "");
     joinPolicy.value = Number(groupInfo.needVerification || 1);
     groupMuted.value = Boolean(groupInfo.allMuted) || Number(groupInfo.status || 0) === 3;
-    uni.setNavigationBarTitle({ title: groupName.value || "群聊资料" });
+    uni.setNavigationBarTitle({ title: groupName.value || t("social.groupInfo.title") });
 
     if (canManage.value) {
       const pending = await getChatGroupApplications(0, 500);
@@ -346,7 +361,7 @@ async function load() {
       initialSection.value = "";
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "群资料加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.groupInfo.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -356,7 +371,7 @@ async function load() {
 async function saveGroup() {
   const title = groupName.value.trim();
   if (!canManage.value || saving.value || !title) {
-    if (!title) uni.showToast({ title: "群聊名称不能为空", icon: "none" });
+    if (!title) uni.showToast({ title: t("social.groupInfo.nameRequired"), icon: "none" });
     return;
   }
   saving.value = true;
@@ -367,10 +382,10 @@ async function saveGroup() {
       notification: notification.value.trim(),
       needVerification: joinPolicy.value
     });
-    uni.showToast({ title: "群资料已保存", icon: "none" });
+    uni.showToast({ title: t("social.groupInfo.saved"), icon: "none" });
     await load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "保存失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.groupInfo.saveFailed"), icon: "none" });
   } finally {
     saving.value = false;
   }
@@ -378,7 +393,11 @@ async function saveGroup() {
 
 function chooseJoinPolicy() {
   if (!canManage.value) return;
-  const options = ["需要管理员审核", "允许直接加入", "禁止外部加入"];
+  const options = [
+    t("social.groupInfo.adminReviewOption"),
+    t("social.groupInfo.directJoinOption"),
+    t("social.groupInfo.noExternalJoinOption")
+  ];
   uni.showActionSheet({
     itemList: options,
     success: ({ tapIndex }) => {
@@ -402,10 +421,10 @@ async function changeGroupMute(event: any) {
       group.value.allMuted = next;
       group.value.status = next ? 3 : 0;
     }
-    uni.showToast({ title: next ? "已开启全员禁言" : "已关闭全员禁言", icon: "none" });
+    uni.showToast({ title: next ? t("social.groupInfo.muteAllEnabled") : t("social.groupInfo.muteAllDisabled"), icon: "none" });
   } catch (error: any) {
     groupMuted.value = !next;
-    uni.showToast({ title: error?.message || "设置失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.groupInfo.settingFailed"), icon: "none" });
   }
 }
 
@@ -416,15 +435,15 @@ async function handleApplication(application: ChatGroupApplication, accept: bool
       application.groupID,
       application.userID,
       accept,
-      accept ? "欢迎加入群聊" : "暂不同意加入"
+      accept ? t("social.groupInfo.welcomeMessage") : t("social.groupInfo.rejectionMessage")
     );
     applications.value = applications.value.filter(
       (item) => item.applicationID !== application.applicationID
     );
-    uni.showToast({ title: accept ? "已同意申请" : "已拒绝申请", icon: "none" });
+    uni.showToast({ title: accept ? t("social.groupInfo.applicationAccepted") : t("social.groupInfo.applicationRejected"), icon: "none" });
     if (accept) await load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "处理失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.groupInfo.handleFailed"), icon: "none" });
   } finally {
     handlingApplication.value = "";
   }
@@ -441,20 +460,20 @@ function openMember(member: ChatGroupMember) {
 }
 
 function manageMember(member: ChatGroupMember) {
-  const labels: string[] = ["查看主页"];
+  const labels: string[] = [t("social.groupInfo.viewProfile")];
   const actions: Array<() => Promise<unknown> | void> = [
     () => uni.navigateTo({ url: `/pages/user/home?uid=${encodeURIComponent(member.userID)}` })
   ];
   const role = Number(member.roleLevel || 0);
 
   if (isOwner.value) {
-    labels.push(role === 60 ? "取消管理员" : "设为管理员");
+    labels.push(role === 60 ? t("social.groupInfo.removeAdmin") : t("social.groupInfo.makeAdmin"));
     actions.push(() =>
       setChatGroupMemberRole(groupID.value, member.userID, role === 60 ? 10 : 60)
     );
   }
 
-  labels.push(memberMuted(member) ? "解除禁言" : "设置禁言");
+  labels.push(memberMuted(member) ? t("social.groupInfo.unmute") : t("social.groupInfo.setMute"));
   actions.push(() => {
     if (memberMuted(member)) {
       return muteChatGroupMember(groupID.value, member.userID, 0);
@@ -462,11 +481,11 @@ function manageMember(member: ChatGroupMember) {
     return chooseMuteDuration(member);
   });
 
-  labels.push("移出群聊");
+  labels.push(t("social.groupInfo.removeMember"));
   actions.push(() => confirmKick(member));
 
   if (isOwner.value) {
-    labels.push("转让群主");
+    labels.push(t("social.groupInfo.transferOwner"));
     actions.push(() => confirmTransfer(member));
   }
 
@@ -476,11 +495,11 @@ function manageMember(member: ChatGroupMember) {
       try {
         await actions[tapIndex]?.();
         if (tapIndex > 0) {
-          uni.showToast({ title: "操作成功", icon: "none" });
+          uni.showToast({ title: t("social.common.operationSucceeded"), icon: "none" });
           await load();
         }
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
       }
     }
   });
@@ -488,7 +507,12 @@ function manageMember(member: ChatGroupMember) {
 
 function chooseMuteDuration(member: ChatGroupMember) {
   return new Promise<unknown>((resolve, reject) => {
-    const labels = ["10 分钟", "1 小时", "1 天", "7 天"];
+    const labels = [
+      t("social.groupInfo.tenMinutes"),
+      t("social.groupInfo.oneHour"),
+      t("social.groupInfo.oneDay"),
+      t("social.groupInfo.sevenDays")
+    ];
     const durations = [600, 3600, 86_400, 604_800];
     uni.showActionSheet({
       itemList: labels,
@@ -505,8 +529,8 @@ function chooseMuteDuration(member: ChatGroupMember) {
 function confirmKick(member: ChatGroupMember) {
   return new Promise<unknown>((resolve, reject) => {
     uni.showModal({
-      title: "移出群聊",
-      content: `确认将“${member.nickname || `用户 ${member.userID}`}”移出群聊？`,
+      title: t("social.groupInfo.removeMember"),
+      content: `${t("social.groupInfo.removePrefix")}${member.nickname || `${t("social.common.user")} ${member.userID}`}${t("social.groupInfo.removeSuffix")}`,
       confirmColor: "#ff4d6e",
       success: ({ confirm }) => {
         if (!confirm) {
@@ -522,8 +546,8 @@ function confirmKick(member: ChatGroupMember) {
 function confirmTransfer(member: ChatGroupMember) {
   return new Promise<unknown>((resolve, reject) => {
     uni.showModal({
-      title: "转让群主",
-      content: `转让后你将成为管理员，确认转让给“${member.nickname || `用户 ${member.userID}`}”？`,
+      title: t("social.groupInfo.transferOwner"),
+      content: `${t("social.groupInfo.transferPrefix")}${member.nickname || `${t("social.common.user")} ${member.userID}`}${t("social.groupInfo.transferSuffix")}`,
       confirmColor: "#ff4d6e",
       success: ({ confirm }) => {
         if (!confirm) {
@@ -539,16 +563,16 @@ function confirmTransfer(member: ChatGroupMember) {
 function copyGroupID() {
   uni.setClipboardData({
     data: groupID.value,
-    success: () => uni.showToast({ title: "群聊 ID 已复制", icon: "none" })
+    success: () => uni.showToast({ title: t("social.groupInfo.idCopied"), icon: "none" })
   });
 }
 
 function leaveGroup() {
   uni.showModal({
-    title: isOwner.value ? "解散群聊" : "退出群聊",
+    title: isOwner.value ? t("social.groupInfo.dismissGroup") : t("social.groupInfo.leaveGroup"),
     content: isOwner.value
-      ? "解散后所有成员都会退出，群聊将无法恢复。确认解散？"
-      : "退出后将不再收到群消息，确认退出？",
+      ? t("social.groupInfo.dismissConfirm")
+      : t("social.groupInfo.leaveConfirm"),
     confirmColor: "#ff4d6e",
     success: async ({ confirm }) => {
       if (!confirm) return;
@@ -560,7 +584,7 @@ function leaveGroup() {
         }
         uni.reLaunch({ url: "/pages/message/index" });
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
       }
     }
   });

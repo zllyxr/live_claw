@@ -1,5 +1,6 @@
 import { API_HOST } from "@/constants/config";
 import { getSession } from "@/utils/session";
+import { t } from "@/i18n";
 
 export interface RemotePermissionStatus {
   notification?: boolean;
@@ -57,12 +58,12 @@ function requestV2<T>(path: string, options: {
       success: (response) => {
         const result = response.data as V2Envelope<T>;
         if (response.statusCode < 200 || response.statusCode >= 300 || Number(result?.code) !== 0) {
-          reject(new Error(result?.message || "远程协助请求失败"));
+          reject(new Error(result?.message || t("core.remoteRequestFailed")));
           return;
         }
         resolve(result.data);
       },
-      fail: (error) => reject(new Error(error.errMsg || "网络请求失败"))
+      fail: (error) => reject(new Error(error.errMsg || t("core.networkFailed")))
     });
   });
 }

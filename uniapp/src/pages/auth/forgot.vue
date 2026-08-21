@@ -16,48 +16,48 @@
       <view class="brand-card">
         <image class="brand" src="/static/brand/icon-round.webp" mode="aspectFit" />
       </view>
-      <text class="title">找回密码</text>
+      <text class="title">{{ t("misc.auth.forgotPassword") }}</text>
     </view>
 
     <view class="form-panel">
       <view class="field-group">
-        <text class="label">手机号</text>
+        <text class="label">{{ t("misc.auth.phone") }}</text>
         <view class="phone-row">
           <view class="country" @tap="openCountry">+{{ countryCode }}</view>
-          <input v-model.trim="phone" class="input-box phone-input" type="number" placeholder="请输入手机号" placeholder-class="ph" />
+          <input v-model.trim="phone" class="input-box phone-input" type="number" :placeholder="t('misc.auth.phonePlaceholder')" placeholder-class="ph" />
         </view>
       </view>
 
       <view class="field-group">
-        <text class="label">邮箱</text>
-        <input v-model.trim="email" class="input-box" placeholder="请输入绑定邮箱" placeholder-class="ph" />
+        <text class="label">{{ t("misc.auth.email") }}</text>
+        <input v-model.trim="email" class="input-box" :placeholder="t('misc.auth.boundEmailPlaceholder')" placeholder-class="ph" />
       </view>
 
       <view class="field-group">
-        <text class="label">验证码</text>
+        <text class="label">{{ t("misc.auth.verificationCode") }}</text>
         <view class="code-row">
-          <input v-model.trim="code" class="input-box code-input" placeholder="请输入邮箱验证码" placeholder-class="ph" />
+          <input v-model.trim="code" class="input-box code-input" :placeholder="t('misc.auth.emailCodePlaceholder')" placeholder-class="ph" />
           <view class="code-button" :class="{ disabled: !canSendCode || sending || countdown > 0 }" @tap="sendCode">
-            {{ countdown > 0 ? `${countdown}s` : "获取验证码" }}
+            {{ countdown > 0 ? `${countdown}s` : t("misc.auth.getCode") }}
           </view>
         </view>
       </view>
 
       <view class="field-group">
-        <text class="label">新密码</text>
-        <input v-model.trim="password" class="input-box" password placeholder="请输入新密码" placeholder-class="ph" />
+        <text class="label">{{ t("misc.auth.newPassword") }}</text>
+        <input v-model.trim="password" class="input-box" password :placeholder="t('misc.auth.newPasswordPlaceholder')" placeholder-class="ph" />
       </view>
 
       <view class="field-group last">
-        <text class="label">确认新密码</text>
-        <input v-model.trim="password2" class="input-box" password placeholder="请再次输入新密码" placeholder-class="ph" />
+        <text class="label">{{ t("misc.auth.confirmNewPassword") }}</text>
+        <input v-model.trim="password2" class="input-box" password :placeholder="t('misc.auth.confirmNewPasswordPlaceholder')" placeholder-class="ph" />
       </view>
 
       <view class="primary-action" :class="{ disabled: !canSubmit || loading }" @tap="submit">
-        {{ loading ? "提交中" : "重置密码" }}
+        {{ loading ? t("misc.common.submitting") : t("misc.auth.resetPassword") }}
       </view>
 
-      <view class="single-link" @tap="goLogin">返回登录</view>
+      <view class="single-link" @tap="goLogin">{{ t("misc.auth.backToLogin") }}</view>
     </view>
   </view>
 </template>
@@ -67,6 +67,7 @@ import { computed, onUnmounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { getForgotCode, resetPassword } from "@/api/services";
 import { takeSelectedCountry } from "@/utils/country";
+import { t } from "@/i18n";
 
 const AUTH_FROM = "forgot";
 const phone = ref("");
@@ -110,10 +111,10 @@ async function sendCode() {
   sending.value = true;
   try {
     const res = await getForgotCode(phone.value, email.value, countryCode.value);
-    uni.showToast({ title: res.msg || "验证码已发送", icon: "none" });
+    uni.showToast({ title: res.msg || t("misc.auth.codeSent"), icon: "none" });
     startCountdown();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "发送失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.auth.sendFailed"), icon: "none" });
   } finally {
     sending.value = false;
   }
@@ -124,7 +125,7 @@ async function submit() {
     return;
   }
   if (password.value !== password2.value) {
-    uni.showToast({ title: "两次密码不一致", icon: "none" });
+    uni.showToast({ title: t("misc.auth.passwordMismatch"), icon: "none" });
     return;
   }
   loading.value = true;
@@ -137,10 +138,10 @@ async function submit() {
       password2.value,
       countryCode.value
     );
-    uni.showToast({ title: res.msg || "密码已重置", icon: "success" });
+    uni.showToast({ title: res.msg || t("misc.auth.passwordReset"), icon: "success" });
     setTimeout(() => uni.navigateBack(), 350);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "重置失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.auth.resetFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }

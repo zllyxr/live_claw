@@ -7,18 +7,18 @@
           v-model.trim="keyword"
           class="search-input"
           confirm-type="search"
-          placeholder="请输入您要搜索的昵称或ID"
+          :placeholder="t('misc.search.placeholder')"
           maxlength="32"
           focus
           @confirm="submit"
         />
         <text v-if="keyword" class="clear" @tap="clear">×</text>
       </view>
-      <text class="cancel" @tap="back">取消</text>
+      <text class="cancel" @tap="back">{{ t("misc.common.cancel") }}</text>
     </view>
 
     <view v-if="lastKeyword" class="result-head">
-      <text>搜索结果</text>
+      <text>{{ t("misc.search.results") }}</text>
       <text>{{ totalLabel }}</text>
     </view>
 
@@ -30,9 +30,9 @@
             <text class="name">{{ nameOf(item) }}</text>
             <text class="id">ID: {{ idOf(item) }}</text>
           </view>
-          <text class="sign">{{ item.signature || "这个人还没有留下签名" }}</text>
+          <text class="sign">{{ item.signature || t("misc.common.noSignature") }}</text>
         </view>
-        <button class="chat-button" @tap.stop="openChat(item)">私信</button>
+        <button class="chat-button" @tap.stop="openChat(item)">{{ t("misc.common.message") }}</button>
       </view>
     </view>
 
@@ -50,6 +50,7 @@ import { onLoad, onPullDownRefresh, onReachBottom } from "@dcloudio/uni-app";
 import { searchUsers } from "@/api/services";
 import type { UserProfile } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { t } from "@/i18n";
 
 const keyword = ref("");
 const lastKeyword = ref("");
@@ -58,18 +59,18 @@ const page = ref(1);
 const loading = ref(false);
 const finished = ref(false);
 
-const totalLabel = computed(() => (finished.value ? `${items.value.length} 人` : "继续上滑加载"));
+const totalLabel = computed(() => (finished.value ? `${items.value.length} ${t("misc.search.people")}` : t("misc.common.pullUpMore")));
 const emptyTitle = computed(() => {
   if (loading.value) {
-    return "正在搜索";
+    return t("misc.search.searching");
   }
-  return lastKeyword.value ? "没有找到相关用户" : "搜索星域用户";
+  return lastKeyword.value ? t("misc.search.notFound") : t("misc.search.searchUsers");
 });
 const emptyDesc = computed(() => {
   if (lastKeyword.value) {
-    return "换个昵称或ID再试一次。";
+    return t("misc.search.tryAnother");
   }
-  return "输入昵称或ID，快速找到主播和好友。";
+  return t("misc.search.hint");
 });
 
 function idOf(item: UserProfile) {
@@ -81,7 +82,7 @@ function userKey(item: UserProfile) {
 }
 
 function nameOf(item: UserProfile) {
-  return firstText(item.user_nicename, item.user_nickname, item.userNiceName, "星域用户");
+  return firstText(item.user_nicename, item.user_nickname, item.userNiceName, t("misc.common.defaultUser"));
 }
 
 function avatarOf(item: UserProfile) {
@@ -113,7 +114,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "搜索失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.search.failed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();

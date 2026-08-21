@@ -1,10 +1,10 @@
 <template>
   <view class="support-chat">
     <scroll-view class="messages" scroll-y :scroll-top="scrollTop">
-      <view v-if="loading" class="state">正在连接平台客服...</view>
+      <view v-if="loading" class="state">{{ t("misc.service.connecting") }}</view>
       <view v-else-if="!messages.length" class="welcome card">
-        <text>平台客服</text>
-        <text>请描述遇到的问题，客服人员会在后台收到并回复。</text>
+        <text>{{ t("misc.service.platformSupport") }}</text>
+        <text>{{ t("misc.service.chatWelcome") }}</text>
       </view>
       <view
         v-for="message in messages"
@@ -13,7 +13,7 @@
         :class="{ self: message.sender_type === 1 }"
       >
         <view class="bubble">
-          <text>{{ message.text_content || "附件消息" }}</text>
+          <text>{{ message.text_content || t("misc.service.attachment") }}</text>
           <text class="time">{{ formatTime(message.created_at) }}</text>
         </view>
       </view>
@@ -23,10 +23,10 @@
         v-model.trim="draft"
         class="input"
         confirm-type="send"
-        placeholder="请输入问题"
+        :placeholder="t('misc.service.problemPlaceholder')"
         @confirm="send"
       />
-      <button :disabled="!draft || sending" @tap="send">{{ sending ? "发送中" : "发送" }}</button>
+      <button :disabled="!draft || sending" @tap="send">{{ sending ? t("misc.common.sending") : t("misc.common.send") }}</button>
     </view>
   </view>
 </template>
@@ -42,6 +42,7 @@ import {
   type SupportMessage
 } from "@/api/support";
 import { requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const conversation = ref<SupportConversation>();
 const messages = ref<SupportMessage[]>([]);
@@ -72,7 +73,7 @@ async function refresh(silent = false) {
     scrollBottom();
   } catch (error: any) {
     if (!silent) {
-      uni.showToast({ title: error?.message || "客服连接失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("misc.service.connectionFailed"), icon: "none" });
     }
   } finally {
     loading.value = false;
@@ -89,7 +90,7 @@ async function send() {
     draft.value = "";
     scrollBottom();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "消息发送失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.service.messageFailed"), icon: "none" });
   } finally {
     sending.value = false;
   }

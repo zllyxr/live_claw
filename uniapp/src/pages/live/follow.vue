@@ -1,8 +1,8 @@
 <template>
   <view class="safe-page follow-live-page">
     <view class="hero">
-      <text class="hero-title">{{ data?.title || "我的关注" }}</text>
-      <text class="hero-desc">{{ data?.des || "关注主播开播后会出现在这里" }}</text>
+      <text class="hero-title">{{ data?.title || t("live.following") }}</text>
+      <text class="hero-desc">{{ data?.des || t("live.followHint") }}</text>
     </view>
 
     <view v-if="rooms.length" class="live-grid">
@@ -11,16 +11,16 @@
         <view class="cover-mask" />
         <view class="live-badge">LIVE</view>
         <view class="card-copy">
-          <text class="room-title">{{ room.title || anchorName(room) || "星域直播间" }}</text>
+          <text class="room-title">{{ room.title || anchorName(room) || t("home.defaultRoom") }}</text>
           <view class="anchor-row">
             <image :src="avatarOf(room)" mode="aspectFill" />
-            <text>{{ anchorName(room) || "主播" }}</text>
-            <text>{{ displayCount(room.nums || room.hotvotes) }}人</text>
+            <text>{{ anchorName(room) || t("home.host") }}</text>
+            <text>{{ t("home.people", { count: displayCount(room.nums || room.hotvotes) }) }}</text>
           </view>
         </view>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载关注直播' : '暂无关注主播开播'" description="去直播页关注喜欢的主播，开播后会显示在这里。" />
+    <EmptyState v-else :title="loading ? t('live.loadingFollowing') : t('live.noFollowingLive')" :description="t('live.followDescription')" />
   </view>
 </template>
 
@@ -31,6 +31,9 @@ import EmptyState from "@/components/EmptyState.vue";
 import { getFollowLive } from "@/api/services";
 import type { FollowLiveHome, LiveRoom } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 import { displayCount } from "@/utils/format";
 import { requireLogin } from "@/utils/session";
 
@@ -84,7 +87,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "关注直播加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.followLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -97,10 +100,10 @@ function openRoom(room: LiveRoom) {
   const stream = firstText(room.stream);
   uni.navigateTo({
     url:
-      `/pages/live/player?title=${encodeURIComponent(String(room.title || anchorName(room) || "直播间"))}` +
+      `/pages/live/player?title=${encodeURIComponent(String(room.title || anchorName(room) || t("home.liveRoom")))}` +
       `&src=${encodeURIComponent(src)}&cover=${encodeURIComponent(coverOf(room))}` +
       `&liveuid=${encodeURIComponent(liveUid)}&stream=${encodeURIComponent(stream)}` +
-      `&avatar=${encodeURIComponent(avatarOf(room))}&anchor=${encodeURIComponent(String(anchorName(room) || "主播"))}` +
+      `&avatar=${encodeURIComponent(avatarOf(room))}&anchor=${encodeURIComponent(String(anchorName(room) || t("home.host")))}` +
       `&nums=${encodeURIComponent(String(room.nums || 0))}&votes=${encodeURIComponent(String(room.hotvotes || 0))}`
   });
 }

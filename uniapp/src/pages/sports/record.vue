@@ -3,30 +3,30 @@
     <view class="record-hero">
       <view class="hero-bg" />
       <view class="hero-content">
-        <text class="hero-title">体育投注记录</text>
-        <text class="hero-sub">赛事、盘口、赛果与派彩明细</text>
+        <text class="hero-title">{{ t("commerce.sportsRecord.title") }}</text>
+        <text class="hero-sub">{{ t("commerce.sportsRecord.subtitle") }}</text>
       </view>
-      <button class="hero-refresh" @tap="refresh">刷新</button>
+      <button class="hero-refresh" @tap="refresh">{{ t("commerce.common.refresh") }}</button>
     </view>
 
     <view class="summary-grid">
       <view class="summary-card">
         <text>{{ amountOf(data, ["total_bet"]) }}</text>
-        <text>总下注</text>
+        <text>{{ t("commerce.common.totalBet") }}</text>
       </view>
       <view class="summary-card blue">
         <text>{{ amountOf(data, ["total_payout"]) }}</text>
-        <text>总派彩</text>
+        <text>{{ t("commerce.common.totalPayout") }}</text>
       </view>
       <view class="summary-card gold">
         <text>{{ amountOf(data, ["profit_loss", "net_amount"]) }}</text>
-        <text>总盈亏</text>
+        <text>{{ t("commerce.common.totalProfitLoss") }}</text>
       </view>
     </view>
 
     <view class="section-title">
-      <text>投注记录</text>
-      <text>{{ records.length ? `${records.length} 条` : "" }}</text>
+      <text>{{ t("commerce.common.betRecords") }}</text>
+      <text>{{ records.length ? t("commerce.common.recordCount").replace("{count}", String(records.length)) : "" }}</text>
     </view>
 
     <view v-if="records.length" class="record-list">
@@ -52,21 +52,21 @@
 
         <view class="order-meta">
           <text>{{ orderMeta(order) }}</text>
-          <text v-if="timeOf(order)">下注时间：{{ timeOf(order) }}</text>
-          <text v-if="settleTimeOf(order)">结算时间：{{ settleTimeOf(order) }}</text>
+          <text v-if="timeOf(order)">{{ t("commerce.common.betTime") }}: {{ timeOf(order) }}</text>
+          <text v-if="settleTimeOf(order)">{{ t("commerce.common.settlementTime") }}: {{ settleTimeOf(order) }}</text>
         </view>
 
         <view class="amount-grid">
           <view>
-            <text>下注</text>
+            <text>{{ t("commerce.common.bet") }}</text>
             <text>{{ amountOf(order, ["total_bet", "bet_money", "money"]) }}</text>
           </view>
           <view>
-            <text>派彩</text>
+            <text>{{ t("commerce.common.payout") }}</text>
             <text>{{ amountOf(order, ["total_payout", "win_money"]) }}</text>
           </view>
           <view>
-            <text>盈亏</text>
+            <text>{{ t("commerce.common.profitLoss") }}</text>
             <text>{{ amountOf(order, ["net_amount", "profit_loss"]) }}</text>
           </view>
         </view>
@@ -78,17 +78,21 @@
               <text>{{ itemStatusOf(item) }}</text>
             </view>
             <view class="bet-item-grid">
-              <text>赔率 {{ textOf(item, ["odds", "rate"], "-") }}</text>
-              <text>投注 {{ amountOf(item, ["bet_amount", "amount", "money"]) }}</text>
-              <text>派彩 {{ amountOf(item, ["payout_amount", "win_money"], "-") }}</text>
+              <text>{{ t("commerce.common.odds") }} {{ textOf(item, ["odds", "rate"], "-") }}</text>
+              <text>{{ t("commerce.common.bet") }} {{ amountOf(item, ["bet_amount", "amount", "money"]) }}</text>
+              <text>{{ t("commerce.common.payout") }} {{ amountOf(item, ["payout_amount", "win_money"], "-") }}</text>
             </view>
           </view>
         </view>
       </view>
 
-      <text v-if="finished" class="list-footer">没有更多记录了</text>
+      <text v-if="finished" class="list-footer">{{ t("commerce.common.noMoreRecords") }}</text>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载体育投注记录' : '暂无体育投注记录'" description="下拉刷新可重新同步记录。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('commerce.sportsRecord.loading') : t('commerce.sportsRecord.empty')"
+      :description="t('commerce.sportsRecord.emptyDescription')"
+    />
   </view>
 </template>
 
@@ -98,6 +102,9 @@ import { onLoad, onPullDownRefresh, onReachBottom } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import { getSportsBetRecords } from "@/api/services";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type AnyRecord = Record<string, unknown>;
 
@@ -163,7 +170,11 @@ function rowKey(item: AnyRecord) {
 function teamName(order: AnyRecord, side: "home" | "away") {
   const match = matchOf(order);
   const direct = side === "home" ? ["home_name", "home"] : ["away_name", "away"];
-  return textOf(match, direct, textOf(order, direct, side === "home" ? "主队" : "客队"));
+  return textOf(
+    match,
+    direct,
+    textOf(order, direct, side === "home" ? t("commerce.sportsDetail.homeTeam") : t("commerce.sportsDetail.awayTeam"))
+  );
 }
 
 function matchName(order: AnyRecord) {
@@ -176,7 +187,11 @@ function matchName(order: AnyRecord) {
 
 function matchMeta(order: AnyRecord) {
   const match = matchOf(order);
-  const competition = textOf(match, ["competition", "league_name"], textOf(order, ["competition", "league_name"], "赛事"));
+  const competition = textOf(
+    match,
+    ["competition", "league_name"],
+    textOf(order, ["competition", "league_name"], t("commerce.sportsRecord.event"))
+  );
   const kickoff = textOf(match, ["kickoff_text", "kickoff_time_text", "match_time"], textOf(order, ["kickoff_time_text", "match_time"], ""));
   return kickoff ? `${competition} · ${kickoff}` : competition;
 }
@@ -188,7 +203,7 @@ function scoreOf(order: AnyRecord) {
   if (home !== "" && away !== "") {
     return `${home} : ${away}`;
   }
-  return "待同步";
+  return t("commerce.common.awaitingSync");
 }
 
 function resultStatus(order: AnyRecord) {
@@ -199,22 +214,24 @@ function resultStatus(order: AnyRecord) {
   }
   const settle = textOf(match, ["settle_status"], textOf(order, ["settle_status"], ""));
   if (settle === "1" || settle === "2") {
-    return "已结算";
+    return t("commerce.sportsRecord.settled");
   }
   if (settle === "0") {
-    return "待结算";
+    return t("commerce.sportsRecord.awaitingSettlement");
   }
-  return "赛果";
+  return t("commerce.sportsRecord.result");
 }
 
 function statusOf(order: AnyRecord) {
-  return textOf(order, ["status_text", "status_name", "state_text"], "处理中");
+  return textOf(order, ["status_text", "status_name", "state_text"], t("commerce.common.processing"));
 }
 
 function orderMeta(order: AnyRecord) {
   const matchNo = textOf(order, ["display_match_id", "public_match_id", "match_id"], "--");
   const no = textOf(order, ["order_no", "orderid", "id"], "--");
-  return `赛事编号 ${matchNo} · 订单 ${no}`;
+  return t("commerce.sportsRecord.eventOrder")
+    .replace("{match}", matchNo)
+    .replace("{order}", no);
 }
 
 function timeOf(order: AnyRecord) {
@@ -234,13 +251,13 @@ function recordItems(order: AnyRecord) {
 }
 
 function sportsItemTitle(item: AnyRecord) {
-  const market = textOf(item, ["market_name", "market_code", "bet_name", "play_name"], "盘口");
-  const option = textOf(item, ["option_name", "option_code"], "投注项");
+  const market = textOf(item, ["market_name", "market_code", "bet_name", "play_name"], t("commerce.sportsDetail.market"));
+  const option = textOf(item, ["option_name", "option_code"], t("commerce.common.betOption"));
   return `${market} · ${option}`;
 }
 
 function itemStatusOf(item: AnyRecord) {
-  return textOf(item, ["win_status_text", "status_text", "state_text"], "待结算");
+  return textOf(item, ["win_status_text", "status_text", "state_text"], t("commerce.sportsRecord.awaitingSettlement"));
 }
 
 async function load(reset = false) {
@@ -268,7 +285,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "记录加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.common.recordsLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -281,6 +298,7 @@ function refresh() {
 
 onLoad((query) => {
   matchId.value = String(query?.match_id || "");
+  uni.setNavigationBarTitle({ title: t("commerce.sportsRecord.title") });
   void load(true);
 });
 

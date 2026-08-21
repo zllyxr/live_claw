@@ -1,44 +1,48 @@
 <template>
   <view class="safe-page promo-page">
     <view class="hero">
-      <text>星域优惠</text>
-      <text>充值赠送、活动福利与账户奖励</text>
+      <text>{{ t("commerce.promo.title") }}</text>
+      <text>{{ t("commerce.promo.subtitle") }}</text>
     </view>
 
     <view class="section-head">
-      <text>充值赠送</text>
-      <button @tap="openRecharge">去充值</button>
+      <text>{{ t("commerce.promo.rechargeBonus") }}</text>
+      <button @tap="openRecharge">{{ t("commerce.promo.rechargeNow") }}</button>
     </view>
 
     <view v-if="promoRules.length" class="promo-grid">
       <view v-for="rule in promoRules" :key="String(rule.id || rule.money)" class="promo-card">
-        <text>{{ rule.coin || "0" }} 星币</text>
-        <text>支付 ¥{{ rule.money || "0" }}</text>
-        <view class="gift-line">赠送 {{ rule.give }} 星币</view>
+        <text>{{ rule.coin || "0" }} {{ t("commerce.common.coin") }}</text>
+        <text>{{ t("commerce.promo.pay") }} ¥{{ rule.money || "0" }}</text>
+        <view class="gift-line">{{ t("commerce.promo.bonus") }} {{ rule.give }} {{ t("commerce.common.coin") }}</view>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载优惠' : '暂无充值赠送活动'" description="有赠送档位时会在这里展示，也可以去充值页查看全部档位。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('commerce.promo.loading') : t('commerce.promo.empty')"
+      :description="t('commerce.promo.emptyDescription')"
+    />
 
     <view class="benefit-list card">
       <view class="benefit-row">
-        <view class="benefit-icon">充</view>
+        <view class="benefit-icon">{{ t("commerce.promo.rechargeIcon") }}</view>
         <view>
-          <text>充值奖励</text>
-          <text>充值页会实时读取后端档位和支付方式。</text>
+          <text>{{ t("commerce.promo.rechargeReward") }}</text>
+          <text>{{ t("commerce.promo.rechargeRewardDescription") }}</text>
         </view>
       </view>
       <view class="benefit-row">
-        <view class="benefit-icon pink">任</view>
+        <view class="benefit-icon pink">{{ t("commerce.promo.taskIcon") }}</view>
         <view>
-          <text>每日任务</text>
-          <text>完成任务后可领取奖励，奖励进入余额。</text>
+          <text>{{ t("commerce.promo.dailyTasks") }}</text>
+          <text>{{ t("commerce.promo.dailyTasksDescription") }}</text>
         </view>
       </view>
       <view class="benefit-row">
-        <view class="benefit-icon violet">邀</view>
+        <view class="benefit-icon violet">{{ t("commerce.promo.inviteIcon") }}</view>
         <view>
-          <text>邀请奖励</text>
-          <text>邀请好友注册绑定后，可在邀请页查看专属信息。</text>
+          <text>{{ t("commerce.promo.referralReward") }}</text>
+          <text>{{ t("commerce.promo.referralRewardDescription") }}</text>
         </view>
       </view>
     </view>
@@ -51,6 +55,9 @@ import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import { getWalletBalance } from "@/api/services";
 import type { WalletBalance, WalletRule } from "@/types/api";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const wallet = ref<WalletBalance>();
 const loading = ref(false);
@@ -61,7 +68,7 @@ async function load() {
   try {
     wallet.value = await getWalletBalance();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "优惠加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.promo.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -73,6 +80,7 @@ function openRecharge() {
 }
 
 onShow(() => {
+  uni.setNavigationBarTitle({ title: t("commerce.promo.navigationTitle") });
   void load();
 });
 

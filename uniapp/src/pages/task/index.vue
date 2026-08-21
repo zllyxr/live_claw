@@ -1,22 +1,22 @@
 <template>
   <view class="safe-page task-page">
     <view class="hero">
-      <text>每日任务</text>
-      <text>{{ data?.tip_m || "完成任务后领取奖励，奖励会进入余额。" }}</text>
+      <text>{{ t("misc.task.title") }}</text>
+      <text>{{ data?.tip_m || t("misc.task.description") }}</text>
     </view>
 
     <view v-if="tasks.length" class="task-list">
       <view v-for="task in tasks" :key="String(task.id)" class="task-card card">
         <view class="task-main">
-          <text>{{ task.title || "任务" }}</text>
-          <text>{{ task.tip || task.tip_m || "完成后可领取奖励" }}</text>
+          <text>{{ task.title || t("misc.task.task") }}</text>
+          <text>{{ task.tip || task.tip_m || t("misc.task.rewardHint") }}</text>
         </view>
         <button :class="{ ready: statusOf(task) === 1, done: statusOf(task) === 2 }" @tap="receive(task)">
           {{ statusText(task) }}
         </button>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载每日任务' : '暂无每日任务'" description="任务开关关闭或今日暂无任务时，这里会保持空态。" />
+    <EmptyState v-else :title="loading ? t('misc.task.loading') : t('misc.task.empty')" :description="t('misc.task.emptyDescription')" />
   </view>
 </template>
 
@@ -26,6 +26,7 @@ import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import { getDailyTasks, receiveDailyTaskReward } from "@/api/services";
 import type { DailyTaskBundle, DailyTaskItem } from "@/types/api";
+import { t } from "@/i18n";
 
 const data = ref<DailyTaskBundle>();
 const tasks = ref<DailyTaskItem[]>([]);
@@ -39,12 +40,12 @@ function statusOf(task: DailyTaskItem) {
 function statusText(task: DailyTaskItem) {
   const status = statusOf(task);
   if (status === 1) {
-    return receiving.value === String(task.id) ? "领取中" : "领取";
+    return receiving.value === String(task.id) ? t("misc.task.receiving") : t("misc.task.receive");
   }
   if (status === 2) {
-    return "已领取";
+    return t("misc.task.received");
   }
-  return "去完成";
+  return t("misc.task.goComplete");
 }
 
 async function load() {
@@ -54,7 +55,7 @@ async function load() {
     data.value = next;
     tasks.value = next?.list || [];
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "任务加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.task.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -68,10 +69,10 @@ async function receive(task: DailyTaskItem) {
   receiving.value = String(task.id);
   try {
     const res = await receiveDailyTaskReward(task.id);
-    uni.showToast({ title: res.msg || "已领取奖励", icon: "none" });
+    uni.showToast({ title: res.msg || t("misc.task.rewardReceived"), icon: "none" });
     await load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "领取失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.task.receiveFailed"), icon: "none" });
   } finally {
     receiving.value = "";
   }

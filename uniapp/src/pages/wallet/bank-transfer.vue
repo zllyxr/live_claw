@@ -8,58 +8,58 @@
 
     <view v-if="account" class="payment-card">
       <view class="amount-block">
-        <text>本次转账金额</text>
+        <text>{{ t("commerce.bankTransfer.transferAmount") }}</text>
         <text>¥{{ order?.money || order?.amount || "0" }}</text>
-        <text>请按显示金额准确转账</text>
+        <text>{{ t("commerce.bankTransfer.exactAmountHint") }}</text>
       </view>
       <view class="info-row">
-        <text>银行</text>
-        <view><text>{{ account.bank_name || "-" }}</text><button @tap="copy(account.bank_name)">复制</button></view>
+        <text>{{ t("commerce.bankTransfer.bank") }}</text>
+        <view><text>{{ account.bank_name || "-" }}</text><button @tap="copy(account.bank_name)">{{ t("commerce.common.copy") }}</button></view>
       </view>
       <view v-if="account.branch_name" class="info-row">
-        <text>开户支行</text>
-        <view><text>{{ account.branch_name }}</text><button @tap="copy(account.branch_name)">复制</button></view>
+        <text>{{ t("commerce.bankTransfer.branch") }}</text>
+        <view><text>{{ account.branch_name }}</text><button @tap="copy(account.branch_name)">{{ t("commerce.common.copy") }}</button></view>
       </view>
       <view class="info-row">
-        <text>收款人</text>
-        <view><text>{{ account.holder_name || "-" }}</text><button @tap="copy(account.holder_name)">复制</button></view>
+        <text>{{ t("commerce.bankTransfer.recipient") }}</text>
+        <view><text>{{ account.holder_name || "-" }}</text><button @tap="copy(account.holder_name)">{{ t("commerce.common.copy") }}</button></view>
       </view>
       <view class="info-row card-number-row">
-        <text>银行卡号</text>
-        <view><text>{{ formattedCardNumber }}</text><button @tap="copy(account.card_number)">复制</button></view>
+        <text>{{ t("commerce.bankTransfer.cardNumber") }}</text>
+        <view><text>{{ formattedCardNumber }}</text><button @tap="copy(account.card_number)">{{ t("commerce.common.copy") }}</button></view>
       </view>
       <view class="info-row">
-        <text>订单号</text>
-        <view><text class="order-number">{{ orderNo }}</text><button @tap="copy(orderNo)">复制</button></view>
+        <text>{{ t("commerce.common.orderNumber") }}</text>
+        <view><text class="order-number">{{ orderNo }}</text><button @tap="copy(orderNo)">{{ t("commerce.common.copy") }}</button></view>
       </view>
       <view v-if="account.instructions" class="instructions">
-        <text>付款说明</text>
+        <text>{{ t("commerce.bankTransfer.paymentInstructions") }}</text>
         <text>{{ account.instructions }}</text>
       </view>
     </view>
 
     <view v-if="stage === 'awaiting_payment'" class="proof-card">
-      <text class="section-title">上传付款凭证</text>
-      <text class="section-tip">完成转账后上传一张清晰截图，支持 JPEG、PNG、WebP，最大10MB。</text>
+      <text class="section-title">{{ t("commerce.bankTransfer.uploadProof") }}</text>
+      <text class="section-tip">{{ t("commerce.bankTransfer.uploadProofHint") }}</text>
       <view v-if="proofPath" class="proof-preview" @tap="chooseProof">
         <image :src="proofPath" mode="aspectFit" />
-        <text>点击重新选择</text>
+        <text>{{ t("commerce.bankTransfer.chooseAgain") }}</text>
       </view>
-      <button v-else class="choose-button" @tap="chooseProof">选择转账截图</button>
+      <button v-else class="choose-button" @tap="chooseProof">{{ t("commerce.bankTransfer.chooseScreenshot") }}</button>
       <button class="submit-button" :disabled="!proofPath || submitting" @tap="submitProof">
-        {{ submitting ? "正在提交" : "我已转账，提交凭证" }}
+        {{ submitting ? t("commerce.common.submitting") : t("commerce.bankTransfer.submitProof") }}
       </button>
     </view>
 
     <view v-if="stage === 'closed' && closeReason" class="reason-card">
-      <text>关闭原因</text>
+      <text>{{ t("commerce.bankTransfer.closeReason") }}</text>
       <text>{{ closeReason }}</text>
     </view>
 
     <button class="refresh-button" :disabled="loading" @tap="load(false)">
-      {{ loading ? "刷新中" : "刷新订单状态" }}
+      {{ loading ? t("commerce.common.refreshing") : t("commerce.common.refreshStatus") }}
     </button>
-    <button class="detail-button" @tap="openDetails">查看充值明细</button>
+    <button class="detail-button" @tap="openDetails">{{ t("commerce.bankTransfer.viewRechargeDetails") }}</button>
   </view>
 </template>
 
@@ -70,6 +70,9 @@ import { getRechargeOrderStatus, getWalletBalance, submitBankPaymentProof } from
 import type { RechargeOrder } from "@/types/api";
 import { clearPendingPayment, expirationTimestamp, savePendingPayment } from "@/utils/payment";
 import { getSession, requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const orderNo = ref("");
 const order = ref<RechargeOrder>();
@@ -98,26 +101,26 @@ const countdownText = computed(() => {
   return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
 });
 const stageTitle = computed(() => ({
-  waiting_assignment: "等待后台分配收款卡",
-  awaiting_payment: "请转账到以下银行卡",
-  review_pending: "付款凭证审核中",
-  paid: "充值已到账",
-  closed: "订单已关闭"
-} as Record<string, string>)[stage.value] || "银行卡充值");
+  waiting_assignment: t("commerce.bankTransfer.stage.waitingAssignment"),
+  awaiting_payment: t("commerce.bankTransfer.stage.awaitingPayment"),
+  review_pending: t("commerce.bankTransfer.stage.reviewPending"),
+  paid: t("commerce.bankTransfer.stage.paid"),
+  closed: t("commerce.bankTransfer.stage.closed")
+} as Record<string, string>)[stage.value] || t("commerce.bankTransfer.stage.default"));
 const stageDescription = computed(() => ({
-  waiting_assignment: "页面会自动刷新，10分钟内未分配将自动关闭。",
-  awaiting_payment: "银行卡分配后不可更换，请在30分钟内付款并提交截图。",
-  review_pending: "凭证已提交，后台确认到账后星币会自动增加。",
-  paid: "后台已确认收款，星币已经加入钱包。",
-  closed: "该订单不能继续付款，请返回充值页重新下单。"
-} as Record<string, string>)[stage.value] || "请刷新订单状态。");
+  waiting_assignment: t("commerce.bankTransfer.description.waitingAssignment"),
+  awaiting_payment: t("commerce.bankTransfer.description.awaitingPayment"),
+  review_pending: t("commerce.bankTransfer.description.reviewPending"),
+  paid: t("commerce.bankTransfer.description.paid"),
+  closed: t("commerce.bankTransfer.description.closed")
+} as Record<string, string>)[stage.value] || t("commerce.bankTransfer.description.default"));
 
 async function load(silent = true) {
   if (!requireLogin() || !orderNo.value || loading.value) return;
   loading.value = true;
   try {
     const result = await getRechargeOrderStatus(orderNo.value);
-    if (!result || String(result.channel || "") !== "bank") throw new Error("银行卡充值订单不存在");
+    if (!result || String(result.channel || "") !== "bank") throw new Error(t("commerce.bankTransfer.orderMissing"));
     order.value = result;
     const uid = String(getSession().uid || "");
     if (["paid", "closed"].includes(String(result.bank_stage || ""))) {
@@ -129,7 +132,7 @@ async function load(silent = true) {
       savePendingPayment(uid, result);
     }
   } catch (error: any) {
-    if (!silent) uni.showToast({ title: error?.message || "订单刷新失败", icon: "none" });
+    if (!silent) uni.showToast({ title: error?.message || t("commerce.common.orderRefreshFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -138,7 +141,7 @@ async function load(silent = true) {
 
 function copy(value?: string) {
   if (!value) return;
-  uni.setClipboardData({ data: value, success: () => uni.showToast({ title: "已复制", icon: "none" }) });
+  uni.setClipboardData({ data: value, success: () => uni.showToast({ title: t("commerce.common.copied"), icon: "none" }) });
 }
 
 function chooseProof() {
@@ -157,9 +160,9 @@ async function submitProof() {
     await submitBankPaymentProof(orderNo.value, proofPath.value);
     proofPath.value = "";
     await load(true);
-    uni.showToast({ title: "凭证已提交", icon: "success" });
+    uni.showToast({ title: t("commerce.bankTransfer.proofSubmitted"), icon: "success" });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "凭证提交失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.bankTransfer.proofSubmitFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }
@@ -178,6 +181,7 @@ function startTimers() {
 
 onLoad((options) => {
   orderNo.value = decodeURIComponent(String(options?.order_no || "")).trim();
+  uni.setNavigationBarTitle({ title: t("commerce.bankTransfer.navigationTitle") });
 });
 onShow(() => { startTimers(); void load(false); });
 onPullDownRefresh(() => { void load(false); });

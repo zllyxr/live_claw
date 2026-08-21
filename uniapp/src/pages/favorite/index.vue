@@ -1,8 +1,8 @@
 <template>
   <view class="safe-page favorite-page">
     <view class="top-row">
-      <text class="title-lg">我的收藏</text>
-      <button class="pill-button" @tap="load(true)">刷新</button>
+      <text class="title-lg">{{ t("misc.favorite.title") }}</text>
+      <button class="pill-button" @tap="load(true)">{{ t("misc.common.refresh") }}</button>
     </view>
 
     <view v-if="items.length" class="video-grid">
@@ -10,11 +10,11 @@
         <image class="cover" :src="coverOf(item)" mode="aspectFill" />
         <view class="video-copy">
           <text>{{ titleOf(item) }}</text>
-          <text>{{ item.datetime || "" }} · {{ item.likes || 0 }}赞</text>
+          <text>{{ item.datetime || "" }} · {{ item.likes || 0 }} {{ t("misc.common.likes") }}</text>
         </view>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载收藏' : '暂无收藏视频'" description="点赞过的视频会显示在这里。" />
+    <EmptyState v-else :title="loading ? t('misc.favorite.loading') : t('misc.favorite.empty')" :description="t('misc.favorite.emptyDescription')" />
   </view>
 </template>
 
@@ -25,6 +25,7 @@ import EmptyState from "@/components/EmptyState.vue";
 import { getLikeVideos } from "@/api/services";
 import type { VideoItem } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { t } from "@/i18n";
 
 const items = ref<VideoItem[]>([]);
 const page = ref(1);
@@ -41,7 +42,7 @@ function videoId(item: VideoItem) {
 }
 
 function titleOf(item: VideoItem) {
-  return firstText(item.title, item.des, item.content, "星域视频");
+  return firstText(item.title, item.des, item.content, t("misc.video.defaultTitle"));
 }
 
 function coverOf(item: VideoItem) {
@@ -66,7 +67,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "收藏加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.favorite.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();

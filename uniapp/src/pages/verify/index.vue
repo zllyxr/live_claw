@@ -1,27 +1,27 @@
 <template>
   <view class="safe-page verify-page">
     <view class="notice-card">
-      <text class="notice-title">实名认证</text>
-      <text class="notice-desc">请提交真实资料，审核通过后可使用更多直播与收益功能。</text>
+      <text class="notice-title">{{ t("misc.verify.title") }}</text>
+      <text class="notice-desc">{{ t("misc.verify.description") }}</text>
     </view>
 
     <view class="form-card card">
       <view class="field">
-        <text class="label">真实姓名</text>
-        <input v-model.trim="realName" class="input-lite" placeholder="请输入真实姓名" maxlength="20" />
+        <text class="label">{{ t("misc.verify.realName") }}</text>
+        <input v-model.trim="realName" class="input-lite" :placeholder="t('misc.verify.realNamePlaceholder')" maxlength="20" />
       </view>
       <view class="field">
-        <text class="label">手机号</text>
-        <input v-model.trim="mobile" class="input-lite" placeholder="请输入手机号" type="number" maxlength="20" />
+        <text class="label">{{ t("misc.auth.phone") }}</text>
+        <input v-model.trim="mobile" class="input-lite" :placeholder="t('misc.auth.phonePlaceholder')" type="number" maxlength="20" />
       </view>
       <view class="field">
-        <text class="label">证件号码</text>
-        <input v-model.trim="cardNo" class="input-lite" placeholder="请输入身份证号" maxlength="30" />
+        <text class="label">{{ t("misc.verify.documentNumber") }}</text>
+        <input v-model.trim="cardNo" class="input-lite" :placeholder="t('misc.verify.idNumberPlaceholder')" maxlength="30" />
       </view>
     </view>
 
     <view class="upload-section">
-      <text class="section-title">证件照片</text>
+      <text class="section-title">{{ t("misc.verify.documentPhotos") }}</text>
       <view class="upload-grid">
         <view v-for="item in uploadItems" :key="item.key" class="upload-card" @tap="choose(item.key)">
           <image v-if="images[item.key]" class="upload-image" :src="imageSrc(images[item.key])" mode="aspectFill" />
@@ -29,24 +29,25 @@
             <text class="plus">+</text>
             <text>{{ item.label }}</text>
           </view>
-          <view v-if="uploadingKey === item.key" class="upload-mask">上传中</view>
+          <view v-if="uploadingKey === item.key" class="upload-mask">{{ t("misc.common.uploading") }}</view>
         </view>
       </view>
     </view>
 
     <button class="primary-button submit" :disabled="submitting || Boolean(uploadingKey)" @tap="submit">
-      {{ submitting ? "正在提交" : "提交认证" }}
+      {{ submitting ? t("misc.common.submitting") : t("misc.detail.submitVerification") }}
     </button>
-    <button class="ghost-link" @tap="openAuthStatus">查看认证状态</button>
+    <button class="ghost-link" @tap="openAuthStatus">{{ t("misc.verify.viewStatus") }}</button>
   </view>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { submitAuth, uploadOne } from "@/api/services";
 import type { UploadResult } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 type ImageKey = "frontView" | "backView" | "handsetView";
 
@@ -61,11 +62,11 @@ const images = reactive<Record<ImageKey, string>>({
   handsetView: ""
 });
 
-const uploadItems: Array<{ key: ImageKey; label: string }> = [
-  { key: "frontView", label: "身份证正面" },
-  { key: "backView", label: "身份证反面" },
-  { key: "handsetView", label: "手持身份证" }
-];
+const uploadItems = computed<Array<{ key: ImageKey; label: string }>>(() => [
+  { key: "frontView", label: t("misc.verify.idFront") },
+  { key: "backView", label: t("misc.verify.idBack") },
+  { key: "handsetView", label: t("misc.verify.holdingId") }
+]);
 
 function uploadKey(result: UploadResult) {
   return result.file || result.file_name || result.filepath || result.url || "";
@@ -93,11 +94,11 @@ function choose(key: ImageKey) {
         const uploaded = await uploadOne(path);
         const file = uploadKey(uploaded);
         if (!file) {
-          throw new Error("上传返回为空");
+          throw new Error(t("misc.verify.emptyUpload"));
         }
         images[key] = file;
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "上传失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("misc.common.uploadFailed"), icon: "none" });
       } finally {
         uploadingKey.value = "";
       }
@@ -107,16 +108,16 @@ function choose(key: ImageKey) {
 
 function validate() {
   if (!realName.value) {
-    return "请输入真实姓名";
+    return t("misc.verify.realNamePlaceholder");
   }
   if (!mobile.value) {
-    return "请输入手机号";
+    return t("misc.auth.phonePlaceholder");
   }
   if (!cardNo.value) {
-    return "请输入证件号码";
+    return t("misc.verify.documentNumberPlaceholder");
   }
   if (!images.frontView || !images.backView || !images.handsetView) {
-    return "请上传完整证件照片";
+    return t("misc.verify.uploadAllPhotos");
   }
   return "";
 }
@@ -141,14 +142,14 @@ async function submit() {
       handsetView: images.handsetView
     });
     uni.showModal({
-      title: "提交成功",
-      content: "认证资料已提交，请等待平台审核。",
+      title: t("misc.common.submitSuccess"),
+      content: t("misc.verify.submittedDescription"),
       showCancel: false,
       confirmColor: "#ff5878",
       success: () => uni.navigateBack()
     });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "提交失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.common.submitFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }

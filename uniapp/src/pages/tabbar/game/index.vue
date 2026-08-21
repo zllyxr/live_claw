@@ -2,23 +2,24 @@
   <view class="game-page">
     <view class="cosmic-head">
       <view class="brand-copy">
-        <image class="brand-title-art" src="/static/art/game-park/titles/game-center-title-v1.webp" mode="widthFix" />
+        <image v-if="locale === 'zh-CN'" class="brand-title-art" src="/static/art/game-park/titles/game-center-title-v1.webp" mode="widthFix" />
+        <text v-else class="brand-title-text">{{ t("commerce.gameHome.title") }}</text>
       </view>
       <view class="wallet-panel">
         <view class="balance-row">
           <image class="coin-icon" src="/static/brand/icon-round.webp" mode="aspectFit" />
           <text class="balance-value">{{ home?.coin || "0" }}</text>
-          <text class="balance-unit">星币</text>
+          <text class="balance-unit">{{ t("commerce.common.coin") }}</text>
         </view>
         <view class="wallet-links">
           <view class="wallet-link" @tap="openRecharge">
             <image src="/static/icons/wallet-recharge.svg" mode="aspectFit" />
-            <text>充值</text>
+            <text>{{ t("commerce.gameHome.recharge") }}</text>
           </view>
           <view class="wallet-rule" />
           <view class="wallet-link" @tap="openWithdraw">
             <image src="/static/icons/wallet-withdraw.svg" mode="aspectFit" />
-            <text>提现</text>
+            <text>{{ t("commerce.gameHome.withdraw") }}</text>
           </view>
         </view>
       </view>
@@ -28,11 +29,11 @@
       <view class="zone-shortcuts">
         <view class="zone-shortcut" @tap="openSports">
           <SafeImage src="/static/art/category/sports.webp" mode="aspectFill" />
-          <text>体育赛事</text>
+          <text>{{ t("commerce.gameHome.sportsEvents") }}</text>
         </view>
         <view class="zone-shortcut" @tap="scrollToLottery">
           <SafeImage src="/static/art/category/lottery.webp" mode="aspectFill" />
-          <text>彩票玩法</text>
+          <text>{{ t("commerce.gameHome.lotteryGames") }}</text>
         </view>
       </view>
     </view>
@@ -57,7 +58,7 @@
         class="map-enter"
         @tap.stop="launchSelected"
       >
-        立即进入
+        {{ t("commerce.gameHome.enterNow") }}
       </view>
     </view>
 
@@ -73,14 +74,14 @@
       </view>
       <view class="selected-main">
         <view class="selected-title-row">
-          <text class="selected-name">{{ selectedGame?.name || "深海猎手" }}</text>
-          <text class="selected-players">{{ selectedGame?.players_text || "1-4人" }}</text>
+          <text class="selected-name">{{ selectedGameName }}</text>
+          <text class="selected-players">{{ selectedPlayersText }}</text>
         </view>
-        <text class="selected-remark">{{ selectedGame?.remark || "四座实时街机捕鱼，统一平台钱包结算" }}</text>
+        <text class="selected-remark">{{ selectedGameRemark }}</text>
         <view class="selected-foot">
           <text class="selected-mode">{{ modeText(selectedGame) }}</text>
           <view class="launch-button" :class="{ disabled: launching }" @tap="launchSelected">
-            {{ launching ? "正在进入" : "立即进入" }}
+            {{ launching ? t("commerce.gameHome.entering") : t("commerce.gameHome.enterNow") }}
           </view>
         </view>
       </view>
@@ -88,8 +89,8 @@
     <view id="lottery-panel" class="lottery-panel">
       <view class="lottery-head">
         <view>
-          <text class="lottery-title">彩票游戏</text>
-          <text class="lottery-subtitle">实时开奖 · 平台余额统一结算</text>
+          <text class="lottery-title">{{ t("commerce.gameHome.lotteryTitle") }}</text>
+          <text class="lottery-subtitle">{{ t("commerce.gameHome.lotterySubtitle") }}</text>
         </view>
       </view>
 
@@ -106,7 +107,7 @@
           :class="{ active: String(category.id) === selectedCategory }"
           @tap="selectedCategory = String(category.id)"
         >
-          {{ category.name || "全部" }}
+          {{ category.name || t("commerce.common.all") }}
         </view>
       </scroll-view>
 
@@ -123,15 +124,15 @@
             fallback="/static/art/category/lottery.webp"
             mode="aspectFill"
           />
-          <text class="lottery-name">{{ game.game_name || game.game_name_en || "游戏" }}</text>
+          <text class="lottery-name">{{ lotteryGameName(game) }}</text>
           <text class="lottery-code">{{ game.game_code || "GAME" }}</text>
         </view>
       </view>
       <EmptyState
         v-else
         kind="bet"
-        :title="loading ? '正在加载游戏' : '该分类暂无游戏'"
-        description="下拉页面可刷新余额、分类和玩法。"
+        :title="loading ? t('commerce.gameHome.loading') : t('commerce.gameHome.emptyCategory')"
+        :description="t('commerce.gameHome.emptyDescription')"
       />
     </view>
 
@@ -163,6 +164,9 @@ import type {
 import { absolutizeUrl, displayUrl, localAssetUrl } from "@/utils/url";
 import { consumeGameZoneIntent, openGameView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { locale, t } = useI18n();
 
 const home = ref<LotteryHome>();
 const miniGames = ref<MiniGameBundle>();
@@ -189,25 +193,59 @@ const selectedGame = computed<MiniGameItem | undefined>(() => {
   return games.find((game) => String(game.code || "") === selectedCode.value) || games[0];
 });
 
+function localizedGameField(game: MiniGameItem | undefined, field: "name" | "remark") {
+  if (!game) return "";
+  const source = game as unknown as Record<string, unknown>;
+  const suffixes = locale.value === "zh-CN"
+    ? ["", "zh", "cn", "en"]
+    : locale.value === "ja"
+      ? ["ja", "jp", "en", ""]
+      : locale.value === "ko"
+        ? ["ko", "kr", "en", ""]
+        : ["en", ""];
+  for (const suffix of suffixes) {
+    const value = source[suffix ? `${field}_${suffix}` : field];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
+  }
+  return "";
+}
+
+const selectedGameName = computed(() =>
+  localizedGameField(selectedGame.value, "name") || t("commerce.gameHome.attractions.deepseaHunter")
+);
+const selectedGameRemark = computed(() =>
+  localizedGameField(selectedGame.value, "remark") || t("commerce.gameHome.deepseaRemark")
+);
+const selectedPlayersText = computed(() => {
+  const value = String(selectedGame.value?.players_text || "");
+  const matched = value.match(/^(\d+)\s*[-–]\s*(\d+)\s*人$/);
+  if (matched) {
+    return t("commerce.gameHome.playerRange")
+      .replace("{min}", matched[1] || "")
+      .replace("{max}", matched[2] || "");
+  }
+  return value || t("commerce.gameHome.playerRange").replace("{min}", "1").replace("{max}", "4");
+});
+
 const fishingVenues = computed<FishingVenue[]>(() => miniGames.value?.fishing_venues || []);
 
-const attractionConfig = [
-  { order: 1, code: "deepsea_hunter", name: "深海猎手", meta: "多人实时" },
-  { order: 2, code: "ddz", name: "斗地主", meta: "三人竞技" },
-  { order: 3, code: "mahjong", name: "麻将", meta: "四人竞技" },
-  { order: 4, code: "zhajinhua", name: "炸金花", meta: "三人竞技" },
-  { order: 5, code: "paodekuai", name: "跑得快", meta: "三人竞技" },
-  { order: 6, code: "mahjong_red", name: "红中麻将", meta: "四人竞技" }
-];
+const attractionConfig = computed(() => [
+  { order: 1, code: "deepsea_hunter", name: t("commerce.gameHome.attractions.deepseaHunter"), meta: t("commerce.gameHome.multiplayerLive") },
+  { order: 2, code: "ddz", name: t("commerce.gameHome.attractions.landlord"), meta: t("commerce.gameHome.threePlayer") },
+  { order: 3, code: "mahjong", name: t("commerce.gameHome.attractions.mahjong"), meta: t("commerce.gameHome.fourPlayer") },
+  { order: 4, code: "zhajinhua", name: t("commerce.gameHome.attractions.goldenFlower"), meta: t("commerce.gameHome.threePlayer") },
+  { order: 5, code: "paodekuai", name: t("commerce.gameHome.attractions.runFast"), meta: t("commerce.gameHome.threePlayer") },
+  { order: 6, code: "mahjong_red", name: t("commerce.gameHome.attractions.redMahjong"), meta: t("commerce.gameHome.fourPlayer") }
+]);
 
 const parkAttractions = computed(() => {
   const games = miniGames.value?.games || [];
-  return attractionConfig.map((item) => {
+  return attractionConfig.value.map((item) => {
     const game = games.find((entry) => String(entry.code || "") === item.code);
     return {
       ...item,
-      name: game?.name || item.name,
-      meta: game?.players_text ? `${game.players_text} · ${modeText(game)}` : item.meta
+      name: localizedGameField(game, "name") || item.name,
+      meta: game?.players_text ? `${playersText(game.players_text)} · ${modeText(game)}` : item.meta
     };
   });
 });
@@ -223,16 +261,21 @@ function coverOf(game?: MiniGameItem) {
   return absolutizeUrl(raw);
 }
 
-const MODE_TEXT: Record<string, string> = {
-  realtime: "实时联机",
-  single: "单人挑战",
-  "local-keyboard": "同屏对战",
-  "local-turn-based": "回合制",
-  webrtc: "联机对战"
-};
-
 function modeText(game?: MiniGameItem) {
-  return MODE_TEXT[String(game?.play_mode || "")] || "休闲游戏";
+  const mode = String(game?.play_mode || "");
+  return ["realtime", "single", "local-keyboard", "local-turn-based", "webrtc"].includes(mode)
+    ? t(`commerce.gameHome.modes.${mode}`)
+    : t("commerce.gameHome.modes.casual");
+}
+
+function playersText(value: unknown) {
+  const text = String(value || "");
+  const matched = text.match(/^(\d+)\s*[-–]\s*(\d+)\s*人$/);
+  return matched
+    ? t("commerce.gameHome.playerRange")
+      .replace("{min}", matched[1] || "")
+      .replace("{max}", matched[2] || "")
+    : text;
 }
 
 function selectAttraction(code: string) {
@@ -256,7 +299,7 @@ async function load() {
       selectedCode.value = String(miniGameResult?.games?.[0]?.code || "deepsea_hunter");
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "游戏中心加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.gameHome.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -287,16 +330,16 @@ async function launchFishingVenue(venue: FishingVenue) {
 
 async function launchGame(game: MiniGameItem, room = "") {
   launching.value = true;
-  uni.showLoading({ title: "进入游戏", mask: true });
+  uni.showLoading({ title: t("commerce.gameHome.enterGame"), mask: true });
   try {
     const info = await enterMiniGame(String(game.code || ""), room);
     const url = String(info?.launch_url || "");
     if (!url) {
-      throw new Error("游戏地址无效");
+      throw new Error(t("commerce.gameHome.invalidGameUrl"));
     }
     openGameView(absolutizeUrl(url) || url);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "进入游戏失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.gameHome.enterFailed"), icon: "none" });
   } finally {
     uni.hideLoading();
     launching.value = false;
@@ -338,6 +381,22 @@ function gameIcon(game: LotteryGame) {
   return displayUrl(game.icon_url || game.icon || "", originalIcon);
 }
 
+function lotteryGameName(game: LotteryGame) {
+  const source = game as unknown as Record<string, unknown>;
+  const keys = locale.value === "zh-CN"
+    ? ["game_name", "game_name_zh", "game_name_en"]
+    : locale.value === "ja"
+      ? ["game_name_ja", "game_name_jp", "game_name_en", "game_name"]
+      : locale.value === "ko"
+        ? ["game_name_ko", "game_name_kr", "game_name_en", "game_name"]
+        : ["game_name_en", "game_name"];
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
+  }
+  return t("commerce.common.game");
+}
+
 function openLotteryGame(game: LotteryGame) {
   if (!requireLogin()) {
     return;
@@ -345,7 +404,7 @@ function openLotteryGame(game: LotteryGame) {
   const query = [
     `game_id=${encodeURIComponent(String(game.id || ""))}`,
     `game_code=${encodeURIComponent(String(game.game_code || ""))}`,
-    `title=${encodeURIComponent(String(game.game_name || game.game_name_en || "游戏"))}`
+    `title=${encodeURIComponent(lotteryGameName(game))}`
   ].join("&");
   uni.navigateTo({ url: `/pages/game/bet?${query}` });
 }
@@ -401,6 +460,17 @@ onPullDownRefresh(() => {
   width: 370rpx;
   max-width: 100%;
   height: auto;
+}
+
+.brand-title-text {
+  display: block;
+  max-width: 370rpx;
+  padding: 10rpx 4rpx;
+  color: #ffe7a2;
+  font-size: 42rpx;
+  font-weight: 900;
+  line-height: 1.05;
+  text-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.34);
 }
 
 .wallet-panel {
@@ -952,7 +1022,8 @@ onPullDownRefresh(() => {
 }
 
 @media (max-width: 360px) {
-  .brand-title-art {
+  .brand-title-art,
+  .brand-title-text {
     width: 340rpx;
   }
 

@@ -1,14 +1,14 @@
 <template>
   <view class="safe-page withdraw-page">
     <view class="balance-card">
-      <text>可提现星币</text>
+      <text>{{ t("commerce.withdraw.availableCoin") }}</text>
       <text>{{ profit?.total || profit?.votes || "0" }}</text>
-      <text>{{ profit?.tips || "提现到账和审核规则以服务端返回为准" }}</text>
+      <text>{{ profit?.tips || t("commerce.withdraw.rulesHint") }}</text>
     </view>
 
     <view class="section-head">
-      <text>提现账户</text>
-      <button @tap="showAccountForm = !showAccountForm">{{ showAccountForm ? "收起" : "添加" }}</button>
+      <text>{{ t("commerce.withdraw.accounts") }}</text>
+      <button @tap="showAccountForm = !showAccountForm">{{ showAccountForm ? t("commerce.common.collapse") : t("commerce.common.add") }}</button>
     </view>
 
     <view v-if="accounts.length" class="account-list">
@@ -24,34 +24,38 @@
           <text>{{ account.account }}</text>
           <text v-if="account.name">{{ account.name }}</text>
         </view>
-        <button @tap.stop="removeAccount(account)">删除</button>
+        <button @tap.stop="removeAccount(account)">{{ t("commerce.common.delete") }}</button>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载提现账户' : '暂无提现账户'" description="先添加提现账户，再提交提现申请。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('commerce.withdraw.loadingAccounts') : t('commerce.withdraw.noAccounts')"
+      :description="t('commerce.withdraw.noAccountsDescription')"
+    />
 
     <view v-if="showAccountForm" class="form-card card">
       <picker :range="accountTypeNames" @change="onTypeChange">
         <view class="picker-row">
-          <text>账户类型</text>
+          <text>{{ t("commerce.withdraw.accountType") }}</text>
           <text>{{ accountTypeNames[accountTypeIndex] }}</text>
         </view>
       </picker>
-      <input v-if="accountType === 3" v-model.trim="accountBank" class="input" placeholder="银行名称" />
+      <input v-if="accountType === 3" v-model.trim="accountBank" class="input" :placeholder="t('commerce.withdraw.bankName')" />
       <input v-if="accountType === 4" v-model.trim="accountBank" class="input" disabled placeholder="USDT.TRC20" />
-      <input v-model.trim="accountNo" class="input" placeholder="账号 / 收款地址" />
-      <input v-if="accountType !== 4" v-model.trim="accountName" class="input" placeholder="姓名" />
+      <input v-model.trim="accountNo" class="input" :placeholder="t('commerce.withdraw.accountOrAddress')" />
+      <input v-if="accountType !== 4" v-model.trim="accountName" class="input" :placeholder="t('commerce.withdraw.name')" />
       <button class="primary-button compact" :disabled="savingAccount || !accountNo" @tap="saveAccount">
-        {{ savingAccount ? "保存中" : "保存账户" }}
+        {{ savingAccount ? t("commerce.common.saving") : t("commerce.withdraw.saveAccount") }}
       </button>
     </view>
 
     <view class="cash-card card">
-      <text class="cash-title">提现金额</text>
-      <input v-model.trim="amount" class="amount-input" type="number" placeholder="请输入提现星币数" />
+      <text class="cash-title">{{ t("commerce.withdraw.amount") }}</text>
+      <input v-model.trim="amount" class="amount-input" type="number" :placeholder="t('commerce.withdraw.amountPlaceholder')" />
       <button class="primary-button submit" :disabled="submitting || !selectedAccountId || !amount" @tap="submit">
-        {{ submitting ? "提交中" : "提交提现申请" }}
+        {{ submitting ? t("commerce.common.submitting") : t("commerce.withdraw.submitRequest") }}
       </button>
-      <button class="ghost-button detail-link" @tap="openCashRecord">提现记录</button>
+      <button class="ghost-button detail-link" @tap="openCashRecord">{{ t("commerce.withdraw.records") }}</button>
     </view>
   </view>
 </template>
@@ -62,6 +66,9 @@ import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import { addCashAccount, deleteCashAccount, getCashAccounts, getProfit, submitCash } from "@/api/services";
 import type { CashAccount } from "@/types/api";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const profit = ref<Record<string, unknown>>();
 const accounts = ref<CashAccount[]>([]);
@@ -77,11 +84,16 @@ const accountName = ref("");
 const accountBank = ref("");
 
 const accountTypes = [1, 2, 3, 4];
-const accountTypeNames = ["支付宝", "微信", "银行卡", "USDT.TRC20"];
+const accountTypeNames = computed(() => [
+  t("commerce.withdraw.alipay"),
+  t("commerce.withdraw.wechat"),
+  t("commerce.withdraw.bankCard"),
+  "USDT.TRC20"
+]);
 const accountType = computed(() => accountTypes[accountTypeIndex.value] || 1);
 
 function accountTypeName(type?: string | number) {
-  return accountTypeNames[accountTypes.indexOf(Number(type))] || "提现账户";
+  return accountTypeNames.value[accountTypes.indexOf(Number(type))] || t("commerce.withdraw.account");
 }
 
 function onTypeChange(event: any) {
@@ -99,7 +111,7 @@ async function load() {
       selectedAccountId.value = accountList[0].id;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "提现信息加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.withdraw.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -126,10 +138,10 @@ async function saveAccount() {
     accountName.value = "";
     accountBank.value = "";
     showAccountForm.value = false;
-    uni.showToast({ title: "已保存账户", icon: "none" });
+    uni.showToast({ title: t("commerce.withdraw.accountSaved"), icon: "none" });
     void load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "保存失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.common.saveFailed"), icon: "none" });
   } finally {
     savingAccount.value = false;
   }
@@ -140,8 +152,8 @@ function removeAccount(account: CashAccount) {
     return;
   }
   uni.showModal({
-    title: "删除账户",
-    content: "确认删除该提现账户？",
+    title: t("commerce.withdraw.deleteAccount"),
+    content: t("commerce.withdraw.deleteAccountConfirm"),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm) {
@@ -151,9 +163,9 @@ function removeAccount(account: CashAccount) {
         .then(() => {
           accounts.value = accounts.value.filter((item) => String(item.id) !== String(account.id));
           selectedAccountId.value = accounts.value[0]?.id || "";
-          uni.showToast({ title: "已删除", icon: "none" });
+          uni.showToast({ title: t("commerce.common.deleted"), icon: "none" });
         })
-        .catch((error: any) => uni.showToast({ title: error?.message || "删除失败", icon: "none" }));
+        .catch((error: any) => uni.showToast({ title: error?.message || t("commerce.common.deleteFailed"), icon: "none" }));
     }
   });
 }
@@ -166,10 +178,10 @@ async function submit() {
   try {
     const res = await submitCash(selectedAccountId.value, amount.value);
     amount.value = "";
-    uni.showToast({ title: res.msg || "提现申请已提交", icon: "none" });
+    uni.showToast({ title: res.msg || t("commerce.withdraw.requestSubmitted"), icon: "none" });
     void load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "提现失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.withdraw.failed"), icon: "none" });
   } finally {
     submitting.value = false;
   }
@@ -180,6 +192,7 @@ function openCashRecord() {
 }
 
 onShow(() => {
+  uni.setNavigationBarTitle({ title: t("commerce.withdraw.navigationTitle") });
   void load();
 });
 

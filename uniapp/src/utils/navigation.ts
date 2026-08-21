@@ -1,10 +1,11 @@
 import { API_HOST } from "@/constants/config";
+import { t } from "@/i18n";
 
 export type GameZoneIntent = "fishing" | "lottery";
 
 const GAME_ZONE_INTENT_KEY = "claw_game_zone_intent";
 
-export function openWebView(url: string, title = "星域", orientation = "auto") {
+export function openWebView(url: string, title = t("home.brand"), orientation = "auto") {
   uni.navigateTo({
     url: `/pages/webview/index?title=${encodeURIComponent(title)}&orientation=${encodeURIComponent(orientation)}&url=${encodeURIComponent(url)}`
   });
@@ -54,7 +55,7 @@ export function normalizePageUrl(value?: string | null) {
 
 export function openDetailPage(type: string, title?: string) {
   uni.navigateTo({
-    url: `/pages/detail/index?type=${encodeURIComponent(type)}&title=${encodeURIComponent(title || "详情")}`
+    url: `/pages/detail/index?type=${encodeURIComponent(type)}&title=${encodeURIComponent(title || t("core.details"))}`
   });
 }
 
@@ -62,7 +63,7 @@ export function openSportsDetail(match: Record<string, unknown>) {
   const matchId =
     match.match_id || match.public_match_id || match.id || match.source_match_id || "";
   if (!matchId) {
-    uni.showToast({ title: "赛事编号无效", icon: "none" });
+    uni.showToast({ title: t("core.invalidMatchId"), icon: "none" });
     return;
   }
   uni.navigateTo({

@@ -1,5 +1,6 @@
 import { API_HOST } from "@/constants/config";
 import { getSession } from "@/utils/session";
+import { t } from "@/i18n";
 
 export interface SupportConversation {
   id: string;
@@ -48,13 +49,13 @@ function nativeRequest<T>(args: {
       success(response) {
         const envelope = (response.data || {}) as NativeEnvelope<T>;
         if (response.statusCode < 200 || response.statusCode >= 300 || Number(envelope.code || 0) !== 0) {
-          reject(new Error(envelope.message || "客服服务请求失败"));
+          reject(new Error(envelope.message || t("core.supportRequestFailed")));
           return;
         }
         resolve(envelope.data as T);
       },
       fail(error) {
-        reject(new Error(error.errMsg || "客服服务连接失败"));
+        reject(new Error(error.errMsg || t("core.supportConnectFailed")));
       }
     });
   });

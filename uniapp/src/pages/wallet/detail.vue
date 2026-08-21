@@ -3,7 +3,7 @@
     <view class="detail-hero">
       <text>{{ pageTitle }}</text>
       <text>{{ pageDescription }}</text>
-      <button @tap="refresh">刷新</button>
+      <button @tap="refresh">{{ t("commerce.common.refresh") }}</button>
     </view>
 
     <view v-if="rows.length" class="record-list">
@@ -18,81 +18,81 @@
 
         <view v-if="type === 'detail'" class="ledger-main">
           <view>
-            <text>可用变动</text>
+            <text>{{ t("commerce.walletDetail.availableChange") }}</text>
             <text :class="{ positive: numberOf(row, 'delta_available') > 0 }">
               {{ signedAmount(row, "delta_available") }}
             </text>
           </view>
           <view>
-            <text>冻结变动</text>
+            <text>{{ t("commerce.walletDetail.frozenChange") }}</text>
             <text>{{ signedAmount(row, "delta_frozen") }}</text>
           </view>
           <view>
-            <text>可用余额</text>
+            <text>{{ t("commerce.walletDetail.availableBalance") }}</text>
             <text>{{ textOf(row, ["balance_available", "balance"], "0") }}</text>
           </view>
         </view>
 
         <view v-else-if="type === 'charge'" class="order-main">
           <view>
-            <text>充值星币</text>
+            <text>{{ t("commerce.walletDetail.rechargeCoin") }}</text>
             <text>{{ textOf(row, ["coin", "coin_amount"], "0") }}</text>
           </view>
           <view>
-            <text>支付金额</text>
+            <text>{{ t("commerce.walletDetail.paymentAmount") }}</text>
             <text>
               {{ textOf(row, ["fiat_currency", "currency"], "CNY") }}
               {{ textOf(row, ["money", "amount"], "0") }}
             </text>
           </view>
           <view v-if="Number(textOf(row, ['give', 'bonus_coin'], '0')) > 0">
-            <text>赠送</text>
+            <text>{{ t("commerce.recharge.bonus") }}</text>
             <text>{{ textOf(row, ["give", "bonus_coin"], "0") }}</text>
           </view>
         </view>
 
         <view v-if="type === 'charge' && hasPaymentMeta(row)" class="payment-meta">
           <view v-if="providerTradeOf(row)">
-            <text>渠道交易号</text>
+            <text>{{ t("commerce.walletDetail.providerTransaction") }}</text>
             <text class="meta-value">{{ providerTradeOf(row) }}</text>
           </view>
           <view v-if="actualAmountOf(row)">
-            <text>实际支付</text>
+            <text>{{ t("commerce.walletDetail.actualPayment") }}</text>
             <text class="meta-value">
               {{ textOf(row, ["crypto_currency"], "USDT") }} {{ actualAmountOf(row) }}
             </text>
           </view>
           <view v-if="networkOf(row)">
-            <text>支付链</text>
+            <text>{{ t("commerce.walletDetail.paymentNetwork") }}</text>
             <text class="network-tag">{{ networkOf(row) }}</text>
           </view>
           <view v-if="expiresText(row)">
-            <text>订单有效期</text>
+            <text>{{ t("commerce.walletDetail.orderValidity") }}</text>
             <text class="meta-value">{{ expiresText(row) }}</text>
           </view>
           <view v-if="textOf(row, ['block_transaction_id'])" class="wide-meta">
-            <text>链上交易</text>
+            <text>{{ t("commerce.walletDetail.onChainTransaction") }}</text>
             <text class="meta-value">{{ textOf(row, ["block_transaction_id"]) }}</text>
           </view>
         </view>
 
         <view v-else-if="type === 'cash'" class="order-main">
           <view>
-            <text>提现星币</text>
+            <text>{{ t("commerce.walletDetail.withdrawCoin") }}</text>
             <text>{{ textOf(row, ["coin"], "0") }}</text>
           </view>
           <view>
-            <text>到账金额</text>
+            <text>{{ t("commerce.walletDetail.receivedAmount") }}</text>
             <text>{{ textOf(row, ["currency"], "CNY") }} {{ textOf(row, ["money"], "0") }}</text>
           </view>
           <view>
-            <text>收款账户</text>
+            <text>{{ t("commerce.walletDetail.receivingAccount") }}</text>
             <text>{{ textOf(row, ["account"], "-") }}</text>
           </view>
         </view>
 
         <view class="record-foot">
-          <text>编号 {{ textOf(row, ["entry_no", "order_no", "orderid", "id"], "-") }}</text>
+          <text>{{ t("commerce.common.number") }} {{ textOf(row, ["entry_no", "order_no", "orderid", "id"], "-") }}</text>
           <text v-if="textOf(row, ['game_code'])">
             {{ textOf(row, ["game_code"]) }} {{ textOf(row, ["round_no"]) }}
           </text>
@@ -105,7 +105,7 @@
             :disabled="!orderNoOf(row) || refreshingOrderNo === orderNoOf(row)"
             @tap="refreshRechargeOrder(row)"
           >
-            {{ refreshingOrderNo === orderNoOf(row) ? "查询中" : "刷新状态" }}
+            {{ refreshingOrderNo === orderNoOf(row) ? t("commerce.common.checking") : t("commerce.common.refreshStatus") }}
           </button>
           <button
             class="order-action primary"
@@ -116,12 +116,12 @@
           </button>
         </view>
       </view>
-      <text v-if="finished" class="list-footer">没有更多记录了</text>
+      <text v-if="finished" class="list-footer">{{ t("commerce.common.noMoreRecords") }}</text>
     </view>
     <EmptyState
       v-else
-      :title="loading ? `正在加载${pageTitle}` : `暂无${pageTitle}`"
-      description="下拉刷新可重新读取服务端记录。"
+      :title="(loading ? t('commerce.common.loadingPage') : t('commerce.common.noPage')).replace('{page}', pageTitle)"
+      :description="t('commerce.walletDetail.emptyDescription')"
     />
   </view>
 </template>
@@ -152,9 +152,11 @@ import {
   rechargePaymentUrl,
   rechargeProviderTradeId,
   rechargeStatusCode,
-  rechargeStatusText,
   savePendingPayment
 } from "@/utils/payment";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type AnyRecord = Record<string, unknown>;
 type DetailType = "detail" | "charge" | "cash";
@@ -171,14 +173,14 @@ let orderStatusRequestSequence = 0;
 let pendingReturnRequestSequence = 0;
 
 const pageTitle = computed(() => ({
-  detail: "我的明细",
-  charge: "充值明细",
-  cash: "提现记录"
+  detail: t("commerce.walletDetail.titles.detail"),
+  charge: t("commerce.walletDetail.titles.charge"),
+  cash: t("commerce.walletDetail.titles.cash")
 })[type.value]);
 const pageDescription = computed(() => ({
-  detail: "每笔游戏、直播和资金变动均可追溯",
-  charge: "查看充值订单及到账状态",
-  cash: "查看提现审核与打款状态"
+  detail: t("commerce.walletDetail.descriptions.detail"),
+  charge: t("commerce.walletDetail.descriptions.charge"),
+  cash: t("commerce.walletDetail.descriptions.cash")
 })[type.value]);
 
 function isRecord(value: unknown): value is AnyRecord {
@@ -214,22 +216,39 @@ function rowKey(row: AnyRecord) {
 
 function titleOf(row: AnyRecord) {
   if (type.value === "charge") {
-    return textOf(row, ["channel_name"], "星币充值");
+    return textOf(row, ["channel_name"], t("commerce.walletDetail.coinRecharge"));
   }
   if (type.value === "cash") {
-    return "星币提现";
+    return t("commerce.walletDetail.coinWithdrawal");
   }
-  return textOf(row, ["description", "title", "business_type"], "资金变动");
+  return textOf(row, ["description", "title", "business_type"], t("commerce.walletDetail.fundsChange"));
 }
 
 function statusOf(row: AnyRecord) {
   if (type.value === "detail") {
-    return textOf(row, ["business_type"], "流水");
+    return textOf(row, ["business_type"], t("commerce.walletDetail.ledger"));
   }
   if (type.value === "charge") {
-    return rechargeStatusText(row as RechargeOrder);
+    return localizedRechargeStatus(row as RechargeOrder);
   }
-  return textOf(row, ["status_text"], "处理中");
+  return textOf(row, ["status_text"], t("commerce.common.processing"));
+}
+
+function localizedRechargeStatus(order: RechargeOrder) {
+  const provided = String(order.status_text || "").trim();
+  const knownProvided = ["订单已创建", "等待支付", "已到账", "支付失败", "已关闭", "已退款", "未知状态"];
+  if (provided && !knownProvided.includes(provided)) return provided;
+  const statusKey = ({
+    0: "created",
+    1: "waiting",
+    2: "received",
+    3: "failed",
+    4: "closed",
+    5: "refunded"
+  } as Record<number, string>)[rechargeStatusCode(order)];
+  return statusKey
+    ? t(`commerce.recharge.status.${statusKey}`)
+    : t("commerce.recharge.status.unknown");
 }
 
 function statusClass(row: AnyRecord) {
@@ -312,7 +331,7 @@ function expiresText(row: AnyRecord) {
     if (expiration > 1_000_000_000) {
       return formatTimestamp(String(Math.floor(expiration)));
     }
-    return `剩余约 ${Math.floor(expiration)} 秒`;
+    return t("commerce.walletDetail.secondsRemaining").replace("{seconds}", String(Math.floor(expiration)));
   }
   return "";
 }
@@ -335,36 +354,38 @@ function continueLabel(row: AnyRecord) {
   const order = row as RechargeOrder;
   if (String(order.channel || "").toLowerCase() === "bank") {
     return ({
-      waiting_assignment: "等待分配",
-      awaiting_payment: "去付款",
-      review_pending: "查看审核",
-      paid: "已到账",
-      closed: "已关闭"
-    } as Record<string, string>)[String(order.bank_stage || "")] || "查看订单";
+      waiting_assignment: t("commerce.walletDetail.waitingAssignment"),
+      awaiting_payment: t("commerce.walletDetail.payNow"),
+      review_pending: t("commerce.walletDetail.viewReview"),
+      paid: t("commerce.recharge.status.received"),
+      closed: t("commerce.recharge.status.closed")
+    } as Record<string, string>)[String(order.bank_stage || "")] || t("commerce.walletDetail.viewOrder");
   }
   const status = rechargeStatusCode(order);
   if (status === 2) {
-    return "已到账";
+    return t("commerce.recharge.status.received");
   }
   if (status === 3) {
-    return "支付失败";
+    return t("commerce.recharge.status.failed");
   }
   if (status === 4) {
-    return "已关闭";
+    return t("commerce.recharge.status.closed");
   }
   if (rechargeIsExpired(order)) {
-    return "订单已超时";
+    return t("commerce.walletDetail.orderTimedOut");
   }
   if (status === 5) {
-    return "已退款";
+    return t("commerce.recharge.status.refunded");
   }
-  return rechargePaymentUrl(order) ? "继续支付" : "收银台不可用";
+  return rechargePaymentUrl(order)
+    ? t("commerce.recharge.continuePayment")
+    : t("commerce.walletDetail.cashierUnavailable");
 }
 
 async function refreshRechargeOrder(row: AnyRecord) {
   const orderNo = orderNoOf(row);
   if (!orderNo) {
-    uni.showToast({ title: "充值订单号无效", icon: "none" });
+    uni.showToast({ title: t("commerce.walletDetail.invalidRechargeOrderNumber"), icon: "none" });
     return;
   }
   if (refreshingOrderNo.value) {
@@ -373,7 +394,7 @@ async function refreshRechargeOrder(row: AnyRecord) {
   const requestSequence = ++orderStatusRequestSequence;
   const uid = String(getSession().uid || "");
   if (!requireLogin() || !uid || uid !== loadedUID.value) {
-    uni.showToast({ title: "账号已切换，正在刷新充值记录", icon: "none" });
+    uni.showToast({ title: t("commerce.walletDetail.accountChangedRefreshing"), icon: "none" });
     void load(true);
     return;
   }
@@ -388,7 +409,7 @@ async function refreshRechargeOrder(row: AnyRecord) {
       return;
     }
     if (!result) {
-      throw new Error("充值订单不存在");
+      throw new Error(t("commerce.recharge.orderMissing"));
     }
     rows.value = rows.value.map((item) =>
       orderNoOf(item) === orderNo ? { ...item, ...result } : item
@@ -402,7 +423,7 @@ async function refreshRechargeOrder(row: AnyRecord) {
       clearPendingPayment(uid);
     }
     uni.showToast({
-      title: rechargeIsPaid(latest) ? "充值已到账" : rechargeStatusText(latest),
+      title: rechargeIsPaid(latest) ? t("commerce.recharge.received") : localizedRechargeStatus(latest),
       icon: rechargeIsPaid(latest) ? "success" : "none"
     });
   } catch (error: any) {
@@ -411,7 +432,7 @@ async function refreshRechargeOrder(row: AnyRecord) {
       loadedUID.value === uid &&
       requestSequence === orderStatusRequestSequence
     ) {
-      uni.showToast({ title: error?.message || "支付状态查询失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("commerce.recharge.statusCheckFailed"), icon: "none" });
     }
   } finally {
     if (requestSequence === orderStatusRequestSequence) {
@@ -426,7 +447,7 @@ function continueRecharge(row: AnyRecord) {
   }
   const uid = String(getSession().uid || "");
   if (!uid || uid !== loadedUID.value) {
-    uni.showToast({ title: "账号已切换，正在刷新充值记录", icon: "none" });
+    uni.showToast({ title: t("commerce.walletDetail.accountChangedRefreshing"), icon: "none" });
     rows.value = [];
     finished.value = false;
     void load(true);
@@ -446,7 +467,7 @@ function continueRecharge(row: AnyRecord) {
     return;
   }
   if (!openPaymentCashier(rechargePaymentUrl(order), titleOf(row))) {
-    uni.showToast({ title: "支付链接无效", icon: "none" });
+    uni.showToast({ title: t("commerce.recharge.invalidPaymentLink"), icon: "none" });
   }
 }
 
@@ -496,7 +517,7 @@ async function checkPendingOnReturn(uid: string) {
         loadedUID.value === uid &&
         requestSequence === pendingReturnRequestSequence
       ) {
-        uni.showToast({ title: "充值已到账", icon: "success" });
+        uni.showToast({ title: t("commerce.recharge.received"), icon: "success" });
       }
       return;
     }
@@ -554,7 +575,10 @@ async function load(reset = false) {
       String(getSession().uid || "") === uid &&
       requestSequence === loadRequestSequence
     ) {
-      uni.showToast({ title: error?.message || `${pageTitle.value}加载失败`, icon: "none" });
+      uni.showToast({
+        title: error?.message || t("commerce.common.pageLoadFailed").replace("{page}", pageTitle.value),
+        icon: "none"
+      });
     }
   } finally {
     if (requestSequence === loadRequestSequence) {

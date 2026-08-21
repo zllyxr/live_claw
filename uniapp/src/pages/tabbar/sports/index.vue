@@ -3,19 +3,19 @@
     <view class="sports-hero">
       <view class="pitch-lines" />
       <view class="hero-glow" />
-      <text class="sports-title">体育中心</text>
-      <text class="sports-sub">足球 · 赛程 · 即时比分 · 下注</text>
+      <text class="sports-title">{{ t("commerce.sportsHome.title") }}</text>
+      <text class="sports-sub">{{ t("commerce.sportsHome.subtitle") }}</text>
       <view class="sports-tags">
-        <text>比分</text>
-        <text>分析</text>
-        <text>下注</text>
+        <text>{{ t("commerce.sportsHome.scores") }}</text>
+        <text>{{ t("commerce.sportsHome.analysis") }}</text>
+        <text>{{ t("commerce.common.bet") }}</text>
       </view>
       <view class="hero-bottom">
         <view class="clock-chip">
           <view class="clock-dot" />
-          <text>实时 {{ currentTime }}</text>
+          <text>{{ t("commerce.sportsHome.live") }} {{ currentTime }}</text>
         </view>
-        <view class="history-button" @tap="openHistory">投注历史</view>
+        <view class="history-button" @tap="openHistory">{{ t("commerce.sportsHome.betHistory") }}</view>
       </view>
     </view>
 
@@ -27,7 +27,7 @@
         :class="{ active: tab.key === selectedTab }"
         @tap="selectTab(tab.key)"
       >
-        {{ tab.name }}
+        {{ tabName(tab) }}
       </view>
     </view>
 
@@ -40,7 +40,7 @@
         <SafeImage class="league-icon" :src="leagueIcon(league)" fallback="/static/icons/league-default.svg" mode="aspectFit" />
         <view class="league-main">
           <text class="league-name">{{ leagueName(league) }}</text>
-          <text class="league-count">{{ league.count || 0 }} 场</text>
+          <text class="league-count">{{ t("commerce.sportsHome.matchCount").replace("{count}", String(league.count || 0)) }}</text>
         </view>
       </view>
     </scroll-view>
@@ -48,9 +48,9 @@
     <view v-if="matches.length" class="match-list">
       <view v-for="match in matches" :key="String(match.match_id || match.id)" class="match-card" @tap="openMatch(match)">
         <view class="match-head">
-          <view class="sport-pill">足</view>
-          <text class="league-title">{{ match.competition_type || match.league_name || "足球赛事" }}</text>
-          <text class="half-pill" :class="{ live: isLiveText(match.status_text) }">{{ match.status_text || "进行中" }}</text>
+          <view class="sport-pill">{{ t("commerce.sportsHome.footballIcon") }}</view>
+          <text class="league-title">{{ matchLeagueName(match) }}</text>
+          <text class="half-pill" :class="{ live: isLiveText(match.status_text) }">{{ statusText(match.status_text) }}</text>
         </view>
 
         <view class="score-wrap">
@@ -81,14 +81,14 @@
       </view>
     </view>
     <view v-else class="match-card skeleton-card">
-      <text class="skeleton-title">赛事正在同步</text>
+      <text class="skeleton-title">{{ t("commerce.sportsHome.syncing") }}</text>
       <view class="score-placeholder">VS</view>
-      <text class="skeleton-sub">下拉刷新可重新获取赛程。</text>
+      <text class="skeleton-sub">{{ t("commerce.sportsHome.syncHint") }}</text>
     </view>
 
     <view class="section-row data-title">
       <view class="section-dot" />
-      <text class="section-title">{{ home?.quick_stats_title || "今日数据" }}</text>
+      <text class="section-title">{{ home?.quick_stats_title || t("commerce.sportsHome.todayData") }}</text>
     </view>
     <view class="stats-grid">
       <view v-for="(stat, index) in statCards" :key="String(stat.name || index)" class="stat-card">
@@ -109,19 +109,22 @@ import type { SportsHome, SportsMatch } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { openSportsDetail } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { locale, t } = useI18n();
 
 const defaultTabs = [
-  { key: "yesterday", name: "昨日" },
-  { key: "today", name: "今日" },
-  { key: "tomorrow", name: "明日" },
-  { key: "fixtures", name: "赛程" }
+  { key: "yesterday", name: "" },
+  { key: "today", name: "" },
+  { key: "tomorrow", name: "" },
+  { key: "fixtures", name: "" }
 ];
 
-const defaultStats = [
-  { name: "比赛总数", value: "0", desc: "当前列表" },
-  { name: "进行中", value: "0", desc: "实时比分" },
-  { name: "进球均值", value: "0", desc: "已出比分场次" }
-];
+const defaultStats = computed(() => [
+  { name: t("commerce.sportsHome.stats.totalMatches"), value: "0", desc: t("commerce.sportsHome.stats.currentList") },
+  { name: t("commerce.sportsHome.stats.inProgress"), value: "0", desc: t("commerce.sportsHome.stats.liveScores") },
+  { name: t("commerce.sportsHome.stats.averageGoals"), value: "0", desc: t("commerce.sportsHome.stats.scoredMatches") }
+]);
 
 const defaultLeagues = [
   { key: "world-cup", name: "FIFA World Cup", count: "0", icon_url: "/static/icons/league-default.svg" },
@@ -138,14 +141,16 @@ let loadedOnce = false;
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 
 const matches = computed(() => home.value?.matches || []);
-const matchesTitle = computed(() => home.value?.matches_title || `即时赛况（${matches.value.length}场）`);
+const matchesTitle = computed(() =>
+  home.value?.matches_title || t("commerce.sportsHome.liveMatches").replace("{count}", String(matches.value.length))
+);
 const leagueCards = computed(() => (home.value?.top_leagues?.length ? home.value.top_leagues : defaultLeagues));
-const statCards = computed(() => (home.value?.quick_stats?.length ? home.value.quick_stats : defaultStats));
+const statCards = computed(() => (home.value?.quick_stats?.length ? home.value.quick_stats : defaultStats.value));
 
 function updateClock() {
   const timestamp = Math.floor(Date.now() / 1000) + serverOffsetSeconds.value;
   const date = new Date(timestamp * 1000);
-  currentTime.value = new Intl.DateTimeFormat("zh-CN", {
+  currentTime.value = new Intl.DateTimeFormat(locale.value, {
     timeZone: home.value?.timezone || "Asia/Shanghai",
     hour: "2-digit",
     minute: "2-digit",
@@ -180,8 +185,50 @@ function isLiveText(text?: string) {
   return value.includes("进行") || value.includes("上半") || value.includes("下半") || value.toUpperCase().includes("LIVE");
 }
 
+function tabName(tab: { key: string; name?: string }) {
+  if (["yesterday", "today", "tomorrow", "fixtures"].includes(tab.key)) {
+    return t(`commerce.sportsHome.tabs.${tab.key}`);
+  }
+  return String(tab.name || tab.key);
+}
+
+function localizedValue(source: Record<string, unknown>, base: string) {
+  const suffixes = locale.value === "zh-CN"
+    ? ["cn", "zh", ""]
+    : locale.value === "ja"
+      ? ["ja", "jp", "en", ""]
+      : locale.value === "ko"
+        ? ["ko", "kr", "en", ""]
+        : ["en", ""];
+  for (const suffix of suffixes) {
+    const value = source[suffix ? `${base}_${suffix}` : base];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
+  }
+  return "";
+}
+
+function statusText(text?: string) {
+  const value = String(text || "");
+  if (!value) return t("commerce.sportsHome.inProgress");
+  const statusMap: Record<string, string> = {
+    "进行中": "inProgress",
+    "未开始": "notStarted",
+    "已结束": "finished",
+    "上半场": "firstHalf",
+    "下半场": "secondHalf",
+    "中场": "halftime"
+  };
+  const key = statusMap[value];
+  return key ? t(`commerce.sportsHome.status.${key}`) : value;
+}
+
+function matchLeagueName(match: SportsMatch) {
+  const source = match as unknown as Record<string, unknown>;
+  return localizedValue(source, "competition_type") || localizedValue(source, "league_name") || t("commerce.sportsHome.footballEvent");
+}
+
 function leagueName(league: Record<string, unknown>) {
-  return String(league.name_cn || league.name || league.name_en || "赛事");
+  return localizedValue(league, "name") || t("commerce.sportsRecord.event");
 }
 
 function leagueKey(league: Record<string, unknown>) {
@@ -193,15 +240,16 @@ function leagueIcon(league: Record<string, unknown>) {
 }
 
 function teamName(match: SportsMatch, side: "home" | "away") {
-  const direct = side === "home" ? match.home_name : match.away_name;
+  const source = match as unknown as Record<string, unknown>;
+  const direct = localizedValue(source, `${side}_name`);
   const team = side === "home" ? match.home_team : match.away_team;
   if (direct) {
     return String(direct);
   }
   if (team && typeof team === "object") {
-    return String(team.name || "球队");
+    return localizedValue(team as Record<string, unknown>, "name") || t("commerce.sportsHome.team");
   }
-  return String(team || "球队");
+  return String(team || t("commerce.sportsHome.team"));
 }
 
 function teamLogo(match: SportsMatch, side: "home" | "away") {
@@ -221,17 +269,21 @@ function predictionCards(match: SportsMatch) {
   const market = markets.find((item) => item.market_code === "MATCH_RESULT") || markets[0];
   const options = Array.isArray(market?.options) ? market.options.slice(0, 3) : [];
   const cards = options.map((option) => ({
-    name: String(option.option_name || option.option_code || "投注项"),
-    value: `赔率 ${String(option.odds || "-")}`
+    name: String(option.option_name || option.option_code || t("commerce.common.betOption")),
+    value: `${t("commerce.common.odds")} ${String(option.odds || "-")}`
   }));
   const marketCount = Number(match.market_count || markets.length || 0);
   if (marketCount > 0) {
     cards.push({
-      name: market?.market_name || "赛事盘口",
-      value: marketCount > 1 ? `共 ${marketCount} 种` : "查看详情"
+      name: market?.market_name || t("commerce.sportsDetail.markets"),
+      value: marketCount > 1
+        ? t("commerce.sportsHome.marketCount").replace("{count}", String(marketCount))
+        : t("commerce.common.viewDetails")
     });
   }
-  return cards.length ? cards : [{ name: "暂无盘口", value: "查看详情" }];
+  return cards.length
+    ? cards
+    : [{ name: t("commerce.sportsHome.noMarket"), value: t("commerce.common.viewDetails") }];
 }
 
 function matchHasStarted(match: SportsMatch) {
@@ -262,7 +314,7 @@ async function load() {
     selectedTab.value = home.value?.selected_tab || selectedTab.value;
     syncServerClock();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "体育加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.sportsHome.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();

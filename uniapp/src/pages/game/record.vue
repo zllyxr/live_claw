@@ -3,29 +3,29 @@
     <view class="record-hero">
       <view>
         <text class="hero-title">{{ pageTitle }}</text>
-        <text class="hero-sub">投注内容、开奖结果与结算明细</text>
+        <text class="hero-sub">{{ t("commerce.betRecord.lotterySubtitle") }}</text>
       </view>
-      <button class="hero-refresh" @tap="refresh">刷新</button>
+      <button class="hero-refresh" @tap="refresh">{{ t("commerce.common.refresh") }}</button>
     </view>
 
     <view class="summary-grid">
       <view class="summary-card">
         <text>{{ amountOf(bundle, ["total_bet"]) }}</text>
-        <text>总下注</text>
+        <text>{{ t("commerce.common.totalBet") }}</text>
       </view>
       <view class="summary-card payout">
         <text>{{ amountOf(bundle, ["total_payout"]) }}</text>
-        <text>总派彩</text>
+        <text>{{ t("commerce.common.totalPayout") }}</text>
       </view>
       <view class="summary-card profit">
         <text>{{ amountOf(bundle, ["profit_loss", "net_amount"]) }}</text>
-        <text>总盈亏</text>
+        <text>{{ t("commerce.common.totalProfitLoss") }}</text>
       </view>
     </view>
 
     <view class="section-bar">
-      <text>投注记录</text>
-      <text>{{ records.length ? `${records.length} 条` : "" }}</text>
+      <text>{{ t("commerce.common.betRecords") }}</text>
+      <text>{{ records.length ? t("commerce.common.recordCount").replace("{count}", String(records.length)) : "" }}</text>
     </view>
 
     <view v-if="records.length" class="record-list">
@@ -40,30 +40,30 @@
 
         <view class="open-box">
           <view>
-            <text>开奖号码</text>
+            <text>{{ t("commerce.betRecord.drawNumbers") }}</text>
             <text>{{ openCodeOf(order) }}</text>
           </view>
           <view>
-            <text>开奖状态</text>
+            <text>{{ t("commerce.betRecord.drawStatus") }}</text>
             <text>{{ issueStatusOf(order) }}</text>
           </view>
           <view>
-            <text>开奖时间</text>
+            <text>{{ t("commerce.betRecord.drawTime") }}</text>
             <text>{{ openTimeOf(order) }}</text>
           </view>
         </view>
 
         <view class="amount-grid">
           <view>
-            <text>下注</text>
+            <text>{{ t("commerce.common.bet") }}</text>
             <text>{{ amountOf(order, ["total_bet", "bet_money", "money"]) }}</text>
           </view>
           <view>
-            <text>派彩</text>
+            <text>{{ t("commerce.common.payout") }}</text>
             <text>{{ amountOf(order, ["total_payout", "win_money"]) }}</text>
           </view>
           <view>
-            <text>盈亏</text>
+            <text>{{ t("commerce.common.profitLoss") }}</text>
             <text>{{ amountOf(order, ["profit_loss", "net_amount"]) }}</text>
           </view>
         </view>
@@ -75,22 +75,26 @@
               <text>{{ itemStatusOf(item) }}</text>
             </view>
             <view class="bet-item-grid">
-              <text>赔率 {{ textOf(item, ["odds", "rate"], "-") }}</text>
-              <text>投注 {{ amountOf(item, ["bet_amount", "amount", "money"]) }}</text>
-              <text>派彩 {{ amountOf(item, ["payout_amount", "win_money"], "-") }}</text>
+              <text>{{ t("commerce.common.odds") }} {{ textOf(item, ["odds", "rate"], "-") }}</text>
+              <text>{{ t("commerce.common.bet") }} {{ amountOf(item, ["bet_amount", "amount", "money"]) }}</text>
+              <text>{{ t("commerce.common.payout") }} {{ amountOf(item, ["payout_amount", "win_money"], "-") }}</text>
             </view>
           </view>
         </view>
 
         <view class="record-time">
-          <text>下注时间：{{ timeOf(order) }}</text>
-          <text v-if="settleTimeOf(order)">结算：{{ settleTimeOf(order) }}</text>
+          <text>{{ t("commerce.common.betTime") }}: {{ timeOf(order) }}</text>
+          <text v-if="settleTimeOf(order)">{{ t("commerce.common.settlement") }}: {{ settleTimeOf(order) }}</text>
         </view>
       </view>
 
-      <text v-if="finished" class="list-footer">没有更多记录了</text>
+      <text v-if="finished" class="list-footer">{{ t("commerce.common.noMoreRecords") }}</text>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载投注记录' : '暂无投注记录'" description="下拉刷新可重新同步账单。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('commerce.betRecord.loadingLottery') : t('commerce.betRecord.noLotteryRecords')"
+      :description="t('commerce.betRecord.lotteryEmptyDescription')"
+    />
   </view>
 </template>
 
@@ -101,6 +105,9 @@ import EmptyState from "@/components/EmptyState.vue";
 import { getLotteryBetRecords } from "@/api/services";
 import { firstText } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type AnyRecord = Record<string, unknown>;
 
@@ -113,7 +120,7 @@ const gameId = ref("");
 const gameCode = ref("");
 const title = ref("");
 
-const pageTitle = computed(() => title.value || "彩票投注记录");
+const pageTitle = computed(() => title.value || t("commerce.betRecord.lotteryTitle"));
 const records = computed(() => list.value);
 
 function isRecord(value: unknown): value is AnyRecord {
@@ -155,21 +162,23 @@ function recordKey(item: AnyRecord) {
 }
 
 function orderTitle(order: AnyRecord) {
-  return textOf(order, ["game_name", "game_name_en", "game_code"], "彩票订单");
+  return textOf(order, ["game_name", "game_name_en", "game_code"], t("commerce.betRecord.lotteryOrder"));
 }
 
 function statusOf(order: AnyRecord) {
-  return textOf(order, ["status_text", "status_name", "status"], "待开奖");
+  return textOf(order, ["status_text", "status_name", "status"], t("commerce.betRecord.awaitingDraw"));
 }
 
 function lotteryOrderMeta(order: AnyRecord) {
   const issue = textOf(order, ["issue_num", "issue"], "--");
   const no = textOf(order, ["order_no", "orderid", "id"], "--");
-  return `期号 ${issue} · 订单 ${no}`;
+  return t("commerce.betRecord.issueOrder")
+    .replace("{issue}", issue)
+    .replace("{order}", no);
 }
 
 function openCodeOf(order: AnyRecord) {
-  return textOf(order, ["open_code", "award_code", "result_code"], "待开奖");
+  return textOf(order, ["open_code", "award_code", "result_code"], t("commerce.betRecord.awaitingDraw"));
 }
 
 function issueStatusOf(order: AnyRecord) {
@@ -177,7 +186,7 @@ function issueStatusOf(order: AnyRecord) {
 }
 
 function openTimeOf(order: AnyRecord) {
-  return textOf(order, ["open_time_text", "draw_time_text"], "待同步");
+  return textOf(order, ["open_time_text", "draw_time_text"], t("commerce.common.awaitingSync"));
 }
 
 function timeOf(order: AnyRecord) {
@@ -193,13 +202,13 @@ function recordItems(order: AnyRecord) {
 }
 
 function lotteryItemTitle(item: AnyRecord) {
-  const play = textOf(item, ["play_name", "play_code"], "玩法");
-  const option = textOf(item, ["option_name", "option_code"], "投注项");
+  const play = textOf(item, ["play_name", "play_code"], t("commerce.betRecord.play"));
+  const option = textOf(item, ["option_name", "option_code"], t("commerce.common.betOption"));
   return `${play} · ${option}`;
 }
 
 function itemStatusOf(item: AnyRecord) {
-  return textOf(item, ["win_status_text", "status_text", "state_text"], "待开奖");
+  return textOf(item, ["win_status_text", "status_text", "state_text"], t("commerce.betRecord.awaitingDraw"));
 }
 
 async function load(reset = false) {
@@ -227,7 +236,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "记录加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.common.recordsLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -242,9 +251,7 @@ onLoad((query) => {
   gameId.value = firstText(query?.game_id, query?.id);
   gameCode.value = firstText(query?.game_code);
   title.value = firstText(query?.title);
-  if (title.value) {
-    uni.setNavigationBarTitle({ title: title.value });
-  }
+  uni.setNavigationBarTitle({ title: pageTitle.value });
   void load(true);
 });
 

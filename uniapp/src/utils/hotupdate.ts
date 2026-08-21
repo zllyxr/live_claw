@@ -5,7 +5,8 @@
  * Native：强制版本使用不可取消弹窗，Android 下载 APK 后交给系统安装器。
  */
 import CryptoJS from "crypto-js";
-import { CORE_API_BASE, DEFAULT_LANGUAGE } from "@/constants/config";
+import { CORE_API_BASE } from "@/constants/config";
+import { getApiLanguage, t } from "@/i18n";
 
 interface NativeUpdateInfo {
   version_name?: string;
@@ -108,7 +109,7 @@ async function fetchUpdateInfo(
         app_code: appCode,
         platform: updatePlatform(),
         device_id: updateDeviceID(),
-        language: DEFAULT_LANGUAGE
+        language: getApiLanguage()
       },
       timeout: 30_000,
       success: (response) => {
@@ -132,8 +133,8 @@ function confirmUpdate(options: {
       title: options.title,
       content: options.content,
       showCancel: !options.force,
-      confirmText: options.confirmText || "立即更新",
-      cancelText: "稍后再说",
+      confirmText: options.confirmText || t("core.updateNow"),
+      cancelText: t("core.later"),
       success: (result) => resolve(Boolean(result.confirm)),
       fail: () => resolve(false)
     });
@@ -157,9 +158,9 @@ function downloadPackage(url: string, onProgress?: (percent: number) => void) {
           resolve(result.tempFilePath);
           return;
         }
-        reject(new Error(`下载失败（${result.statusCode || 0}）`));
+        reject(new Error(t("core.downloadFailedCode", { code: result.statusCode || 0 })));
       },
-      fail: (error) => reject(new Error(error.errMsg || "更新包下载失败"))
+      fail: (error) => reject(new Error(error.errMsg || t("core.updateDownloadFailed")))
     });
     task?.onProgressUpdate?.((event) => onProgress?.(Number(event.progress || 0)));
   });
@@ -207,10 +208,10 @@ async function verifyPackageSHA256(filePath: string, expectedHash: unknown) {
   if (!expected) return;
   const actual = await localFileSHA256(filePath);
   if (!actual) {
-    throw new Error("无法校验更新包完整性");
+    throw new Error(t("core.cannotVerifyUpdate"));
   }
   if (actual.toLowerCase() !== expected) {
-    throw new Error("更新包完整性校验失败");
+    throw new Error(t("core.updateVerifyFailed"));
   }
 }
 
@@ -218,14 +219,14 @@ function installPackage(filePath: string, options: Record<string, unknown> = {})
   return new Promise<void>((resolve, reject) => {
     const activeRuntime = runtime();
     if (!activeRuntime?.install) {
-      reject(new Error("当前运行环境不支持安装更新包"));
+      reject(new Error(t("core.updateInstallUnsupported")));
       return;
     }
     activeRuntime.install(
       filePath,
       options,
       () => resolve(),
-      (error: any) => reject(new Error(error?.message || "更新包安装失败"))
+      (error: any) => reject(new Error(error?.message || t("core.updateInstallFailed")))
     );
   });
 }
@@ -233,10 +234,10 @@ function installPackage(filePath: string, options: Record<string, unknown> = {})
 function scheduleForcedRetry(message: string, retry: () => Promise<void>) {
   uni.hideLoading();
   void confirmUpdate({
-    title: "必须完成更新",
-    content: `${message}\n请检查网络后重试。`,
+    title: t("core.updateRequired"),
+    content: t("core.checkNetworkRetry", { message }),
     force: true,
-    confirmText: "重新更新"
+    confirmText: t("core.retryUpdate")
   }).then((confirmed) => {
     if (confirmed) void retry();
   });
@@ -251,8 +252,8 @@ async function applyWgt(info: UpdateInfo, options: HotUpdateOptions) {
   if (!force && uni.getStorageSync(STORAGE_SKIPPED) === targetCode) return;
   if (!force && !serverSilent && !options.silent) {
     const confirmed = await confirmUpdate({
-      title: `发现资源更新 ${info.version_name || ""}`,
-      content: info.note || "包含体验优化与问题修复",
+      title: t("core.resourceUpdateFound", { version: info.version_name || "" }),
+      content: info.note || t("core.updateImprovements"),
       force: false
     });
     if (!confirmed) {
@@ -262,21 +263,21 @@ async function applyWgt(info: UpdateInfo, options: HotUpdateOptions) {
   }
 
   try {
-    if (force) showProgress("强制更新", 0);
+    if (force) showProgress(t("core.forcedUpdate"), 0);
     const filePath = await downloadPackage(info.wgt_url, (percent) => {
-      if (force) showProgress("强制更新", percent);
+      if (force) showProgress(t("core.forcedUpdate"), percent);
     });
     await verifyPackageSHA256(filePath, info.sha256);
     await installPackage(filePath, { force: false });
     uni.removeStorageSync(STORAGE_SKIPPED);
     uni.hideLoading();
     if (force) {
-      uni.showToast({ title: "更新完成，正在重启", icon: "none", mask: true });
+      uni.showToast({ title: t("core.updateCompleteRestarting"), icon: "none", mask: true });
       setTimeout(() => runtime()?.restart?.(), 600);
     }
   } catch (error: any) {
     if (force) {
-      scheduleForcedRetry(error?.message || "强制更新失败", () => applyWgt(info, options));
+      scheduleForcedRetry(error?.message || t("core.forcedUpdateFailed"), () => applyWgt(info, options));
       return;
     }
     uni.hideLoading();
@@ -294,8 +295,8 @@ async function applyNativeUpdate(
   if (!force && options.silent) return;
 
   const confirmed = await confirmUpdate({
-    title: `${force ? "必须更新" : "发现新版本"} ${info.version_name || ""}`,
-    content: info.note || (force ? "当前版本已停止使用，请更新后继续。" : "建议升级到最新版本。"),
+    title: t(force ? "core.mustUpdateVersion" : "core.newVersionFound", { version: info.version_name || "" }),
+    content: info.note || t(force ? "core.versionUnsupported" : "core.updateRecommended"),
     force
   });
   if (!confirmed) return;
@@ -306,23 +307,23 @@ async function applyNativeUpdate(
   }
 
   try {
-    showProgress("下载新版", 0);
+    showProgress(t("core.downloadingNewVersion"), 0);
     const filePath = await downloadPackage(downloadURL, (percent) =>
-      showProgress("下载新版", percent)
+      showProgress(t("core.downloadingNewVersion"), percent)
     );
     await verifyPackageSHA256(filePath, info.sha256);
-    showProgress("准备安装", 100);
+    showProgress(t("core.preparingInstall"), 100);
     await installPackage(filePath, { force: true });
     uni.hideLoading();
   } catch (error: any) {
     uni.hideLoading();
     if (force) {
-      scheduleForcedRetry(error?.message || "新版安装失败", () =>
+      scheduleForcedRetry(error?.message || t("core.newVersionInstallFailed"), () =>
         applyNativeUpdate(info, true, options)
       );
       return;
     }
-    uni.showToast({ title: error?.message || "新版安装失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("core.newVersionInstallFailed"), icon: "none" });
   }
 }
 

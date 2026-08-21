@@ -1,6 +1,7 @@
 import { API_HOST, NOT_LOGIN_UID } from "@/constants/config";
 import type { RechargeOrder } from "@/types/api";
 import { openWebView } from "@/utils/navigation";
+import { t } from "@/i18n";
 
 export const PENDING_PAYMENT_PREFIX = "payment_pending:";
 export const PAYMENT_CREATE_ATTEMPT_PREFIX = "payment_create_attempt:";
@@ -67,13 +68,13 @@ export function rechargeStatusText(order?: RechargeOrder) {
     return provided;
   }
   return ({
-    0: "订单已创建",
-    1: "等待支付",
-    2: "已到账",
-    3: "支付失败",
-    4: "已关闭",
-    5: "已退款"
-  } as Record<number, string>)[rechargeStatusCode(order)] || "未知状态";
+    0: t("core.orderCreated"),
+    1: t("core.awaitingPayment"),
+    2: t("core.credited"),
+    3: t("core.paymentFailed"),
+    4: t("core.closed"),
+    5: t("core.refunded")
+  } as Record<number, string>)[rechargeStatusCode(order)] || t("core.unknownStatus");
 }
 
 export function rechargeExpiresAt(order?: RechargeOrder) {
@@ -161,7 +162,7 @@ export function normalizePaymentUrl(value: unknown) {
   }
 }
 
-export function openPaymentCashier(value: unknown, title = "支付") {
+export function openPaymentCashier(value: unknown, title = t("core.payment")) {
   const normalized = normalizePaymentUrl(value);
   if (!normalized) {
     return false;

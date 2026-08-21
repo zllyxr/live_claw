@@ -9,37 +9,37 @@
           <text class="name">{{ name }}</text>
           <text class="uid">ID：{{ user?.liang_name || user?.id || uid }}</text>
         </view>
-        <text class="signature">{{ user?.signature || "这个人还没有留下签名" }}</text>
+        <text class="signature">{{ user?.signature || t("misc.common.noSignature") }}</text>
         <view class="stats">
           <view class="stat-item" @tap="openList('follow')">
             <text>{{ user?.follows || 0 }}</text>
-            <text>关注</text>
+            <text>{{ t("misc.common.following") }}</text>
           </view>
           <view class="stat-item" @tap="openList('fans')">
             <text>{{ user?.fans || 0 }}</text>
-            <text>粉丝</text>
+            <text>{{ t("misc.common.fans") }}</text>
           </view>
           <view class="stat-item">
             <text>{{ user?.coin || user?.votes || 0 }}</text>
-            <text>余额</text>
+            <text>{{ t("misc.common.balance") }}</text>
           </view>
         </view>
       </view>
     </view>
 
     <view class="action-bar">
-      <button v-if="own" class="primary-button action-primary" @tap="editProfile">编辑资料</button>
+      <button v-if="own" class="primary-button action-primary" @tap="editProfile">{{ t("misc.profile.editProfile") }}</button>
       <template v-else>
-        <button class="primary-button action-primary" @tap="toggleFollow">{{ followed ? "已关注" : "关注" }}</button>
-        <button class="ghost-button action-ghost" @tap="openChat">私信</button>
-        <button class="ghost-button action-ghost danger" @tap="toggleBlack">{{ blacked ? "解除拉黑" : "拉黑" }}</button>
+        <button class="primary-button action-primary" @tap="toggleFollow">{{ followed ? t("misc.common.followed") : t("misc.common.follow") }}</button>
+        <button class="ghost-button action-ghost" @tap="openChat">{{ t("misc.common.message") }}</button>
+        <button class="ghost-button action-ghost danger" @tap="toggleBlack">{{ blacked ? t("misc.user.unblock") : t("misc.user.block") }}</button>
       </template>
     </view>
 
     <view class="content safe-page">
       <view class="section-head">
-        <text class="title-lg">动态</text>
-        <view class="ghost-button" @tap="openDynamics">全部</view>
+        <text class="title-lg">{{ t("misc.common.posts") }}</text>
+        <view class="ghost-button" @tap="openDynamics">{{ t("misc.common.all") }}</view>
       </view>
 
       <view v-if="dynamics.length" class="feed">
@@ -48,10 +48,10 @@
           <view v-if="imageList(item).length" class="thumb-row">
             <image v-for="image in imageList(item).slice(0, 3)" :key="image" class="thumb" :src="image" mode="aspectFill" />
           </view>
-          <text class="dynamic-meta">{{ item.datetime || "" }} · {{ item.likes || 0 }} 赞 · {{ item.comments || 0 }} 评</text>
+          <text class="dynamic-meta">{{ item.datetime || "" }} · {{ item.likes || 0 }} {{ t("misc.common.likes") }} · {{ item.comments || 0 }} {{ t("misc.common.comments") }}</text>
         </view>
       </view>
-      <EmptyState v-else :title="loading ? '正在加载主页' : '暂无动态'" description="这个主页暂时没有公开动态。" />
+      <EmptyState v-else :title="loading ? t('misc.user.loadingHome') : t('misc.user.noPosts')" :description="t('misc.user.noPostsDescription')" />
     </view>
   </view>
 </template>
@@ -64,6 +64,7 @@ import { getUserDynamics, getUserHome, setAttention, setBlack } from "@/api/serv
 import type { DynamicItem, UserProfile } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { getSession, requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const uid = ref("");
 const user = ref<UserProfile>();
@@ -73,7 +74,7 @@ const followed = ref(false);
 const blacked = ref(false);
 
 const own = computed(() => String(uid.value) === String(getSession().uid));
-const name = computed(() => user.value?.user_nicename || user.value?.user_nickname || "星域用户");
+const name = computed(() => user.value?.user_nicename || user.value?.user_nickname || t("misc.common.defaultUser"));
 const avatarUrl = computed(() => absolutizeUrl(String(user.value?.avatar_thumb || user.value?.avatar || "")) || "/static/brand/icon-round.webp");
 const bgUrl = computed(() => absolutizeUrl(String(user.value?.bg_img || user.value?.avatar || "")) || "/static/brand/icon.webp");
 
@@ -102,7 +103,7 @@ async function load() {
     blacked.value = Number(profile?.isblack || 0) === 1;
     uni.setNavigationBarTitle({ title: name.value });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "主页加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.user.homeLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -116,9 +117,9 @@ async function toggleFollow() {
   try {
     const res = await setAttention(uid.value);
     followed.value = Number(res?.isattent ?? (followed.value ? 0 : 1)) === 1;
-    uni.showToast({ title: followed.value ? "已关注" : "已取消关注", icon: "none" });
+    uni.showToast({ title: followed.value ? t("misc.common.followed") : t("misc.common.unfollowed"), icon: "none" });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.common.operationFailed"), icon: "none" });
   }
 }
 
@@ -127,8 +128,8 @@ function toggleBlack() {
     return;
   }
   uni.showModal({
-    title: blacked.value ? "解除拉黑" : "拉黑用户",
-    content: blacked.value ? "确认将对方移出黑名单？" : "拉黑后将减少来自对方的互动，确认继续？",
+    title: blacked.value ? t("misc.user.unblock") : t("misc.user.blockUser"),
+    content: blacked.value ? t("misc.user.unblockConfirm") : t("misc.user.blockConfirm"),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm) {
@@ -137,10 +138,10 @@ function toggleBlack() {
       setBlack(uid.value)
         .then((res) => {
           blacked.value = Number(res?.isblack ?? (blacked.value ? 0 : 1)) === 1;
-          uni.showToast({ title: blacked.value ? "已拉黑" : "已解除", icon: "none" });
+          uni.showToast({ title: blacked.value ? t("misc.user.blocked") : t("misc.user.unblocked"), icon: "none" });
         })
         .catch((error: any) => {
-          uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+          uni.showToast({ title: error?.message || t("misc.common.operationFailed"), icon: "none" });
         });
     }
   });
@@ -172,7 +173,7 @@ function openDynamics() {
   if (own.value) {
     uni.navigateTo({ url: "/pages/dynamic/my" });
   } else {
-    uni.showToast({ title: "已展示近期动态", icon: "none" });
+    uni.showToast({ title: t("misc.user.recentPostsShown"), icon: "none" });
   }
 }
 

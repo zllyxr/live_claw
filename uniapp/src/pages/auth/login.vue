@@ -16,31 +16,31 @@
       <view class="brand-card">
         <image class="brand" :src="loginImage || '/static/brand/icon-round.webp'" mode="aspectFit" />
       </view>
-      <text class="brand-name">星域</text>
-      <text class="title">欢迎回来</text>
+      <text class="brand-name">{{ t("misc.common.brand") }}</text>
+      <text class="title">{{ t("misc.auth.welcomeBack") }}</text>
     </view>
 
     <view class="form-panel">
       <view class="field-group">
-        <text class="label">手机号</text>
+        <text class="label">{{ t("misc.auth.phone") }}</text>
         <view class="phone-row">
           <view class="country" @tap="openCountry">+{{ countryCode }}</view>
-          <input v-model.trim="phone" class="input-box phone-input" type="number" placeholder="请输入手机号" placeholder-class="ph" />
+          <input v-model.trim="phone" class="input-box phone-input" type="number" :placeholder="t('misc.auth.phonePlaceholder')" placeholder-class="ph" />
         </view>
       </view>
 
       <view class="field-group">
-        <text class="label">密码</text>
-        <input v-model.trim="password" class="input-box" password placeholder="请输入密码" placeholder-class="ph" />
+        <text class="label">{{ t("misc.auth.password") }}</text>
+        <input v-model.trim="password" class="input-box" password :placeholder="t('misc.auth.passwordPlaceholder')" placeholder-class="ph" />
       </view>
 
       <view class="primary-action" :class="{ disabled: !canSubmit || loading }" @tap="submit">
-        {{ loading ? "登录中" : "登录" }}
+        {{ loading ? t("misc.auth.loggingIn") : t("misc.auth.login") }}
       </view>
 
       <view class="link-row">
-        <view @tap="goRegister">注册账号</view>
-        <view class="link-muted" @tap="goForgot">找回密码</view>
+        <view @tap="goRegister">{{ t("misc.auth.registerAccount") }}</view>
+        <view class="link-muted" @tap="goForgot">{{ t("misc.auth.forgotPassword") }}</view>
       </view>
     </view>
   </view>
@@ -53,6 +53,7 @@ import { getLoginInfo, login } from "@/api/services";
 import { absolutizeUrl } from "@/utils/url";
 import { pickInviteParams, savePendingInvite } from "@/utils/invite";
 import { takeSelectedCountry } from "@/utils/country";
+import { t } from "@/i18n";
 
 const AUTH_FROM = "login";
 const phone = ref("");
@@ -66,7 +67,7 @@ const canSubmit = computed(() => phone.value.length > 0 && password.value.length
 onLoad((query) => {
   savePendingInvite(pickInviteParams(query as Record<string, unknown> | undefined));
   if (query?.invalid) {
-    uni.showToast({ title: "登录已失效，请重新登录", icon: "none" });
+    uni.showToast({ title: t("misc.auth.sessionExpired"), icon: "none" });
   }
   void getLoginInfo()
     .then((info) => {
@@ -89,12 +90,12 @@ async function submit() {
   loading.value = true;
   try {
     await login(phone.value, password.value, countryCode.value);
-    uni.showToast({ title: "登录成功", icon: "success" });
+    uni.showToast({ title: t("misc.auth.loginSuccess"), icon: "success" });
     setTimeout(() => {
       uni.switchTab({ url: "/pages/tabbar/live/index" });
     }, 300);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "登录失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.auth.loginFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }

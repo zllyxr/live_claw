@@ -8,7 +8,7 @@
     <view class="ambient ambient-b" />
 
     <view class="top-nav">
-      <view class="round-icon back-icon" aria-label="返回" @tap="goBack">
+      <view class="round-icon back-icon" :aria-label="t('commerce.gameBet.back')" @tap="goBack">
         <view class="arrow-left" />
       </view>
 
@@ -31,7 +31,7 @@
           <view class="coin-mini" />
           <text>{{ compactMoney(coin) }}</text>
         </view>
-        <button class="round-icon history-icon" aria-label="开奖记录" @tap="showHistory = true">
+        <button class="round-icon history-icon" :aria-label="t('commerce.gameBet.drawHistory')" @tap="showHistory = true">
           <view class="history-bars"><i /><i /><i /></view>
         </button>
       </view>
@@ -39,13 +39,13 @@
 
     <view v-if="loading" class="loading-scene">
       <view class="loading-orbit"><i /><i /><i /></view>
-      <text>牌桌就绪中</text>
+      <text>{{ t("commerce.gameBet.preparingTable") }}</text>
     </view>
 
     <view v-else-if="loadError" class="error-scene">
       <view class="broken-ball">!</view>
       <text>{{ loadError }}</text>
-      <button @tap="loadDetail(true)">重新入桌</button>
+      <button @tap="loadDetail(true)">{{ t("commerce.gameBet.reenterTable") }}</button>
     </view>
 
     <template v-else>
@@ -58,12 +58,12 @@
             <view class="signal-waves"><i /><i /><i /></view>
             <text>{{ shortIssue(currentIssue.issue_num) }}</text>
           </view>
-          <button class="rule-button" aria-label="玩法说明" @tap="showRules = true">?</button>
+          <button class="rule-button" :aria-label="t('commerce.gameBet.rules')" @tap="showRules = true">?</button>
           <view class="countdown-dial" :class="{ urgent: sealCountdown <= 10 && !isSealed }">
             <view class="dial-ticks" />
             <view class="dial-core">
               <text class="countdown-value">{{ countdownText }}</text>
-              <text class="countdown-label">{{ isSealed ? "已封盘" : "封盘" }}</text>
+              <text class="countdown-label">{{ isSealed ? t("commerce.gameBet.sealed") : t("commerce.gameBet.seal") }}</text>
             </view>
           </view>
 
@@ -111,8 +111,8 @@
           <view class="prop-card prop-card-right">
             <text>K</text><i>♥</i>
           </view>
-          <view class="prop-tile"><text>發</text></view>
-          <view class="prop-zodiac"><text>龍</text></view>
+          <view class="prop-tile"><text>{{ t("commerce.gameBet.fortuneTile") }}</text></view>
+          <view class="prop-zodiac"><text>{{ t("commerce.gameBet.dragonTile") }}</text></view>
         </view>
 
         <view v-if="historyPreview.length" class="recent-ribbon" @tap="showHistory = true">
@@ -200,7 +200,7 @@
 
           <view v-else class="no-options">
             <view class="empty-fan"><i /><i /><i /></view>
-            <text>本桌暂未开盘</text>
+            <text>{{ t("commerce.gameBet.tableNotOpen") }}</text>
           </view>
         </view>
       </view>
@@ -221,17 +221,17 @@
 
         <view class="dock-main">
           <view class="amount-stepper">
-            <button aria-label="减少筹码" @tap="changeAmount(-1)">−</button>
+            <button :aria-label="t('commerce.gameBet.decreaseChips')" @tap="changeAmount(-1)">−</button>
             <view class="amount-display">
               <text class="currency-mark">◇</text>
               <input v-model.number="amount" type="number" :min="minBet" :max="maxBet" @blur="normalizeAmount"/>
             </view>
-            <button aria-label="增加筹码" @tap="changeAmount(1)">＋</button>
+            <button :aria-label="t('commerce.gameBet.increaseChips')" @tap="changeAmount(1)">＋</button>
           </view>
           <view class="place-bet" :class="{ ready: canSubmit, locking: submitting }" :disabled="!canSubmit" @tap="placeBet">
             <view class="bet-copy">
-              <text class="bet-label">{{ submitting ? "锁单中" : isSealed ? "已封盘" : "落筹" }}</text>
-              <text class="bet-total">{{ selectedOptions.length ? compactMoney(totalBet) : "选择牌面" }}</text>
+              <text class="bet-label">{{ submitting ? t("commerce.gameBet.locking") : isSealed ? t("commerce.gameBet.sealed") : t("commerce.gameBet.placeChips") }}</text>
+              <text class="bet-total">{{ selectedOptions.length ? compactMoney(totalBet) : t("commerce.gameBet.chooseCards") }}</text>
             </view>
           </view>
         </view>
@@ -246,7 +246,7 @@
       <view class="success-ticket">
         <view class="success-halo"><i /></view>
         <view class="success-check"><i /></view>
-        <text class="success-title">筹码已入池</text>
+        <text class="success-title">{{ t("commerce.gameBet.chipsAccepted") }}</text>
         <text class="success-amount">◇ {{ compactMoney(lastBetTotal) }}</text>
         <view class="ticket-cut"><i v-for="n in 9" :key="n" /></view>
       </view>
@@ -257,8 +257,8 @@
         <view class="sheet-handle" />
         <view class="sheet-title-row">
           <view>
-            <text class="sheet-kicker">LIVE ARCHIVE</text>
-            <text class="sheet-title">开奖轨迹</text>
+            <text class="sheet-kicker">{{ t("commerce.gameBet.liveArchive") }}</text>
+            <text class="sheet-title">{{ t("commerce.gameBet.drawTrack") }}</text>
           </view>
           <button @tap="showHistory = false"><i /></button>
         </view>
@@ -291,7 +291,7 @@
         <view class="rule-seal"><i>{{ playGlyph(activePlay) }}</i></view>
         <text class="rule-title">{{ activePlayName }}</text>
         <text class="rule-copy">{{ ruleDescription }}</text>
-        <button class="rule-close" @tap="showRules = false">知道了</button>
+        <button class="rule-close" @tap="showRules = false">{{ t("commerce.gameBet.gotIt") }}</button>
       </view>
     </view>
   </view>
@@ -308,6 +308,9 @@ import {
 } from "@/api/services";
 import { displayUrl } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { locale, t } = useI18n();
 
 type AnyRecord = Record<string, any>;
 
@@ -363,7 +366,7 @@ const activePlay = computed<AnyRecord>(() => {
   return plays.value.find((play) => String(play.id) === activePlayId.value) || plays.value[0] || {};
 });
 const activeOptions = computed<AnyRecord[]>(() => arrayOf(activePlay.value.options));
-const gameTitle = computed(() => textOf(game.value.game_name, game.value.game_name_en, routeTitle, "星河牌桌"));
+const gameTitle = computed(() => localizedRecordText(game.value, "game_name") || routeTitle || t("commerce.gameBet.defaultTitle"));
 const gameIcon = computed(() => {
   const code = textOf(game.value.game_code, gameCode).toUpperCase();
   return displayUrl(
@@ -404,22 +407,24 @@ const isSealed = computed(() => {
 });
 const stagePhase = computed(() => (drawing.value ? "drawing" : isSealed.value ? "sealed" : "betting"));
 const stagePhaseText = computed(() => {
-  if (drawing.value) return "开奖中";
-  if (isSealed.value) return "封盘";
-  return "实时同步";
+  if (drawing.value) return t("commerce.gameBet.drawing");
+  if (isSealed.value) return t("commerce.gameBet.seal");
+  return t("commerce.common.liveSync");
 });
 const countdownText = computed(() => formatDuration(sealCountdown.value));
 const openCountdownText = computed(() => {
-  if (drawing.value) return "LIVE DRAW";
-  if (openCountdown.value <= 0) return "READY";
-  return `开奖 ${formatDuration(openCountdown.value)}`;
+  if (drawing.value) return t("commerce.gameBet.liveDraw");
+  if (openCountdown.value <= 0) return t("commerce.gameBet.ready");
+  return `${t("commerce.gameBet.drawIn")} ${formatDuration(openCountdown.value)}`;
 });
 const latestRow = computed<AnyRecord>(() => history.value[0] || {});
 const latestNumbers = computed(() => splitCode(latestRow.value.open_code));
 const visibleLatestNumbers = computed(() => latestNumbers.value.slice(0, gameMode.value === "card" ? 5 : 10));
 const latestIssueLabel = computed(() => {
   const issue = latestRow.value.issue_num;
-  return issue ? `${shortIssue(issue)} 已验证` : "等待首期开奖";
+  return issue
+    ? t("commerce.gameBet.verifiedIssue").replace("{issue}", shortIssue(issue))
+    : t("commerce.gameBet.awaitingFirstDraw");
 });
 const historyPreview = computed(() => history.value.slice(0, 2));
 const resultSlots = computed(() => {
@@ -428,7 +433,7 @@ const resultSlots = computed(() => {
   return gameMode.value === "dice" ? 3 : gameMode.value === "card" ? 5 : 6;
 });
 const activePlayName = computed(() => playName(activePlay.value));
-const activePlayCode = computed(() => textOf(activePlay.value.play_code, "SELECT TABLE"));
+const activePlayCode = computed(() => textOf(activePlay.value.play_code, t("commerce.gameBet.selectTable")));
 const gameMode = computed<"number" | "dice" | "card" | "zodiac" | "mahjong">(() => {
   const source = [game.value.game_code, game.value.game_name, game.value.game_name_en]
     .join(" ")
@@ -450,10 +455,10 @@ const canSubmit = computed(() => {
 });
 const ruleDescription = computed(() => {
   return textOf(
-    activePlay.value.rule_desc,
-    game.value.rule_desc,
-    game.value.description,
-    "选择牌面并放入筹码，封盘前可完成本期投注。开奖结果以系统实时开奖为准。"
+    localizedRecordText(activePlay.value, "rule_desc"),
+    localizedRecordText(game.value, "rule_desc"),
+    localizedRecordText(game.value, "description"),
+    t("commerce.gameBet.defaultRule")
   );
 });
 
@@ -469,6 +474,21 @@ function textOf(...values: unknown[]) {
   for (const value of values) {
     const text = String(value ?? "").trim();
     if (text) return text;
+  }
+  return "";
+}
+
+function localizedRecordText(source: AnyRecord, base: string) {
+  const suffixes = locale.value === "zh-CN"
+    ? ["", "zh", "cn"]
+    : locale.value === "ja"
+      ? ["ja", "jp", "en", ""]
+      : locale.value === "ko"
+        ? ["ko", "kr", "en", ""]
+        : ["en", ""];
+  for (const suffix of suffixes) {
+    const value = source[suffix ? `${base}_${suffix}` : base];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
   }
   return "";
 }
@@ -553,24 +573,24 @@ function cardSuit(value: number) {
 }
 
 function playName(play: AnyRecord) {
-  return textOf(play.play_name, play.play_name_en, play.play_code, "选号");
+  return textOf(localizedRecordText(play, "play_name"), play.play_code, t("commerce.gameBet.pickNumbers"));
 }
 
 function optionName(option: AnyRecord) {
-  return textOf(option.option_name, option.option_name_en, option.option_code, "选项");
+  return textOf(localizedRecordText(option, "option_name"), option.option_code, t("commerce.common.option"));
 }
 
 function playGlyph(play: AnyRecord) {
   const source = `${textOf(play.play_code)} ${textOf(play.result_rule)} ${playName(play)}`.toUpperCase();
-  if (/ZODIAC|生肖/.test(source)) return "肖";
-  if (/COLOR|波色/.test(source)) return "波";
-  if (/DRAGON|TIGER|龙虎/.test(source)) return "龙";
-  if (/ODD|EVEN|单双/.test(source)) return "单双";
-  if (/BIG|SMALL|大小/.test(source)) return "大小";
+  if (/ZODIAC|生肖/.test(source)) return t("commerce.gameBet.glyph.zodiac");
+  if (/COLOR|波色/.test(source)) return t("commerce.gameBet.glyph.color");
+  if (/DRAGON|TIGER|龙虎/.test(source)) return t("commerce.gameBet.glyph.dragon");
+  if (/ODD|EVEN|单双/.test(source)) return t("commerce.gameBet.glyph.oddEven");
+  if (/BIG|SMALL|大小/.test(source)) return t("commerce.gameBet.glyph.bigSmall");
   if (/SUM|和值/.test(source)) return "Σ";
   if (/CARD|POKER|牌/.test(source)) return "A";
-  if (/DICE|K3|骰/.test(source)) return "骰";
-  return playName(play).slice(0, 1) || "选";
+  if (/DICE|K3|骰/.test(source)) return t("commerce.gameBet.glyph.dice");
+  return playName(play).slice(0, 1) || t("commerce.gameBet.glyph.select");
 }
 
 function selectPlay(play: AnyRecord) {
@@ -608,12 +628,12 @@ function optionVisualLabel(option: AnyRecord) {
 function zodiacMark(option: AnyRecord) {
   const zodiac = optionName(option).match(/[鼠牛虎兔龙蛇马羊猴鸡狗猪]/)?.[0] || optionVisualLabel(option);
   const index = "鼠牛虎兔龙蛇马羊猴鸡狗猪".indexOf(zodiac);
-  return index >= 0 ? String(index + 1).padStart(2, "0") : "肖";
+  return index >= 0 ? String(index + 1).padStart(2, "0") : t("commerce.gameBet.glyph.zodiac");
 }
 
 function mahjongMark(option: AnyRecord) {
   const number = optionNumber(option);
-  return number ? ["●", "竹", "萬"][number % 3] : "牌";
+  return number ? ["●", t("commerce.gameBet.bamboo"), t("commerce.gameBet.characters")][number % 3] : t("commerce.gameBet.tile");
 }
 
 function optionTone(option: AnyRecord) {
@@ -648,7 +668,7 @@ function toggleOption(option: AnyRecord, play: AnyRecord) {
     selectedOptionIds.value = selectedOptionIds.value.filter((item) => item !== id);
   } else {
     if (selectedOptionIds.value.length >= 8) {
-      uni.showToast({ title: "单次最多选择 8 枚", icon: "none" });
+      uni.showToast({ title: t("commerce.gameBet.maxSelections").replace("{count}", "8"), icon: "none" });
       return;
     }
     selectedOptionIds.value = [...selectedOptionIds.value, id];
@@ -681,11 +701,11 @@ async function placeBet() {
   if (!canSubmit.value || !requireLogin()) return;
   normalizeAmount();
   if (totalBet.value < minBet.value) {
-    uni.showToast({ title: `最低 ${minBet.value}`, icon: "none" });
+    uni.showToast({ title: `${t("commerce.gameBet.minimum")} ${minBet.value}`, icon: "none" });
     return;
   }
   if (totalBet.value > maxBet.value) {
-    uni.showToast({ title: `单次上限 ${maxBet.value}`, icon: "none" });
+    uni.showToast({ title: `${t("commerce.gameBet.maximumPerBet")} ${maxBet.value}`, icon: "none" });
     triggerDockShake();
     return;
   }
@@ -720,7 +740,7 @@ async function placeBet() {
     await loadDetail(false);
   } catch (error: any) {
     triggerDockShake();
-    uni.showToast({ title: error?.message || "落筹失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.gameBet.betFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }
@@ -762,7 +782,7 @@ function drawTime(row: AnyRecord) {
   const text = textOf(row.open_time_text);
   if (text) return text.slice(5, 16);
   const timestamp = numeric(row.open_time, 0);
-  if (!timestamp) return "实时同步";
+  if (!timestamp) return t("commerce.common.liveSync");
   const date = new Date(timestamp * 1000);
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
@@ -791,7 +811,7 @@ function applyDetail(payload: AnyRecord, initial = false) {
 
 async function loadDetail(showLoader = true) {
   if (!gameId && !gameCode) {
-    loadError.value = "缺少牌桌编号";
+    loadError.value = t("commerce.gameBet.missingTableId");
     loading.value = false;
     return;
   }
@@ -799,7 +819,7 @@ async function loadDetail(showLoader = true) {
   loadError.value = "";
   try {
     const payload = await getLotteryGameDetail(gameId, gameCode);
-    if (!payload?.game) throw new Error("牌桌暂未开放");
+    if (!payload?.game) throw new Error(t("commerce.gameBet.tableUnavailable"));
     applyDetail(payload, showLoader || !detail.value.game);
     gameId = String(recordOf(payload.game).id || gameId);
     gameCode = textOf(recordOf(payload.game).game_code, gameCode);
@@ -807,7 +827,7 @@ async function loadDetail(showLoader = true) {
     await nextTick();
     if (visible) initCanvas();
   } catch (error: any) {
-    if (showLoader || !detail.value.game) loadError.value = error?.message || "牌桌连接失败";
+    if (showLoader || !detail.value.game) loadError.value = error?.message || t("commerce.gameBet.connectionFailed");
   } finally {
     loading.value = false;
   }

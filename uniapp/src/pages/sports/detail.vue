@@ -2,8 +2,8 @@
   <view class="safe-page sports-detail-page">
     <view class="match-card">
       <view class="match-head">
-        <text>{{ textOf(match, ["competition", "league_name"], "体育赛事") }}</text>
-        <text class="status-pill">{{ textOf(match, ["bet_status_text", "status_text"], "盘口关闭") }}</text>
+        <text>{{ textOf(match, ["competition", "league_name"], t("commerce.sportsDetail.sportsEvent")) }}</text>
+        <text class="status-pill">{{ textOf(match, ["bet_status_text", "status_text"], t("commerce.sportsDetail.marketClosed")) }}</text>
       </view>
       <view class="teams">
         <view class="team">
@@ -13,7 +13,7 @@
             fallback="/static/icons/league-default.svg"
             mode="aspectFit"
           />
-          <text>{{ textOf(match, ["home_name"], "主队") }}</text>
+          <text>{{ textOf(match, ["home_name"], t("commerce.sportsDetail.homeTeam")) }}</text>
         </view>
         <view class="score">
           <text>{{ scoreText }}</text>
@@ -26,23 +26,23 @@
             fallback="/static/icons/league-default.svg"
             mode="aspectFit"
           />
-          <text>{{ textOf(match, ["away_name"], "客队") }}</text>
+          <text>{{ textOf(match, ["away_name"], t("commerce.sportsDetail.awayTeam")) }}</text>
         </view>
       </view>
       <view class="match-foot">
-        <text>{{ betOpen ? `距封盘 ${countdownText}` : "当前盘口已关闭" }}</text>
-        <span @tap="openRecord" style="font-size: 22rpx">投注记录></span>
+        <text>{{ betOpen ? `${t("commerce.sportsDetail.untilClose")} ${countdownText}` : t("commerce.sportsDetail.currentMarketClosed") }}</text>
+        <span @tap="openRecord" style="font-size: 22rpx">{{ t("commerce.sportsDetail.betRecords") }} &gt;</span>
       </view>
     </view>
 
     <view class="section-head">
-      <text>赛事盘口</text>
-      <text>{{ markets.length ? `${markets.length} 项` : "" }}</text>
+      <text>{{ t("commerce.sportsDetail.markets") }}</text>
+      <text>{{ markets.length ? t("commerce.common.itemCount").replace("{count}", String(markets.length)) : "" }}</text>
     </view>
 
     <view v-if="markets.length" class="market-list">
       <view v-for="market in markets" :key="String(market.id || market.market_code)" class="market-card">
-        <text class="market-name">{{ market.market_name || "盘口" }}</text>
+        <text class="market-name">{{ market.market_name || t("commerce.sportsDetail.market") }}</text>
         <view class="option-grid">
           <view
             v-for="option in market.options || []"
@@ -51,7 +51,7 @@
             :class="{ active: String(selectedOption?.id || '') === String(option.id || '') }"
             @tap="selectOption(option, market)"
           >
-            <text>{{ option.option_name || option.option_code || "投注项" }}</text>
+            <text>{{ option.option_name || option.option_code || t("commerce.common.betOption") }}</text>
             <text>{{ option.odds || "-" }}</text>
           </view>
         </view>
@@ -59,8 +59,8 @@
     </view>
     <EmptyState
       v-else
-      :title="loading ? '正在加载赛事盘口' : '暂无可用盘口'"
-      description="盘口由体育数据源同步，未配置真实赔率时不会生成模拟赔率。"
+      :title="loading ? t('commerce.sportsDetail.loadingMarkets') : t('commerce.sportsDetail.noMarkets')"
+      :description="t('commerce.sportsDetail.noMarketsDescription')"
     />
 
     <view v-if="selectedOption" class="bet-panel">
@@ -69,17 +69,17 @@
           <text>{{ selectedMarketName }}</text>
           <text>{{ selectedOption.option_name || selectedOption.option_code }}</text>
         </view>
-        <text>赔率 {{ selectedOption.odds || "-" }}</text>
+        <text>{{ t("commerce.common.odds") }} {{ selectedOption.odds || "-" }}</text>
       </view>
       <view class="amount-row">
         <view>
-          <text>投注金额</text>
-          <text>余额 {{ bundle?.coin || "0" }} 星币</text>
+          <text>{{ t("commerce.common.betAmount") }}</text>
+          <text>{{ t("commerce.common.balance") }} {{ bundle?.coin || "0" }} {{ t("commerce.common.coin") }}</text>
         </view>
-        <input v-model.trim="amount" type="number" placeholder="请输入" />
+        <input v-model.trim="amount" type="number" :placeholder="t('commerce.common.enterValue')" />
       </view>
       <button class="primary-button" :disabled="submitting || !betOpen || !amount" @tap="submit">
-        {{ submitting ? "提交中" : betOpen ? "确认投注" : "盘口已关闭" }}
+        {{ submitting ? t("commerce.common.submitting") : betOpen ? t("commerce.sportsDetail.confirmBet") : t("commerce.sportsDetail.marketClosed") }}
       </button>
     </view>
   </view>
@@ -98,6 +98,9 @@ import type {
   SportsMatch
 } from "@/types/api";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const matchId = ref("");
 const bundle = ref<SportsMarketBundle>();
@@ -128,7 +131,7 @@ const scoreText = computed(() => {
   return `${home} : ${away}`;
 });
 const selectedMarketName = computed(() =>
-  String(selectedMarket.value?.market_name || selectedMarket.value?.market_code || "赛事盘口")
+  String(selectedMarket.value?.market_name || selectedMarket.value?.market_code || t("commerce.sportsDetail.markets"))
 );
 const countdownText = computed(() => {
   const seconds = Math.max(0, remainingSeconds.value);
@@ -168,7 +171,7 @@ async function load() {
     bundle.value = await getSportsBetMarkets(matchId.value);
     startCountdown();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "赛事详情加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.sportsDetail.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -177,7 +180,7 @@ async function load() {
 
 function selectOption(option: SportsMarketOption, market: SportsMarket) {
   if (!betOpen.value) {
-    uni.showToast({ title: "当前盘口已关闭", icon: "none" });
+    uni.showToast({ title: t("commerce.sportsDetail.currentMarketClosed"), icon: "none" });
     return;
   }
   selectedOption.value = option;
@@ -201,13 +204,13 @@ async function submit() {
       optionId: selectedOption.value.id,
       amount: amount.value
     });
-    uni.showToast({ title: "投注成功", icon: "none" });
+    uni.showToast({ title: t("commerce.sportsDetail.betSuccess"), icon: "none" });
     amount.value = "";
     selectedOption.value = undefined;
     selectedMarket.value = undefined;
     await load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "投注失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.sportsDetail.betFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }
@@ -221,6 +224,7 @@ function openRecord() {
 
 onLoad((query) => {
   matchId.value = String(query?.match_id || "");
+  uni.setNavigationBarTitle({ title: t("commerce.sportsDetail.navigationTitle") });
   void load();
 });
 

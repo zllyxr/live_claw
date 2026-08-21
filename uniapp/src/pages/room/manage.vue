@@ -1,37 +1,37 @@
 <template>
   <view class="safe-page room-manage-page">
     <view class="hero">
-      <text>房间管理</text>
-      <text>查看我的直播间房管与基础管理入口</text>
+      <text>{{ t("misc.room.title") }}</text>
+      <text>{{ t("misc.room.description") }}</text>
     </view>
 
     <view class="quick-grid">
       <view class="quick-card card" @tap="openProfile">
-        <text>资料</text>
-        <text>编辑主播资料</text>
+        <text>{{ t("misc.room.profile") }}</text>
+        <text>{{ t("misc.room.editHostProfile") }}</text>
       </view>
       <view class="quick-card card" @tap="openVerify">
-        <text>认证</text>
-        <text>主播认证信息</text>
+        <text>{{ t("misc.room.verification") }}</text>
+        <text>{{ t("misc.room.hostVerification") }}</text>
       </view>
     </view>
 
     <view class="section-head">
-      <text>房管列表</text>
-      <button @tap="load">刷新</button>
+      <text>{{ t("misc.room.adminList") }}</text>
+      <button @tap="load">{{ t("misc.common.refresh") }}</button>
     </view>
 
     <view v-if="admins.length" class="admin-list card">
       <view v-for="item in admins" :key="String(item.id || item.uid)" class="admin-row" @tap="openUser(item)">
         <image :src="avatarOf(item)" mode="aspectFill" />
         <view>
-          <text>{{ item.user_nicename || item.user_nickname || "星域用户" }}</text>
+          <text>{{ item.user_nicename || item.user_nickname || t("misc.common.defaultUser") }}</text>
           <text>ID：{{ item.id || item.uid || "-" }}</text>
         </view>
         <text>›</text>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载房管' : '暂无房管'" description="直播间设置过房管后会显示在这里。" />
+    <EmptyState v-else :title="loading ? t('misc.room.loadingAdmins') : t('misc.room.noAdmins')" :description="t('misc.room.noAdminsDescription')" />
   </view>
 </template>
 
@@ -43,6 +43,7 @@ import { getLiveAdminList } from "@/api/services";
 import type { UserProfile } from "@/types/api";
 import { getSession, requireLogin } from "@/utils/session";
 import { absolutizeUrl } from "@/utils/url";
+import { t } from "@/i18n";
 
 const admins = ref<UserProfile[]>([]);
 const loading = ref(false);
@@ -61,7 +62,7 @@ async function load() {
     const data = await getLiveAdminList(getSession().uid);
     admins.value = data?.list || [];
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "房管加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.room.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();

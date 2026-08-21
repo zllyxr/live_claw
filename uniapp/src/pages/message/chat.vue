@@ -35,9 +35,9 @@
           @tap="loadOlder"
         >
           <view v-if="loadingHistory" class="loading-spinner" />
-          <text>{{ loadingHistory ? "正在加载" : "查看更早消息" }}</text>
+          <text>{{ loadingHistory ? t("social.common.loading") : t("social.chat.earlierMessages") }}</text>
         </button>
-        <view v-else-if="historyEnd && messages.length" class="history-end">已经到底啦</view>
+        <view v-else-if="historyEnd && messages.length" class="history-end">{{ t("social.chat.historyEnd") }}</view>
 
         <template v-for="(message, index) in messages" :key="messageKey(message)">
           <view v-if="shouldShowTime(index)" class="time-divider">
@@ -58,7 +58,7 @@
               <image class="message-avatar" :src="messageAvatar(message)" mode="aspectFill" />
               <view class="message-main">
                 <text v-if="kind === 'group' && !isSelf(message)" class="sender-name">
-                  {{ message.sender_name || `用户 ${message.uid || ""}` }}
+                  {{ message.sender_name || `${t("social.common.user")} ${message.uid || ""}` }}
                 </text>
                 <view
                   class="bubble"
@@ -100,7 +100,7 @@
                     @tap.stop="openFile(message)"
                   >
                     <view class="file-copy">
-                      <text class="file-name">{{ message.file_name || "聊天文件" }}</text>
+                      <text class="file-name">{{ message.file_name || t("social.common.chatFile") }}</text>
                       <text class="file-size">{{ fileSize(message.file_size) }}</text>
                     </view>
                     <view class="file-icon">
@@ -111,7 +111,7 @@
                   <text v-else class="message-text">{{ message.content || "" }}</text>
                 </view>
                 <text class="message-meta">
-                  {{ compactTime(message) }}{{ isSelf(message) ? " · 已发送" : "" }}
+                  {{ compactTime(message) }}{{ isSelf(message) ? ` · ${t("social.common.sent")}` : "" }}
                 </text>
               </view>
             </view>
@@ -120,8 +120,8 @@
 
         <view v-if="!loadingHistory && !messages.length" class="empty-chat">
           <image src="/static/art/empty/message.webp" mode="aspectFit" />
-          <text>{{ kind === "group" ? "群聊已准备好" : "开始一段新对话" }}</text>
-          <text>友善表达，注意保护个人隐私与财产安全。</text>
+          <text>{{ kind === "group" ? t("social.chat.groupReady") : t("social.chat.startConversation") }}</text>
+          <text>{{ t("social.chat.safetyTip") }}</text>
         </view>
         <view id="chat-tail" class="chat-tail" />
       </view>
@@ -135,15 +135,15 @@
     <view v-if="attachmentMenu && !composerNotice" class="attachment-panel">
       <button class="attachment-item" :disabled="sending" @tap="chooseImage">
         <view class="attachment-icon image-icon"><view /></view>
-        <text>图片</text>
+        <text>{{ t("social.common.image") }}</text>
       </button>
       <button class="attachment-item" :disabled="sending" @tap="chooseVideo">
         <view class="attachment-icon video-icon"><view /></view>
-        <text>视频</text>
+        <text>{{ t("social.common.video") }}</text>
       </button>
       <button class="attachment-item" :disabled="sending" @tap="chooseFile">
         <view class="attachment-icon document-icon"><text>FILE</text></view>
-        <text>文件</text>
+        <text>{{ t("social.common.file") }}</text>
       </button>
     </view>
 
@@ -153,13 +153,13 @@
       </button>
       <button v-if="voiceMode" class="record-button" :class="{ recording }" :disabled="sending" @tap="toggleRecording">
         <view v-if="recording" class="record-pulse" />
-        <text>{{ recording ? "点击结束并发送" : "点击开始录音" }}</text>
+        <text>{{ recording ? t("social.chat.finishRecording") : t("social.chat.startRecording") }}</text>
       </button>
-      <textarea v-else v-model="draft" class="composer-input" :maxlength="5000" auto-height cursor-spacing="18" placeholder="输入消息..." confirm-type="send" @confirm="sendText"/>
+      <textarea v-else v-model="draft" class="composer-input" :maxlength="5000" auto-height cursor-spacing="18" :placeholder="t('social.chat.inputPlaceholder')" confirm-type="send" @confirm="sendText"/>
 
       <button v-if="draft.trim() && !voiceMode" class="send-button" :disabled="sending" @tap="sendText">
         <view v-if="sending" class="loading-spinner white" />
-        <text v-else>发送</text>
+        <text v-else>{{ t("social.common.send") }}</text>
       </button
 >
       <button
@@ -205,10 +205,13 @@ import {
   type ChatKind,
   type IMConnectionState
 } from "@/utils/openim";
+import { useI18n } from "@/i18n";
+
+const { locale, t } = useI18n();
 
 const targetID = ref("");
 const kind = ref<ChatKind>("single");
-const name = ref("聊天");
+const name = ref(t("social.chat.defaultTitle"));
 const avatar = ref("/static/brand/icon-round.webp");
 const draft = ref("");
 const messages = ref<ChatMessage[]>([]);
@@ -235,21 +238,21 @@ let discardRecording = false;
 const peerSubtitle = computed(() => {
   if (kind.value === "group") {
     const count = Number(group.value?.memberCount || 0);
-    return count ? `${count} 位成员` : "群聊";
+    return count ? `${count} ${t("social.common.members")}` : t("social.common.groupChat");
   }
-  if (connectionState.value === "ready") return "实时在线";
-  if (connectionState.value === "connecting") return "正在连接";
-  return "消息将自动同步";
+  if (connectionState.value === "ready") return t("social.common.realtimeOnline");
+  if (connectionState.value === "connecting") return t("social.common.connecting");
+  return t("social.chat.autoSync");
 });
 
 const composerNotice = computed(() => {
-  if (kind.value === "single" && blacked.value) return "你已屏蔽该用户，解除后才能继续发送消息";
+  if (kind.value === "single" && blacked.value) return t("social.chat.blockedNotice");
   if (
     kind.value === "group" &&
     Boolean(group.value?.allMuted) &&
     Number(group.value?.roleLevel || 0) < 60
   ) {
-    return "群聊已开启全员禁言";
+    return t("social.chat.allMutedNotice");
   }
   return "";
 });
@@ -258,7 +261,7 @@ onLoad((query) => {
   kind.value = String(query?.kind || "") === "group" || query?.groupid ? "group" : "single";
   targetID.value = String(query?.target || query?.groupid || query?.touid || "");
   name.value = decodeURIComponent(
-    String(query?.name || (kind.value === "group" ? "群聊" : "私信"))
+    String(query?.name || (kind.value === "group" ? t("social.common.groupChat") : t("social.chat.privateMessage")))
   );
   avatar.value =
     decodeURIComponent(String(query?.avatar || "")) || "/static/brand/icon-round.webp";
@@ -383,8 +386,8 @@ function messageDateTime(message: ChatMessage) {
   const time = compactTime(message);
   if (date.toDateString() === now.toDateString()) return time;
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return `昨天 ${time}`;
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  if (date.toDateString() === yesterday.toDateString()) return `${t("social.chat.yesterday")} ${time}`;
+  return `${new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric" }).format(date)} ${time}`;
 }
 
 function shouldShowTime(index: number) {
@@ -399,10 +402,10 @@ function shouldShowTime(index: number) {
 
 function systemText(message: ChatMessage) {
   const content = String(message.content || "").trim();
-  if (!content) return "群聊信息已更新";
+  if (!content) return t("social.chat.groupUpdated");
   try {
     const parsed = JSON.parse(content) as Record<string, unknown>;
-    return String(parsed.text || parsed.message || parsed.title || "群聊信息已更新");
+    return String(parsed.text || parsed.message || parsed.title || t("social.chat.groupUpdated"));
   } catch {
     return content;
   }
@@ -420,7 +423,7 @@ async function loadInitial() {
     await nextTick();
     scrollToBottom(false);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "聊天加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.chat.loadFailed"), icon: "none" });
   } finally {
     loadingHistory.value = false;
   }
@@ -451,7 +454,7 @@ async function loadOlder() {
     scrollAnimated.value = false;
     scrollIntoView.value = anchorID;
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "记录加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.chat.historyLoadFailed"), icon: "none" });
   } finally {
     loadingHistory.value = false;
   }
@@ -477,7 +480,7 @@ async function sendText() {
     scrollToBottom(true);
   } catch (error: any) {
     draft.value = content;
-    uni.showToast({ title: error?.message || "发送失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.common.sendFailed"), icon: "none" });
   } finally {
     sending.value = false;
   }
@@ -506,7 +509,7 @@ function setupRecorder() {
       if (!filePath) return;
       const duration = Math.max(1, Math.round((Date.now() - recordStartedAt) / 1000));
       if (duration < 1) {
-        uni.showToast({ title: "录音时间太短", icon: "none" });
+        uni.showToast({ title: t("social.chat.recordingTooShort"), icon: "none" });
         return;
       }
       sending.value = true;
@@ -523,14 +526,14 @@ function setupRecorder() {
         );
         scrollToBottom(true);
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "语音发送失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.chat.voiceSendFailed"), icon: "none" });
       } finally {
         sending.value = false;
       }
     });
     recorder.onError((error: any) => {
       recording.value = false;
-      uni.showToast({ title: error?.errMsg || "录音失败，请检查麦克风权限", icon: "none" });
+      uni.showToast({ title: error?.errMsg || t("social.chat.recordFailedPermission"), icon: "none" });
     });
   } catch {
     recorder = undefined;
@@ -539,7 +542,7 @@ function setupRecorder() {
 
 function toggleRecording() {
   if (!recorder) {
-    uni.showToast({ title: "当前设备暂不支持录音", icon: "none" });
+    uni.showToast({ title: t("social.chat.recordUnsupported"), icon: "none" });
     return;
   }
   if (recording.value) {
@@ -572,7 +575,7 @@ function chooseImage() {
         );
         scrollToBottom(true);
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "图片发送失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.chat.imageSendFailed"), icon: "none" });
       } finally {
         sending.value = false;
       }
@@ -603,7 +606,7 @@ function chooseVideo() {
         );
         scrollToBottom(true);
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "视频发送失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.chat.videoSendFailed"), icon: "none" });
       } finally {
         sending.value = false;
       }
@@ -618,11 +621,11 @@ function chooseFile() {
     void pickOpenIMLocalFile()
       .then((filePath) => {
         if (filePath) {
-          return sendSelectedFile(filePath, filePath.split("/").pop() || "聊天文件", 0);
+          return sendSelectedFile(filePath, filePath.split("/").pop() || t("social.common.chatFile"), 0);
         }
-        uni.showToast({ title: "当前设备暂不支持选择文件", icon: "none" });
+        uni.showToast({ title: t("social.chat.fileSelectionUnsupported"), icon: "none" });
       })
-      .catch(() => uni.showToast({ title: "当前设备暂不支持选择文件", icon: "none" }));
+      .catch(() => uni.showToast({ title: t("social.chat.fileSelectionUnsupported"), icon: "none" }));
     return;
   }
   choose({
@@ -633,7 +636,7 @@ function chooseFile() {
       if (!filePath) return;
       await sendSelectedFile(
         filePath,
-        String(file?.name || filePath.split("/").pop() || "聊天文件"),
+        String(file?.name || filePath.split("/").pop() || t("social.common.chatFile")),
         Number(file?.size || 0)
       );
     }
@@ -655,7 +658,7 @@ async function sendSelectedFile(filePath: string, fileName: string, size: number
     );
     scrollToBottom(true);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "文件发送失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.chat.fileSendFailed"), icon: "none" });
   } finally {
     sending.value = false;
   }
@@ -685,7 +688,7 @@ function playVoice(message: ChatMessage) {
   });
   audio.onError(() => {
     playingMessageID.value = "";
-    uni.showToast({ title: "语音播放失败", icon: "none" });
+    uni.showToast({ title: t("social.chat.voicePlayFailed"), icon: "none" });
   });
   playingMessageID.value = key;
   audio.play();
@@ -693,7 +696,7 @@ function playVoice(message: ChatMessage) {
 
 function fileSize(size?: number) {
   const value = Number(size || 0);
-  if (!value) return "未知大小";
+  if (!value) return t("social.chat.unknownSize");
   if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(value / 1024))} KB`;
 }
@@ -711,10 +714,10 @@ function openFile(message: ChatMessage) {
       uni.openDocument({
         filePath: tempFilePath,
         showMenu: true,
-        fail: () => uni.showToast({ title: "暂时无法打开该文件", icon: "none" })
+        fail: () => uni.showToast({ title: t("social.chat.cannotOpenFile"), icon: "none" })
       });
     },
-    fail: () => uni.showToast({ title: "文件下载失败", icon: "none" })
+    fail: () => uni.showToast({ title: t("social.chat.fileDownloadFailed"), icon: "none" })
   });
 }
 
@@ -722,7 +725,9 @@ function messageActions(message: ChatMessage) {
   const messageID = String(message.server_msg_id || message.id || "");
   if (message.system || !messageID) return;
   const own = isSelf(message);
-  const labels = own ? ["撤回消息", "从本机删除"] : ["从本机删除", "举报消息"];
+  const labels = own
+    ? [t("social.chat.revokeMessage"), t("social.chat.deleteLocal")]
+    : [t("social.chat.deleteLocal"), t("social.chat.reportMessage")];
   uni.showActionSheet({
     itemList: labels,
     success: async ({ tapIndex }) => {
@@ -734,13 +739,13 @@ function messageActions(message: ChatMessage) {
         } else {
           await reportLiveUser(
             String(message.uid || targetID.value),
-            `聊天消息举报：${message.content || message.file_name || "媒体消息"}`
+            `${t("social.chat.messageReportPrefix")}${message.content || message.file_name || t("social.chat.mediaMessage")}`
           );
         }
         messages.value = messages.value.filter((item) => messageKey(item) !== messageKey(message));
-        uni.showToast({ title: own && tapIndex === 0 ? "消息已撤回" : "操作成功", icon: "none" });
+        uni.showToast({ title: own && tapIndex === 0 ? t("social.chat.messageRevoked") : t("social.common.operationSucceeded"), icon: "none" });
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
       }
     }
   });
@@ -754,10 +759,10 @@ function openMore() {
     return;
   }
   const labels = [
-    "查看用户主页",
-    blacked.value ? "解除屏蔽" : "屏蔽用户",
-    "举报用户",
-    "隐藏会话"
+    t("social.chat.viewUser"),
+    blacked.value ? t("social.chat.unblockUser") : t("social.chat.blockUser"),
+    t("social.chat.reportUser"),
+    t("social.common.hideConversation")
   ];
   uni.showActionSheet({
     itemList: labels,
@@ -770,21 +775,28 @@ function openMore() {
         try {
           await setChatBlack(targetID.value, !blacked.value);
           blacked.value = !blacked.value;
-          uni.showToast({ title: blacked.value ? "已屏蔽" : "已解除屏蔽", icon: "none" });
+          uni.showToast({ title: blacked.value ? t("social.chat.blocked") : t("social.chat.unblocked"), icon: "none" });
         } catch (error: any) {
-          uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+          uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
         }
         return;
       }
       if (tapIndex === 2) {
-        const reasons = ["骚扰辱骂", "广告引流", "疑似诈骗", "其他原因"];
+        const reasonLabels = [
+          t("social.report.abuse"),
+          t("social.report.advertising"),
+          t("social.report.suspectedFraud"),
+          t("social.report.other")
+        ];
+        // The service stores these established Chinese reason values; only the displayed labels are localized.
+        const reasonValues = ["骚扰辱骂", "广告引流", "疑似诈骗", "其他原因"];
         uni.showActionSheet({
-          itemList: reasons,
+          itemList: reasonLabels,
           success: ({ tapIndex: reasonIndex }) => {
-            void reportLiveUser(targetID.value, reasons[reasonIndex] || "其他原因")
-              .then(() => uni.showToast({ title: "已举报", icon: "none" }))
+            void reportLiveUser(targetID.value, reasonValues[reasonIndex] || "其他原因")
+              .then(() => uni.showToast({ title: t("social.common.reported"), icon: "none" }))
               .catch((error: any) =>
-                uni.showToast({ title: error?.message || "举报失败", icon: "none" })
+                uni.showToast({ title: error?.message || t("social.common.reportFailed"), icon: "none" })
               );
           }
         });
@@ -797,17 +809,17 @@ function openMore() {
 
 function hideConversation() {
   uni.showModal({
-    title: "隐藏会话",
-    content: "确认从消息列表隐藏该会话？收到新消息后会再次显示。",
+    title: t("social.common.hideConversation"),
+    content: t("social.chat.hideConfirm"),
     confirmColor: "#ff4d6e",
     success: async ({ confirm }) => {
       if (!confirm) return;
       try {
         await removeConversation(targetID.value, kind.value);
-        uni.showToast({ title: "会话已隐藏", icon: "none" });
+        uni.showToast({ title: t("social.common.conversationHidden"), icon: "none" });
         setTimeout(goBack, 300);
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
       }
     }
   });

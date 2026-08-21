@@ -12,7 +12,7 @@
     {
       "path": "pages/tabbar/live/index",
       "style": {
-        "navigationBarTitleText": "首页",
+        "navigationBarTitleText": "%nav.home%",
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
         "app-plus": {
@@ -23,7 +23,7 @@
     {
       "path": "pages/tabbar/game/index",
       "style": {
-        "navigationBarTitleText": "游戏",
+        "navigationBarTitleText": "%nav.game%",
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
         "app-plus": {
@@ -34,7 +34,7 @@
     {
       "path": "pages/tabbar/sports/index",
       "style": {
-        "navigationBarTitleText": "体育",
+        "navigationBarTitleText": "%nav.sports%",
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
         "app-plus": {
@@ -45,7 +45,7 @@
     {
       "path": "pages/tabbar/dynamic/index",
       "style": {
-        "navigationBarTitleText": "动态",
+        "navigationBarTitleText": "%nav.dynamic%",
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
         "app-plus": {
@@ -56,7 +56,7 @@
     {
       "path": "pages/tabbar/me/index",
       "style": {
-        "navigationBarTitleText": "我的",
+        "navigationBarTitleText": "%nav.me%",
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
         "app-plus": {
@@ -67,7 +67,7 @@
     {
       "path": "pages/auth/login",
       "style": {
-        "navigationBarTitleText": "登录",
+        "navigationBarTitleText": "%nav.login%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -77,7 +77,7 @@
     {
       "path": "pages/auth/register",
       "style": {
-        "navigationBarTitleText": "注册",
+        "navigationBarTitleText": "%nav.register%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -87,7 +87,7 @@
     {
       "path": "pages/auth/forgot",
       "style": {
-        "navigationBarTitleText": "找回密码",
+        "navigationBarTitleText": "%nav.forgot%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -97,7 +97,7 @@
     {
       "path": "pages/auth/country",
       "style": {
-        "navigationBarTitleText": "选择国家和地区",
+        "navigationBarTitleText": "%nav.country%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -107,13 +107,13 @@
     {
       "path": "pages/auth/invalid",
       "style": {
-        "navigationBarTitleText": "登录失效"
+        "navigationBarTitleText": "%nav.invalid%"
       }
     },
     {
       "path": "pages/search/index",
       "style": {
-        "navigationBarTitleText": "搜索",
+        "navigationBarTitleText": "%nav.search%",
         "navigationStyle": "custom",
         "enablePullDownRefresh": true,
         "app-plus": {
@@ -124,14 +124,14 @@
     {
       "path": "pages/message/index",
       "style": {
-        "navigationBarTitleText": "消息",
+        "navigationBarTitleText": "%nav.messages%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/message/chat",
       "style": {
-        "navigationBarTitleText": "聊天",
+        "navigationBarTitleText": "%nav.chat%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -141,46 +141,46 @@
     {
       "path": "pages/message/new-chat",
       "style": {
-        "navigationBarTitleText": "发起聊天"
+        "navigationBarTitleText": "%nav.newChat%"
       }
     },
     {
       "path": "pages/message/group-info",
       "style": {
-        "navigationBarTitleText": "群聊资料",
+        "navigationBarTitleText": "%nav.groupInfo%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/message/notice",
       "style": {
-        "navigationBarTitleText": "通知详情"
+        "navigationBarTitleText": "%nav.notice%"
       }
     },
     {
       "path": "pages/dynamic/publish",
       "style": {
-        "navigationBarTitleText": "发布动态"
+        "navigationBarTitleText": "%nav.publish%"
       }
     },
     {
       "path": "pages/dynamic/detail",
       "style": {
-        "navigationBarTitleText": "动态详情",
+        "navigationBarTitleText": "%nav.dynamicDetail%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/dynamic/my",
       "style": {
-        "navigationBarTitleText": "我的动态",
+        "navigationBarTitleText": "%nav.myDynamic%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/live/player",
       "style": {
-        "navigationBarTitleText": "直播间",
+        "navigationBarTitleText": "%nav.liveRoom%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -190,21 +190,21 @@
     {
       "path": "pages/live/follow",
       "style": {
-        "navigationBarTitleText": "关注直播",
+        "navigationBarTitleText": "%nav.followLive%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/redpack/index",
       "style": {
-        "navigationBarTitleText": "直播间红包",
+        "navigationBarTitleText": "%nav.redpack%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/game/bet",
       "style": {
-        "navigationBarTitleText": "星河牌桌",
+        "navigationBarTitleText": "%nav.cardTable%",
         "navigationStyle": "custom",
         "app-plus": {
           "titleNView": false
@@ -214,7 +214,7 @@
     {
       "path": "pages/game/record",
       "style": {
-        "navigationBarTitleText": "彩票投注记录",
+        "navigationBarTitleText": "%nav.lotteryRecords%",
         "enablePullDownRefresh": true,
         "onReachBottomDistance": 80
       }
@@ -222,77 +222,77 @@
     {
       "path": "pages/minigame/index",
       "style": {
-        "navigationBarTitleText": "小游戏",
+        "navigationBarTitleText": "%nav.minigame%",
         "navigationStyle": "custom"
       }
     },
     {
       "path": "pages/sports/record",
       "style": {
-        "navigationBarTitleText": "投注历史",
+        "navigationBarTitleText": "%nav.betHistory%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/sports/detail",
       "style": {
-        "navigationBarTitleText": "赛事详情",
+        "navigationBarTitleText": "%nav.sportsDetail%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/user/home",
       "style": {
-        "navigationBarTitleText": "用户主页",
+        "navigationBarTitleText": "%nav.userHome%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/user/list",
       "style": {
-        "navigationBarTitleText": "用户列表",
+        "navigationBarTitleText": "%nav.userList%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/profile/edit",
       "style": {
-        "navigationBarTitleText": "我的资料",
+        "navigationBarTitleText": "%nav.profile%",
         "navigationStyle": "custom"
       }
     },
     {
       "path": "pages/wallet/recharge",
       "style": {
-        "navigationBarTitleText": "充值",
+        "navigationBarTitleText": "%nav.recharge%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/wallet/bank-transfer",
       "style": {
-        "navigationBarTitleText": "银行卡付款",
+        "navigationBarTitleText": "%nav.bankTransfer%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/wallet/withdraw",
       "style": {
-        "navigationBarTitleText": "提现",
+        "navigationBarTitleText": "%nav.withdraw%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/wallet/promo",
       "style": {
-        "navigationBarTitleText": "优惠",
+        "navigationBarTitleText": "%nav.promo%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/wallet/detail",
       "style": {
-        "navigationBarTitleText": "明细",
+        "navigationBarTitleText": "%nav.details%",
         "enablePullDownRefresh": true,
         "onReachBottomDistance": 80
       }
@@ -300,91 +300,91 @@
     {
       "path": "pages/favorite/index",
       "style": {
-        "navigationBarTitleText": "我的收藏",
+        "navigationBarTitleText": "%nav.favorites%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/video/my",
       "style": {
-        "navigationBarTitleText": "我的视频",
+        "navigationBarTitleText": "%nav.myVideos%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/video/detail",
       "style": {
-        "navigationBarTitleText": "视频详情"
+        "navigationBarTitleText": "%nav.videoDetail%"
       }
     },
     {
       "path": "pages/task/index",
       "style": {
-        "navigationBarTitleText": "每日任务",
+        "navigationBarTitleText": "%nav.dailyTask%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/room/manage",
       "style": {
-        "navigationBarTitleText": "房间管理",
+        "navigationBarTitleText": "%nav.roomManage%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/service/index",
       "style": {
-        "navigationBarTitleText": "在线客服",
+        "navigationBarTitleText": "%nav.support%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/remote/index",
       "style": {
-        "navigationBarTitleText": "远程协助",
+        "navigationBarTitleText": "%nav.remote%",
         "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/service/chat",
       "style": {
-        "navigationBarTitleText": "平台客服"
+        "navigationBarTitleText": "%nav.platformSupport%"
       }
     },
     {
       "path": "pages/verify/index",
       "style": {
-        "navigationBarTitleText": "认证"
+        "navigationBarTitleText": "%nav.verify%"
       }
     },
     {
       "path": "pages/invite/index",
       "style": {
-        "navigationBarTitleText": "邀请"
+        "navigationBarTitleText": "%nav.invite%"
       }
     },
     {
       "path": "pages/detail/index",
       "style": {
-        "navigationBarTitleText": "详情"
+        "navigationBarTitleText": "%nav.detail%"
       }
     },
     {
       "path": "pages/settings/index",
       "style": {
-        "navigationBarTitleText": "设置"
+        "navigationBarTitleText": "%nav.settings%"
       }
     },
     {
       "path": "pages/settings/password",
       "style": {
-        "navigationBarTitleText": "修改密码"
+        "navigationBarTitleText": "%nav.password%"
       }
     },
     {
       "path": "pages/settings/cancel",
       "style": {
-        "navigationBarTitleText": "账号注销"
+        "navigationBarTitleText": "%nav.cancelAccount%"
       }
     },
     {
@@ -402,7 +402,7 @@
     {
       "path": "pages/webview/index",
       "style": {
-        "navigationBarTitleText": "星域"
+        "navigationBarTitleText": "%nav.brand%"
       }
     }
   ],
@@ -414,31 +414,31 @@
     "list": [
       {
         "pagePath": "pages/tabbar/live/index",
-        "text": "首页",
+        "text": "%tab.home%",
         "iconPath": "static/tabbar/home.png",
         "selectedIconPath": "static/tabbar/home-active.png"
       },
       {
         "pagePath": "pages/tabbar/game/index",
-        "text": "游戏",
+        "text": "%tab.game%",
         "iconPath": "static/tabbar/game.png",
         "selectedIconPath": "static/tabbar/game-active.png"
       },
       {
         "pagePath": "pages/tabbar/sports/index",
-        "text": "体育",
+        "text": "%tab.sports%",
         "iconPath": "static/tabbar/sports.png",
         "selectedIconPath": "static/tabbar/sports-active.png"
       },
       {
         "pagePath": "pages/tabbar/dynamic/index",
-        "text": "动态",
+        "text": "%tab.dynamic%",
         "iconPath": "static/tabbar/dynamic.png",
         "selectedIconPath": "static/tabbar/dynamic-active.png"
       },
       {
         "pagePath": "pages/tabbar/me/index",
-        "text": "我的",
+        "text": "%tab.me%",
         "iconPath": "static/tabbar/me.png",
         "selectedIconPath": "static/tabbar/me-active.png"
       }
@@ -446,7 +446,7 @@
   },
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "星域",
+    "navigationBarTitleText": "%nav.brand%",
     "navigationBarBackgroundColor": "#ffffff",
     "backgroundColor": "#f7f8fb"
   }

@@ -2,10 +2,10 @@
   <view class="safe-page my-dynamic-page">
     <view class="top-row header">
       <view>
-        <text class="title-xl">我的动态</text>
-        <text class="sub">管理你发布过的内容</text>
+        <text class="title-xl">{{ t("social.dynamicMy.title") }}</text>
+        <text class="sub">{{ t("social.dynamicMy.subtitle") }}</text>
       </view>
-      <view class="pill-button" @tap="goPublish">发布</view>
+      <view class="pill-button" @tap="goPublish">{{ t("social.dynamicMy.publish") }}</view>
     </view>
 
     <view v-if="items.length" class="feed">
@@ -16,16 +16,20 @@
         </view>
         <image v-else-if="item.video_thumb" class="single-cover" :src="absolutizeUrl(String(item.video_thumb))" mode="aspectFill" />
         <view v-if="item.voice" class="voice-row">
-          <text>语音 {{ item.length || 0 }}s</text>
+          <text>{{ t("social.common.voice") }} {{ item.length || 0 }}s</text>
         </view>
         <view class="meta-row">
           <text>{{ item.datetime || "" }}</text>
-          <text>赞 {{ item.likes || 0 }}</text>
-          <text>评 {{ item.comments || 0 }}</text>
+          <text>{{ t("social.common.likesShort") }} {{ item.likes || 0 }}</text>
+          <text>{{ t("social.common.commentsShort") }} {{ item.comments || 0 }}</text>
         </view>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载动态' : '暂无动态'" description="发布一条动态后会展示在这里。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('social.dynamicMy.loading') : t('social.dynamicMy.empty')"
+      :description="t('social.dynamicMy.emptyDescription')"
+    />
   </view>
 </template>
 
@@ -37,6 +41,9 @@ import { getUserDynamics } from "@/api/services";
 import type { DynamicItem } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { getSession, requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const items = ref<DynamicItem[]>([]);
 const page = ref(1);
@@ -73,7 +80,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "动态加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.common.dynamicLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -94,6 +101,7 @@ function goPublish() {
 }
 
 onShow(() => {
+  uni.setNavigationBarTitle({ title: t("social.dynamicMy.title") });
   void load(true);
 });
 

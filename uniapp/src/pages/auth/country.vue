@@ -2,7 +2,7 @@
   <view class="country-page">
     <view class="nav-row">
       <image class="back" src="/static/native/back.png" mode="aspectFit" @tap="goBack" />
-      <text class="nav-title">选择国家和地区</text>
+      <text class="nav-title">{{ t("misc.country.title") }}</text>
       <view class="nav-spacer" />
     </view>
 
@@ -12,7 +12,7 @@
         v-model.trim="keyword"
         class="search-input"
         confirm-type="search"
-        placeholder="搜索国家或区号"
+        :placeholder="t('misc.country.searchPlaceholder')"
         @input="onSearchInput"
         @confirm="loadCountries(true)"
       />
@@ -20,8 +20,8 @@
     </view>
 
     <scroll-view scroll-y class="country-scroll" :scroll-into-view="activeAnchor" :show-scrollbar="false">
-      <view v-if="loading" class="state-text">加载中...</view>
-      <view v-else-if="!groups.length" class="state-text">暂无结果</view>
+      <view v-if="loading" class="state-text">{{ t("misc.common.loading") }}</view>
+      <view v-else-if="!groups.length" class="state-text">{{ t("misc.common.noResults") }}</view>
       <view v-else>
         <view v-for="group in groups" :id="anchorOf(group.title)" :key="group.title" class="group">
           <view v-if="group.title" class="group-title">{{ group.title }}</view>
@@ -45,6 +45,7 @@ import { onLoad } from "@dcloudio/uni-app";
 import { getCountryCodes } from "@/api/services";
 import type { CountryCodeGroup, CountryCodeItem } from "@/types/api";
 import { saveSelectedCountry } from "@/utils/country";
+import { t } from "@/i18n";
 
 interface CountryGroup {
   title: string;
@@ -84,7 +85,7 @@ function normalizeGroups(rows: Array<CountryCodeGroup | CountryCodeItem>) {
   }
   return [
     {
-      title: "搜索结果",
+      title: t("misc.country.searchResults"),
       lists: (rows as CountryCodeItem[]).filter((item) => item.tel)
     }
   ];
@@ -96,7 +97,7 @@ async function loadCountries(isSearch = false) {
     const list = await getCountryCodes(isSearch ? keyword.value : "");
     groups.value = normalizeGroups(list);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "国家列表加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.country.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }
@@ -117,7 +118,7 @@ function clearSearch() {
 }
 
 function countryName(item: CountryCodeItem) {
-  return String(item.name || item.name_en || "国家地区");
+  return String(item.name || item.name_en || t("misc.country.countryRegion"));
 }
 
 function selectCountry(item: CountryCodeItem) {

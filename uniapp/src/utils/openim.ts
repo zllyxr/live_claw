@@ -1,4 +1,5 @@
 import { API_HOST } from "@/constants/config";
+import { t } from "@/i18n";
 import type {
   ChatGroup,
   ChatGroupApplication,
@@ -175,7 +176,7 @@ function nativeRequest<T>(
     session.token === "-9999" ||
     session.uid !== activeUserID
   ) {
-    return Promise.reject(new Error("登录已失效"));
+    return Promise.reject(new Error(t("core.sessionExpired")));
   }
   return new Promise<T>((resolve, reject) => {
     uni.request({
@@ -190,7 +191,7 @@ function nativeRequest<T>(
       },
       success: (response) => {
         if (String(getSession().uid || "") !== activeUserID) {
-          reject(new Error("帐号已切换，请重试"));
+          reject(new Error(t("core.accountChangedRetry")));
           return;
         }
         const body = response.data as NativeEnvelope<T>;
@@ -199,14 +200,14 @@ function nativeRequest<T>(
           resolve(body.data as T);
           return;
         }
-        reject(new Error(String(body?.message || "IM 服务暂不可用")));
+        reject(new Error(String(body?.message || t("core.imUnavailable"))));
       },
       fail: (error) => {
         if (String(getSession().uid || "") !== activeUserID) {
-          reject(new Error("帐号已切换，请重试"));
+          reject(new Error(t("core.accountChangedRetry")));
           return;
         }
-        reject(new Error(error.errMsg || "IM 服务连接失败"));
+        reject(new Error(error.errMsg || t("core.imConnectFailed")));
       }
     });
   });
@@ -315,7 +316,7 @@ function connectSocket() {
     session.token === "-9999" ||
     session.uid !== activeUserID
   ) {
-    return Promise.reject(new Error("登录已失效"));
+    return Promise.reject(new Error(t("core.sessionExpired")));
   }
   if (socketReady && socket && socketUserID === session.uid) {
     return Promise.resolve();
@@ -340,7 +341,7 @@ function connectSocket() {
       settled = true;
       resetSocket(true);
       setConnectionState("offline");
-      reject(new Error("IM 连接超时"));
+      reject(new Error(t("core.imTimeout")));
     }, 10_000);
 
     task.onOpen(() => {
@@ -386,7 +387,7 @@ function connectSocket() {
         settled = true;
         clearTimeout(timer);
         setConnectionState("offline");
-        reject(new Error(envelope.message || "IM 认证失败"));
+        reject(new Error(envelope.message || t("core.imAuthFailed")));
       }
     });
 
@@ -397,7 +398,7 @@ function connectSocket() {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
-        reject(new Error("IM 连接失败"));
+        reject(new Error(t("core.imConnectFailed")));
       }
       resetSocket();
       setConnectionState("offline");
@@ -411,7 +412,7 @@ function connectSocket() {
       clearTimeout(timer);
       if (!settled) {
         settled = true;
-        reject(new Error("IM 连接已断开"));
+        reject(new Error(t("core.imDisconnected")));
       }
       resetSocket();
       setConnectionState("offline");
@@ -456,7 +457,7 @@ async function directConversation(peerUserID: string) {
 async function oneConversationID(targetID: string, kind: ChatKind) {
   const normalized = targetID.trim();
   if (!normalized) {
-    throw new Error(kind === "group" ? "群聊编号无效" : "用户编号无效");
+    throw new Error(kind === "group" ? t("core.invalidGroupId") : t("core.invalidUserId"));
   }
   if (kind === "group") {
     conversationIDs.set(`group:${normalized}`, normalized);
@@ -467,23 +468,23 @@ async function oneConversationID(targetID: string, kind: ChatKind) {
 
 function latestText(message?: NativeMessage) {
   if (!message?.id) {
-    return "还没有消息，来打个招呼吧";
+    return t("core.noMessagesPreview");
   }
   switch (Number(message.message_type || 0)) {
     case 1:
-      return message.text_content || "[文字消息]";
+      return message.text_content || t("core.textMessage");
     case 2:
-      return "[图片]";
+      return t("core.imageMessage");
     case 3:
-      return "[语音]";
+      return t("core.voiceMessage");
     case 4:
-      return "[视频]";
+      return t("core.videoMessage");
     case 5:
-      return `[文件] ${String(message.metadata?.file_name || "")}`.trim();
+      return `${t("core.fileMessage")} ${String(message.metadata?.file_name || "")}`.trim();
     case 100:
-      return "[群通知]";
+      return t("core.groupNoticeMessage");
     default:
-      return "[新消息]";
+      return t("core.newMessage");
   }
 }
 
@@ -792,7 +793,7 @@ export function openIMSendFile(
 ) {
   return sendMessage(targetID, kind, 5, "", {
     source_url: absolutizeUrl(sourceURL),
-    file_name: fileName.trim() || "聊天文件",
+    file_name: fileName.trim() || t("core.chatFile"),
     file_size: Math.max(0, Math.round(fileSize))
   });
 }
@@ -1010,13 +1011,13 @@ export async function openIMInviteGroupMembers(groupID: string, userIDs: string[
       if (!invited) {
         throw error;
       }
-      throw new Error(`已邀请 ${invited} 人，其余成员邀请失败，请稍后重试`);
+      throw new Error(t("core.partialInviteFailed", { count: invited }));
     }
   }
   return { invited };
 }
 
-export function openIMJoinGroup(groupID: string, message = "申请加入群聊") {
+export function openIMJoinGroup(groupID: string, message = t("core.requestJoinGroup")) {
   return nativeRequest<{ id?: string; status: number; joined: boolean }>(
     `/groups/${pathID(groupID)}/join`,
     "POST",
@@ -1207,7 +1208,7 @@ export async function openIMHandleGroupApplication(
 ) {
   const applicationID = applicationIDs.get(`${groupID}:${fromUserID}`);
   if (!applicationID) {
-    throw new Error("群申请已失效，请刷新后重试");
+    throw new Error(t("core.groupApplicationExpired"));
   }
   const result = await nativeRequest(`/group-applications/${pathID(applicationID)}`, "POST", {
     accept,

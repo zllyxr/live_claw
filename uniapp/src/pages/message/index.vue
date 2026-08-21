@@ -3,7 +3,7 @@
     <view class="inbox-overview">
       <view class="overview-copy">
         <text class="overview-desc">
-          {{ totalUnread ? `${totalUnread} 条消息等你查看` : "所有消息都已读" }}
+          {{ totalUnread ? `${totalUnread} ${t("social.inbox.unreadSuffix")}` : t("social.inbox.allRead") }}
         </text>
       </view>
       <view class="connection-pill" :class="connectionState">
@@ -14,13 +14,13 @@
 
     <view class="primary-actions">
       <view class="primary-action" @tap="startChat">
-        <text>新私信</text>
+        <text>{{ t("social.inbox.newPrivate") }}</text>
       </view>
       <view class="primary-action" @tap="createGroup">
-        <text>创建群聊</text>
+        <text>{{ t("social.newChat.createGroup") }}</text>
       </view>
       <view class="primary-action" @tap="joinGroup">
-        <text>加入群聊</text>
+        <text>{{ t("social.inbox.joinGroup") }}</text>
       </view>
     </view>
 
@@ -37,8 +37,8 @@
       <button v-if="pendingApplications.length" class="application-banner" @tap="openApplications">
         <view class="application-icon">✓</view>
         <view class="application-copy">
-          <text>待处理入群申请</text>
-          <text>{{ pendingApplications.length }} 位用户正在等待审核</text>
+          <text>{{ t("social.inbox.pendingApplications") }}</text>
+          <text>{{ pendingApplications.length }} {{ t("social.inbox.usersWaiting") }}</text>
         </view>
         <view class="banner-count">{{ pendingApplications.length }}</view>
       </button>
@@ -48,7 +48,7 @@
         <input
           v-model.trim="keyword"
           class="search-input"
-          placeholder="搜索联系人、群聊或消息"
+          :placeholder="t('social.inbox.searchPlaceholder')"
           confirm-type="search"
         />
         <button v-if="keyword" class="clear-search" @tap="keyword = ''">×</button>
@@ -84,7 +84,7 @@
                 v-if="activeTab === 'chat' && conversationKind(item) === 'group'"
                 class="type-tag"
               >
-                群聊
+                {{ t("social.common.groupChat") }}
               </view>
               <view v-else-if="activeTab === 'system'" class="type-tag notice-tag">
                 {{ noticeLabelOf(item) }}
@@ -130,13 +130,16 @@ import {
 } from "@/utils/openim";
 import { absolutizeUrl, firstText } from "@/utils/url";
 import { getSession, requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type MessageTab = "chat" | "system";
 
-const tabs: Array<{ key: MessageTab; name: string }> = [
-  { key: "chat", name: "聊天" },
-  { key: "system", name: "通知" }
-];
+const tabs = computed<Array<{ key: MessageTab; name: string }>>(() => [
+  { key: "chat", name: t("social.inbox.chatTab") },
+  { key: "system", name: t("social.inbox.noticeTab") }
+]);
 
 const activeTab = ref<MessageTab>("chat");
 const items = ref<Record<string, unknown>[]>([]);
@@ -151,17 +154,17 @@ let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
-  if (hour < 11) return "早上好";
-  if (hour < 18) return "下午好";
-  return "晚上好";
+  if (hour < 11) return t("social.inbox.goodMorning");
+  if (hour < 18) return t("social.inbox.goodAfternoon");
+  return t("social.inbox.goodEvening");
 });
 
 const connectionLabel = computed(() => {
   const labels: Record<IMConnectionState, string> = {
-    idle: "未连接",
-    connecting: "连接中",
-    ready: "实时在线",
-    offline: "正在重连"
+    idle: t("social.inbox.disconnected"),
+    connecting: t("social.common.connecting"),
+    ready: t("social.common.realtimeOnline"),
+    offline: t("social.inbox.reconnecting")
   };
   return labels[connectionState.value];
 });
@@ -190,16 +193,16 @@ const visibleItems = computed(() => {
 });
 
 const emptyTitle = computed(() => {
-  if (loading.value) return activeTab.value === "chat" ? "正在同步会话" : "正在加载通知";
-  if (keyword.value && activeTab.value === "chat") return "没有匹配的会话";
-  return activeTab.value === "chat" ? "还没有聊天" : "暂无通知";
+  if (loading.value) return activeTab.value === "chat" ? t("social.inbox.syncing") : t("social.inbox.loadingNotices");
+  if (keyword.value && activeTab.value === "chat") return t("social.inbox.noMatching");
+  return activeTab.value === "chat" ? t("social.inbox.noChats") : t("social.inbox.noNotices");
 });
 
 const emptyDescription = computed(() => {
-  if (keyword.value && activeTab.value === "chat") return "换一个昵称、群名或消息关键词试试。";
+  if (keyword.value && activeTab.value === "chat") return t("social.inbox.noMatchingDescription");
   return activeTab.value === "chat"
-    ? "发起一段新对话，消息会实时出现在这里。"
-    : "平台通知与互动提醒会统一展示在这里。";
+    ? t("social.inbox.noChatsDescription")
+    : t("social.inbox.noNoticesDescription");
 });
 
 function rowKey(item: Record<string, unknown>) {
@@ -257,7 +260,7 @@ function titleOf(item: Record<string, unknown>) {
       item.user_nicename,
       item.user_nickname,
       item.from_user_nicename,
-      "系统通知"
+      t("social.notice.systemNotice")
     );
   }
   const uid = conversationUid(item);
@@ -268,8 +271,8 @@ function titleOf(item: Record<string, unknown>) {
     item.peer_nickname,
     item.group_name,
     item.title,
-    uid ? `用户 ${uid}` : "",
-    "新会话"
+    uid ? `${t("social.common.user")} ${uid}` : "",
+    t("social.inbox.newConversation")
   );
 }
 
@@ -281,12 +284,20 @@ function descOf(item: Record<string, unknown>) {
     item.message,
     item.msg,
     item.lastMsgTimeString,
-    "还没有消息"
+    t("social.inbox.noMessages")
   );
 }
 
 function noticeLabelOf(item: Record<string, unknown>) {
-  return firstText(item._notice_label, "平台");
+  const labels: Record<string, string> = {
+    system: t("social.notice.platform"),
+    group: t("social.notice.groupApplication"),
+    at: t("social.notice.mention"),
+    like: t("social.dynamicDetail.like"),
+    comment: t("social.common.comments"),
+    fans: t("social.common.follow")
+  };
+  return labels[firstText(item._notice_type)] || firstText(item._notice_label, t("social.notice.platform"));
 }
 
 function timeOf(item: Record<string, unknown>) {
@@ -303,8 +314,8 @@ function timeOf(item: Record<string, unknown>) {
   const date = new Date(timestamp);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
-  if (diff >= 0 && diff < 60_000) return "刚刚";
-  if (diff >= 60_000 && diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff >= 0 && diff < 60_000) return t("social.common.justNow");
+  if (diff >= 60_000 && diff < 3_600_000) return `${Math.floor(diff / 60_000)}${t("social.inbox.minutesAgoSuffix")}`;
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   if (date.toDateString() === now.toDateString()) return `${hours}:${minutes}`;
@@ -356,7 +367,7 @@ function mergeConversations(
       group_id: group.groupID,
       group_name: group.groupName,
       peer_nickname: group.groupName,
-      last_msg: `${Number(group.memberCount || 0)} 位成员 · 还没有消息`,
+      last_msg: `${Number(group.memberCount || 0)} ${t("social.common.members")} · ${t("social.inbox.noMessages")}`,
       addtime: String(group.createTime || 0),
       updated_at: Number(group.createTime || 0)
     }));
@@ -402,7 +413,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "消息加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.inbox.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -433,23 +444,23 @@ function createGroup() {
 
 function joinGroup() {
   (uni.showModal as any)({
-    title: "加入群聊",
+    title: t("social.inbox.joinGroup"),
     content: "",
     editable: true,
-    placeholderText: "请输入群聊 ID",
-    confirmText: "继续",
+    placeholderText: t("social.inbox.enterGroupId"),
+    confirmText: t("social.common.continue"),
     success: async ({ confirm, content }: { confirm: boolean; content: string }) => {
       const groupID = String(content || "").trim();
       if (!confirm || !groupID) return;
       try {
         const result = await joinChatGroup(groupID);
         uni.showToast({
-          title: result.joined ? "已加入群聊" : "入群申请已提交",
+          title: result.joined ? t("social.inbox.joinedGroup") : t("social.inbox.applicationSubmitted"),
           icon: "none"
         });
         if (result.joined) void load(true);
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "申请失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.inbox.applicationFailed"), icon: "none" });
       }
     }
   });
@@ -469,17 +480,17 @@ function removeItem(item: Record<string, unknown>) {
   const kind = conversationKind(item);
   if (!targetID) return;
   uni.showModal({
-    title: "隐藏会话",
-    content: `确认从消息列表隐藏“${titleOf(item)}”？收到新消息后会再次显示。`,
+    title: t("social.common.hideConversation"),
+    content: `${t("social.inbox.hidePrefix")}${titleOf(item)}${t("social.inbox.hideSuffix")}`,
     confirmColor: "#ff4d6e",
     success: async ({ confirm }) => {
       if (!confirm) return;
       try {
         await removeConversation(targetID, kind);
         items.value = items.value.filter((row) => rowKey(row) !== rowKey(item));
-        uni.showToast({ title: "会话已隐藏", icon: "none" });
+        uni.showToast({ title: t("social.common.conversationHidden"), icon: "none" });
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
       }
     }
   });
@@ -497,7 +508,7 @@ function openItem(item: Record<string, unknown>) {
   const kind = conversationKind(item);
   const targetID = conversationTarget(item as Conversation);
   if (!targetID) {
-    uni.showToast({ title: "暂时无法打开该会话", icon: "none" });
+    uni.showToast({ title: t("social.inbox.cannotOpen"), icon: "none" });
     return;
   }
   uni.navigateTo({
@@ -514,6 +525,7 @@ const stopConnection = onIMConnectionState((state) => {
 const stopMessages = onOpenIMMessage(() => queueRealtimeRefresh());
 
 onShow(() => {
+  uni.setNavigationBarTitle({ title: t("social.inbox.title") });
   if (!loadedOnce) loadedOnce = true;
   void load(true);
 });

@@ -1,11 +1,11 @@
 <template>
   <view class="safe-page password-page">
     <view class="form card">
-      <input v-model.trim="oldpass" class="input" password placeholder="当前密码" />
-      <input v-model.trim="pass" class="input" password placeholder="新密码" />
-      <input v-model.trim="pass2" class="input" password placeholder="确认新密码" />
+      <input v-model.trim="oldpass" class="input" password :placeholder="t('misc.password.current')" />
+      <input v-model.trim="pass" class="input" password :placeholder="t('misc.auth.newPassword')" />
+      <input v-model.trim="pass2" class="input" password :placeholder="t('misc.auth.confirmNewPassword')" />
     </view>
-    <button class="primary-button submit" :disabled="submitting" @tap="submit">确认修改</button>
+    <button class="primary-button submit" :disabled="submitting" @tap="submit">{{ t("misc.password.confirmChange") }}</button>
   </view>
 </template>
 
@@ -13,6 +13,7 @@
 import { ref } from "vue";
 import { updatePassword } from "@/api/services";
 import { clearSession, requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const oldpass = ref("");
 const pass = ref("");
@@ -24,23 +25,23 @@ async function submit() {
     return;
   }
   if (!oldpass.value || !pass.value || !pass2.value) {
-    uni.showToast({ title: "请完整填写密码", icon: "none" });
+    uni.showToast({ title: t("misc.password.fillAll"), icon: "none" });
     return;
   }
   if (pass.value !== pass2.value) {
-    uni.showToast({ title: "两次新密码不一致", icon: "none" });
+    uni.showToast({ title: t("misc.password.newMismatch"), icon: "none" });
     return;
   }
   submitting.value = true;
   try {
     await updatePassword(oldpass.value, pass.value, pass2.value);
     clearSession();
-    uni.showToast({ title: "密码已修改，请重新登录", icon: "none" });
+    uni.showToast({ title: t("misc.password.changed"), icon: "none" });
     setTimeout(() => {
       uni.redirectTo({ url: "/pages/auth/login" });
     }, 500);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "修改失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.password.changeFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }

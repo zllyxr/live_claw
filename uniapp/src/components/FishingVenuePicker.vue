@@ -4,8 +4,8 @@
       <view class="venue-head">
         <view>
           <text class="venue-kicker">DEEP SEA ARENA</text>
-          <text class="venue-title">选择捕鱼场次</text>
-          <text class="venue-subtitle">所有场次直接使用统一钱包余额</text>
+          <text class="venue-title">{{ t("misc.fishing.title") }}</text>
+          <text class="venue-subtitle">{{ t("misc.fishing.subtitle") }}</text>
         </view>
         <view class="venue-close" @tap="emit('close')">×</view>
       </view>
@@ -27,16 +27,16 @@
               <text class="venue-state">{{ balanceState(venue) }}</text>
             </view>
             <text class="venue-meta">
-              最低 {{ formatCoin(venue.min_balance) }} · 统一钱包实时结算
+              {{ t("misc.fishing.minimum") }} {{ formatCoin(venue.min_balance) }} · {{ t("misc.fishing.walletSettlement") }}
             </text>
-            <text class="venue-bets">炮台档位 {{ venue.bet_levels.join(" / ") }}</text>
+            <text class="venue-bets">{{ t("misc.fishing.betLevels") }} {{ venue.bet_levels.join(" / ") }}</text>
           </view>
-          <view class="venue-enter">进入</view>
+          <view class="venue-enter">{{ t("misc.common.enter") }}</view>
         </view>
       </view>
 
       <view class="venue-note">
-        系统将从 300 张桌中随机匹配空位，每桌最多 4 人
+        {{ t("misc.fishing.matchNote") }}
       </view>
     </view>
   </view>
@@ -45,6 +45,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { FishingVenue } from "@/types/api";
+import { t } from "@/i18n";
 
 type NormalizedVenue = {
   venue_id: string;
@@ -69,10 +70,10 @@ const emit = defineEmits<{
   select: [venue: NormalizedVenue];
 }>();
 
-const defaultVenues: FishingVenue[] = [
+const defaultVenues = computed<FishingVenue[]>(() => [
   {
     venue_code: "novice",
-    venue_name: "新手场",
+    venue_name: t("misc.fishing.novice"),
     multiplier: 1,
     table_count: 300,
     seats_per_table: 4,
@@ -82,7 +83,7 @@ const defaultVenues: FishingVenue[] = [
   },
   {
     venue_code: "expert",
-    venue_name: "高手场",
+    venue_name: t("misc.fishing.expert"),
     multiplier: 5,
     table_count: 300,
     seats_per_table: 4,
@@ -92,7 +93,7 @@ const defaultVenues: FishingVenue[] = [
   },
   {
     venue_code: "master",
-    venue_name: "大师场",
+    venue_name: t("misc.fishing.master"),
     multiplier: 10,
     table_count: 300,
     seats_per_table: 4,
@@ -100,15 +101,15 @@ const defaultVenues: FishingVenue[] = [
     escrow_amount: 0,
     bet_levels: [10, 20, 50, 100]
   }
-];
+]);
 
 const normalizedVenues = computed<NormalizedVenue[]>(() => {
-  const source = props.venues?.length ? props.venues : defaultVenues;
+  const source = props.venues?.length ? props.venues : defaultVenues.value;
   return source
     .map((venue, index) => ({
       venue_id: String(venue.venue_id || ""),
       venue_code: String(venue.venue_code || ["novice", "expert", "master"][index] || ""),
-      venue_name: String(venue.venue_name || ["新手场", "高手场", "大师场"][index] || "捕鱼场"),
+      venue_name: String(venue.venue_name || [t("misc.fishing.novice"), t("misc.fishing.expert"), t("misc.fishing.master")][index] || t("misc.fishing.venue")),
       multiplier: Math.max(1, Number(venue.multiplier || 1)),
       table_count: Math.max(1, Number(venue.table_count || 300)),
       seats_per_table: Math.max(1, Number(venue.seats_per_table || 4)),
@@ -126,9 +127,9 @@ function formatCoin(value: number) {
 function balanceState(venue: NormalizedVenue) {
   const balance = Number(props.balance);
   if (!Number.isFinite(balance) || props.balance === undefined || props.balance === "") {
-    return `${venue.table_count}桌`;
+    return `${venue.table_count} ${t("misc.fishing.tables")}`;
   }
-  return balance >= venue.min_balance ? "可进入" : "余额不足";
+  return balance >= venue.min_balance ? t("misc.fishing.available") : t("misc.fishing.insufficientBalance");
 }
 </script>
 

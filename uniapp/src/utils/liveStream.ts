@@ -1,3 +1,5 @@
+import { t } from "@/i18n";
+
 export interface ResolvedLiveStream {
   src: string;
   page?: string;
@@ -30,10 +32,10 @@ export function isPlayableLiveUrl(value: string) {
 export async function resolveLiveStream(raw: unknown): Promise<ResolvedLiveStream> {
   const source = deepDecode(raw);
   if (!source) {
-    return { src: "", reason: "直播地址暂不可用" };
+    return { src: "", reason: t("live.streamUnavailable") };
   }
   if (isPlayableLiveUrl(source)) {
     return { src: source };
   }
-  return { src: "", reason: "直播直拉地址尚未就绪" };
+  return { src: "", reason: t("core.directStreamNotReady") };
 }

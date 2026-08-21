@@ -1,4 +1,6 @@
-export const APP_NAME = "星域";
+import { t } from "@/i18n";
+
+export const APP_NAME = t("home.brand");
 const env = ((import.meta as unknown as { env?: Record<string, unknown> }).env || {}) as Record<string, unknown>;
 const locationLike = (globalThis as unknown as { location?: { hostname?: string; origin?: string } }).location;
 const previewHost = locationLike?.hostname || "";
@@ -24,7 +26,6 @@ export const API_BASE = browserOrigin ? "/appapi/" : `${API_HOST}/appapi/`;
 // falling back to the retired legacy backend.
 export const CORE_API_BASE = API_BASE;
 export const GAME_API_BASE = browserOrigin ? "/gameapi/" : `${API_HOST}/gameapi/`;
-export const DEFAULT_LANGUAGE = "zh-cn";
 export const NOT_LOGIN_UID = "-9999";
 export const NOT_LOGIN_TOKEN = "-9999";
 export const SIGN_SALT = "76576076c1f5f657b634e966c8836a06";

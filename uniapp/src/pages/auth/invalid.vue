@@ -1,10 +1,10 @@
 <template>
   <view class="safe-page invalid-page">
     <image class="icon" src="/static/brand/icon-round.webp" mode="aspectFit" />
-    <text class="title">登录状态已失效</text>
+    <text class="title">{{ t("misc.auth.invalidTitle") }}</text>
     <text class="desc">{{ message }}</text>
-    <button class="primary-button action" @tap="goLogin">重新登录</button>
-    <button class="ghost" @tap="goMe">返回我的</button>
+    <button class="primary-button action" @tap="goLogin">{{ t("misc.auth.loginAgain") }}</button>
+    <button class="ghost" @tap="goMe">{{ t("misc.auth.backToMe") }}</button>
   </view>
 </template>
 
@@ -12,8 +12,9 @@
 import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { clearSession } from "@/utils/session";
+import { t } from "@/i18n";
 
-const message = ref("为了账号安全，请重新登录后继续使用。");
+const message = ref(t("misc.auth.invalidDescription"));
 
 onLoad((query) => {
   clearSession();

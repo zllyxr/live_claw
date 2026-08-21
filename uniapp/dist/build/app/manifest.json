@@ -4,11 +4,11 @@
     "iPhone",
     "iPad"
   ],
-  "id": "__UNI__CLAWMVP",
+  "id": "__UNI__D917A6C",
   "name": "星域",
   "version": {
-    "name": "8.1.1",
-    "code": "211"
+    "name": "8.2.1",
+    "code": "217"
   },
   "description": "星域 uni-app Android MVP",
   "developer": {
@@ -50,15 +50,15 @@
     "distribute": {
       "icons": {
         "android": {
-          "hdpi": "static/brand/icon.webp",
-          "xhdpi": "static/brand/icon.webp",
-          "xxhdpi": "static/brand/icon.webp",
-          "xxxhdpi": "static/brand/icon.webp"
+          "hdpi": "static/brand/icon.png",
+          "xhdpi": "static/brand/icon.png",
+          "xxhdpi": "static/brand/icon.png",
+          "xxxhdpi": "static/brand/icon.png"
         }
       },
       "google": {
         "packagename": "com.yunbao.phonelive",
-        "minSdkVersion": 23,
+        "minSdkVersion": 29,
         "targetSdkVersion": 36,
         "permissions": [
           "<uses-permission android:name=\"android.permission.INTERNET\"/>",
@@ -70,11 +70,17 @@
           "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
           "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"/>",
           "<uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\"/>",
-          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
-          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"28\"/>",
           "<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>",
           "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
           "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MICROPHONE\"/>",
+          "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
+          "<uses-permission android:name=\"android.permission.SYSTEM_ALERT_WINDOW\"/>",
+          "<uses-permission android:name=\"android.permission.MANAGE_EXTERNAL_STORAGE\"/>",
+          "<uses-permission android:name=\"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS\"/>",
           "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\"/>"
         ]
       },
@@ -84,7 +90,8 @@
           "NSCameraUsageDescription": "用于拍摄头像、动态图片和视频",
           "NSPhotoLibraryUsageDescription": "用于选择头像、动态图片和视频",
           "NSPhotoLibraryAddUsageDescription": "用于保存聊天和直播中的图片与视频"
-        }
+        },
+        "dSYMs": false
       },
       "plugins": {
         "audio": {
@@ -109,7 +116,7 @@
     "uni-app": {
       "control": "uni-v3",
       "vueVersion": "3",
-      "compilerVersion": "5.07",
+      "compilerVersion": "5.23",
       "nvueCompiler": "uni-app",
       "renderer": "auto",
       "nvue": {
@@ -133,33 +140,63 @@
       "list": [
         {
           "pagePath": "pages/tabbar/live/index",
-          "text": "首页",
+          "text": "Home",
           "iconPath": "/static/tabbar/home.png",
-          "selectedIconPath": "/static/tabbar/home-active.png"
+          "selectedIconPath": "/static/tabbar/home-active.png",
+          "textLocales": {
+            "en": "Home",
+            "ja": "ホーム",
+            "ko": "홈",
+            "zh-Hans": "首页"
+          }
         },
         {
           "pagePath": "pages/tabbar/game/index",
-          "text": "游戏",
+          "text": "Games",
           "iconPath": "/static/tabbar/game.png",
-          "selectedIconPath": "/static/tabbar/game-active.png"
+          "selectedIconPath": "/static/tabbar/game-active.png",
+          "textLocales": {
+            "en": "Games",
+            "ja": "ゲーム",
+            "ko": "게임",
+            "zh-Hans": "游戏"
+          }
         },
         {
           "pagePath": "pages/tabbar/sports/index",
-          "text": "体育",
+          "text": "Sports",
           "iconPath": "/static/tabbar/sports.png",
-          "selectedIconPath": "/static/tabbar/sports-active.png"
+          "selectedIconPath": "/static/tabbar/sports-active.png",
+          "textLocales": {
+            "en": "Sports",
+            "ja": "スポーツ",
+            "ko": "스포츠",
+            "zh-Hans": "体育"
+          }
         },
         {
           "pagePath": "pages/tabbar/dynamic/index",
-          "text": "动态",
+          "text": "Feed",
           "iconPath": "/static/tabbar/dynamic.png",
-          "selectedIconPath": "/static/tabbar/dynamic-active.png"
+          "selectedIconPath": "/static/tabbar/dynamic-active.png",
+          "textLocales": {
+            "en": "Feed",
+            "ja": "フィード",
+            "ko": "피드",
+            "zh-Hans": "动态"
+          }
         },
         {
           "pagePath": "pages/tabbar/me/index",
-          "text": "我的",
+          "text": "Me",
           "iconPath": "/static/tabbar/me.png",
-          "selectedIconPath": "/static/tabbar/me-active.png"
+          "selectedIconPath": "/static/tabbar/me-active.png",
+          "textLocales": {
+            "en": "Me",
+            "ja": "マイページ",
+            "ko": "마이",
+            "zh-Hans": "我的"
+          }
         }
       ],
       "backgroundColor": "#ffffff",
@@ -179,5 +216,6 @@
       }
     }
   },
-  "launch_path": "__uniappview.html"
+  "launch_path": "__uniappview.html",
+  "fallbackLocale": "en"
 }

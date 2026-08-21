@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { onLoad, onUnload } from "@dcloudio/uni-app";
+import { t } from "@/i18n";
 
 const url = ref("");
 let lockedLandscape = false;
@@ -23,7 +24,7 @@ async function lockLandscape() {
 
 onLoad((query) => {
   url.value = decodeURIComponent(String(query?.url || ""));
-  const title = decodeURIComponent(String(query?.title || "星域"));
+  const title = decodeURIComponent(String(query?.title || t("misc.common.brand")));
   const orientation = decodeURIComponent(String(query?.orientation || "auto"));
   uni.setNavigationBarTitle({ title });
   if (orientation === "landscape") {

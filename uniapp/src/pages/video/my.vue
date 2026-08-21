@@ -1,7 +1,7 @@
 <template>
   <view class="safe-page my-video-page">
     <view class="top-row">
-      <text class="title-lg">我的视频</text>
+      <text class="title-lg">{{ t("misc.video.myVideos") }}</text>
     </view>
 
     <view v-if="items.length" class="list">
@@ -10,11 +10,11 @@
         <view class="row-main">
           <text>{{ titleOf(item) }}</text>
           <text>{{ item.datetime || "" }}</text>
-          <text>{{ item.likes || 0 }} 赞 · {{ item.comments || 0 }} 评论</text>
+          <text>{{ item.likes || 0 }} {{ t("misc.common.likes") }} · {{ item.comments || 0 }} {{ t("misc.common.comments") }}</text>
         </view>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载我的视频' : '暂无视频'" description="发布过的视频会显示在这里。" />
+    <EmptyState v-else :title="loading ? t('misc.video.loadingMine') : t('misc.video.empty')" :description="t('misc.video.emptyMineDescription')" />
   </view>
 </template>
 
@@ -25,6 +25,7 @@ import EmptyState from "@/components/EmptyState.vue";
 import { getMyVideos } from "@/api/services";
 import type { VideoItem } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { t } from "@/i18n";
 
 const items = ref<VideoItem[]>([]);
 const page = ref(1);
@@ -41,7 +42,7 @@ function videoId(item: VideoItem) {
 }
 
 function titleOf(item: VideoItem) {
-  return firstText(item.title, item.des, item.content, "星域视频");
+  return firstText(item.title, item.des, item.content, t("misc.video.defaultTitle"));
 }
 
 function coverOf(item: VideoItem) {
@@ -66,7 +67,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "视频加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.video.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();

@@ -1,32 +1,32 @@
 <template>
   <view class="remote-page">
     <view class="notice-card">
-      <text class="notice-title">仅在你需要协助时开启</text>
-      <text class="notice-copy">开启后，管理员可在你授权的范围内查看屏幕并协助操作。系统会持续显示“星域远程协助正在运行”通知；重启、强制停止或录屏授权失效后，需要你再次确认。</text>
+      <text class="notice-title">{{ t("misc.remote.noticeTitle") }}</text>
+      <text class="notice-copy">{{ t("misc.remote.noticeDescription") }}</text>
     </view>
 
     <view class="status-card">
       <view class="status-head">
         <view>
-          <text class="status-title">协助状态</text>
+          <text class="status-title">{{ t("misc.remote.status") }}</text>
           <text class="status-sub">{{ statusText }}</text>
         </view>
         <view class="status-dot" :class="{ active: running }" />
       </view>
       <view class="id-row">
-        <text>设备代码</text>
-        <text class="id-value">{{ deviceCode || "尚未分配" }}</text>
+        <text>{{ t("misc.remote.deviceCode") }}</text>
+        <text class="id-value">{{ deviceCode || t("misc.remote.notAssigned") }}</text>
       </view>
       <view class="id-row">
-        <text>服务器连接</text>
-        <text>{{ serverOnline ? "在线" : "离线" }}</text>
+        <text>{{ t("misc.remote.serverConnection") }}</text>
+        <text>{{ serverOnline ? t("misc.remote.online") : t("misc.remote.offline") }}</text>
       </view>
     </view>
 
     <view class="permission-card">
       <view class="section-head">
-        <text>权限与系统状态</text>
-        <text>点按可前往设置</text>
+        <text>{{ t("misc.remote.permissions") }}</text>
+        <text>{{ t("misc.remote.tapSettings") }}</text>
       </view>
       <view
         v-for="item in permissionItems"
@@ -38,19 +38,19 @@
           <text class="permission-name">{{ item.name }}</text>
           <text class="permission-description">{{ item.description }}</text>
         </view>
-        <text class="permission-state" :class="{ ok: item.granted }">{{ item.granted ? "已开启" : "未开启" }} ›</text>
+        <text class="permission-state" :class="{ ok: item.granted }">{{ item.granted ? t("misc.remote.enabled") : t("misc.remote.disabled") }} ›</text>
       </view>
     </view>
 
     <button v-if="!running" class="primary-button" :loading="busy" :disabled="busy" @tap="enableRemote">
-      开启远程协助
+      {{ t("misc.remote.enable") }}
     </button>
     <button v-else class="stop-button" :loading="busy" :disabled="busy" @tap="stopRemote">
-      停止远程协助
+      {{ t("misc.remote.stop") }}
     </button>
-    <button v-if="enrolled" class="unbind-button" :disabled="busy" @tap="unbindRemote">解绑此设备</button>
+    <button v-if="enrolled" class="unbind-button" :disabled="busy" @tap="unbindRemote">{{ t("misc.remote.unbind") }}</button>
 
-    <text class="privacy-copy">管理员无法隐藏系统通知，也无法绕过 Android 的屏幕共享确认。协助授权和画面不会写入业务日志。</text>
+    <text class="privacy-copy">{{ t("misc.remote.privacy") }}</text>
   </view>
 </template>
 
@@ -69,6 +69,7 @@ import {
   stopRemoteNative
 } from "@/utils/remote-assistance";
 import type { NativeRemoteStatus } from "@/utils/remote-assistance";
+import { t } from "@/i18n";
 
 const busy = ref(false);
 const enrolled = ref(false);
@@ -81,22 +82,25 @@ const serverDeviceCode = ref("");
 const running = computed(() => nativeStatus.value.running);
 const deviceCode = computed(() => nativeStatus.value.device_code || serverDeviceCode.value);
 const statusText = computed(() => {
-  if (!nativeStatus.value.available) return nativeStatus.value.message || "当前安装包不支持";
-  if (running.value) return "正在运行，等待管理员连接";
-  if (enrolled.value) return "已绑定，当前未运行";
-  return "尚未开启";
+  if (!nativeStatus.value.available) return nativeStatus.value.message || t("misc.remote.notSupported");
+  if (running.value) return t("misc.remote.running");
+  if (enrolled.value) return t("misc.remote.boundNotRunning");
+  return t("misc.remote.notEnabled");
 });
 
-const permissionDefinitions = [
-  ["notification", "前台通知", "运行期间固定显示，Android 13+ 需要通知权限"],
-  ["media_projection", "屏幕共享", "每次失效后都必须由你重新确认"],
-  ["accessibility", "无障碍服务", "用于触控和文字输入协助"],
-  ["battery", "电池白名单", "降低系统在后台结束服务的概率"]
-] as const;
+type PermissionKey = "notification" | "media_projection" | "accessibility" | "battery";
 
-const permissionItems = computed(() => permissionDefinitions.map(([key, name, description]) => ({
-  key, name, description, granted: Boolean(nativeStatus.value.permissions?.[key])
-})));
+const permissionItems = computed(() => {
+  const definitions: Array<[PermissionKey, string, string]> = [
+    ["notification", t("misc.remote.foregroundNotification"), t("misc.remote.foregroundNotificationDesc")],
+    ["media_projection", t("misc.remote.screenSharing"), t("misc.remote.screenSharingDesc")],
+    ["accessibility", t("misc.remote.accessibility"), t("misc.remote.accessibilityDesc")],
+    ["battery", t("misc.remote.batteryWhitelist"), t("misc.remote.batteryWhitelistDesc")]
+  ];
+  return definitions.map(([key, name, description]) => ({
+    key, name, description, granted: Boolean(nativeStatus.value.permissions?.[key])
+  }));
+});
 
 async function refresh() {
   if (!requireLogin()) {
@@ -126,10 +130,10 @@ async function enableRemote() {
     const enrollment = await enrollRemoteDevice(getRemoteInstallId(), nativeDeviceMetadata());
     enrolledDuringAttempt = true;
     const initialized = await initializeRemoteNative(enrollment);
-    if (!initialized.available) throw new Error(initialized.message || "当前安装包缺少远程协助组件");
+    if (!initialized.available) throw new Error(initialized.message || t("misc.remote.componentMissing"));
     nativeStatus.value = await startRemoteNative();
     enrolled.value = true;
-    uni.showToast({ title: "请按系统提示确认屏幕共享", icon: "none" });
+    uni.showToast({ title: t("misc.remote.confirmScreenSharing"), icon: "none" });
     setTimeout(() => void refresh(), 1500);
   } catch (error: any) {
     if (enrolledDuringAttempt) {
@@ -137,7 +141,7 @@ async function enableRemote() {
       await unbindRemoteDevice(getRemoteInstallId()).catch(() => undefined);
       enrolled.value = false;
     }
-    uni.showModal({ title: "无法开启", content: error?.message || "远程协助暂不可用", showCancel: false });
+    uni.showModal({ title: t("misc.remote.cannotEnable"), content: error?.message || t("misc.remote.unavailable"), showCancel: false });
   } finally {
     busy.value = false;
   }
@@ -149,7 +153,7 @@ async function stopRemote() {
   try {
     nativeStatus.value = await stopRemoteNative(false);
     serverOnline.value = false;
-    uni.showToast({ title: "远程协助已停止", icon: "none" });
+    uni.showToast({ title: t("misc.remote.stopped"), icon: "none" });
   } finally {
     busy.value = false;
   }
@@ -158,8 +162,8 @@ async function stopRemote() {
 function unbindRemote() {
   if (busy.value) return;
   uni.showModal({
-    title: "解绑此设备",
-    content: "解绑会立即停止服务、撤销设备凭据并清除远程控制授权。确定继续？",
+    title: t("misc.remote.unbind"),
+    content: t("misc.remote.unbindConfirm"),
     confirmColor: "#e5484d",
     success: async ({ confirm }) => {
       if (!confirm) return;
@@ -172,7 +176,7 @@ function unbindRemote() {
         serverDeviceCode.value = "";
         await refresh();
       } catch (error: any) {
-        uni.showToast({ title: error?.message || "解绑失败", icon: "none" });
+        uni.showToast({ title: error?.message || t("misc.remote.unbindFailed"), icon: "none" });
       } finally {
         busy.value = false;
       }
@@ -184,7 +188,7 @@ async function openPermission(permission: string) {
   try {
     nativeStatus.value = await openRemotePermissionSettings(permission);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "无法打开设置", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.remote.openSettingsFailed"), icon: "none" });
   }
 }
 

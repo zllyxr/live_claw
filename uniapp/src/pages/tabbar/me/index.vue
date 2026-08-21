@@ -14,10 +14,10 @@
       <view class="login-brand-card">
         <image class="login-icon" src="/static/brand/icon-round.webp" mode="aspectFit" />
       </view>
-      <text class="login-title">欢迎来到星域</text>
-      <text class="login-sub">登录后查看我的资产与消息</text>
-      <view class="login-button" @tap="goLogin">立即登录</view>
-      <view class="register-link" @tap="goRegister">还没有账号？<text>注册账号</text></view>
+      <text class="login-title">{{ t("me.welcome") }}</text>
+      <text class="login-sub">{{ t("me.loginHint") }}</text>
+      <view class="login-button" @tap="goLogin">{{ t("me.login") }}</view>
+      <view class="register-link" @tap="goRegister">{{ t("me.noAccount") }}<text>{{ t("me.register") }}</text></view>
     </view>
 
     <template v-else>
@@ -48,15 +48,15 @@
         <view class="stats-card">
           <view class="stat-item" @tap="openUserList('fans')">
             <text>{{ displayCount(user?.fans) }}</text>
-            <text>粉丝</text>
+            <text>{{ t("me.fans") }}</text>
           </view>
           <view class="stat-item" @tap="openUserList('follow')">
             <text>{{ displayCount(user?.follows) }}</text>
-            <text>关注</text>
+            <text>{{ t("me.following") }}</text>
           </view>
           <view class="stat-item" @tap="openFavorite">
             <text>{{ favoriteCountText }}</text>
-            <text>收藏</text>
+            <text>{{ t("me.favorites") }}</text>
           </view>
         </view>
       </view>
@@ -64,27 +64,27 @@
       <view class="asset-row">
         <view class="asset-card recharge" @tap="openRecharge">
           <view class="asset-title">
-            <text>充值</text>
-            <text class="asset-ribbon">充值奖励</text>
+            <text>{{ t("me.recharge") }}</text>
+            <text class="asset-ribbon">{{ t("me.rechargeReward") }}</text>
           </view>
-          <text class="asset-sub">{{ user?.coin || "0" }}星币</text>
+          <text class="asset-sub">{{ user?.coin || "0" }} {{ t("me.coin") }}</text>
         </view>
         <view class="asset-card detail" @tap="openWalletDetail">
           <view class="asset-title">
-            <text>明细</text>
+            <text>{{ t("me.details") }}</text>
           </view>
-          <text class="asset-sub">查看我的明细</text>
+          <text class="asset-sub">{{ t("me.viewDetails") }}</text>
         </view>
         <view class="asset-card verify" @tap="openVerify">
           <view class="asset-title">
-            <text>认证</text>
+            <text>{{ t("me.verify") }}</text>
           </view>
-          <text class="asset-sub">前去认证</text>
+          <text class="asset-sub">{{ t("me.goVerify") }}</text>
         </view>
       </view>
 
       <view class="section-block">
-        <text class="section-title">我的服务</text>
+        <text class="section-title">{{ t("me.myServices") }}</text>
         <view class="service-grid">
           <view v-for="item in services" :key="item.name" class="service-item" @tap="openMenu(item)">
             <view class="service-icon">
@@ -96,7 +96,7 @@
       </view>
 
       <view class="section-block">
-        <text class="section-title">更多服务</text>
+        <text class="section-title">{{ t("me.moreServices") }}</text>
         <view class="more-list">
           <view v-for="item in moreServices" :key="item.name" class="more-item" @tap="openMenu(item)">
             <view class="line-icon">
@@ -106,7 +106,7 @@
             <text class="arrow">›</text>
           </view>
         </view>
-        <view class="logout-button" @tap="logout">退出登录</view>
+        <view class="logout-button" @tap="logout">{{ t("settings.logout") }}</view>
       </view>
     </template>
   </view>
@@ -121,28 +121,31 @@ import { clearSession, getSession, isLoggedIn } from "@/utils/session";
 import { displayCount } from "@/utils/format";
 import { absolutizeUrl, firstText } from "@/utils/url";
 import { medalForLevel } from "@/utils/level";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const user = ref<UserProfile>();
 const loggedIn = ref(false);
 const favoriteCount = ref<number | undefined>();
 const session = computed(() => getSession());
 
-const services = [
-  { name: "远程协助", iconSrc: "/static/icons/svc-support.svg", path: "/pages/remote/index" },
-  { name: "视频", iconSrc: "/static/icons/svc-video.svg", path: "/pages/video/my" },
-  { name: "动态", iconSrc: "/static/icons/svc-dynamic.svg", path: "/pages/dynamic/my" },
-  { name: "收益", iconSrc: "/static/icons/svc-income.svg", path: "/pages/wallet/detail?type=cash" },
-  { name: "每日任务", iconSrc: "/static/icons/svc-task.svg", path: "/pages/task/index" },
-  { name: "房间管理", iconSrc: "/static/icons/svc-room.svg", path: "/pages/room/manage" }
-];
+const services = computed(() => [
+  { name: t("settings.remote"), iconSrc: "/static/icons/svc-support.svg", path: "/pages/remote/index" },
+  { name: t("me.video"), iconSrc: "/static/icons/svc-video.svg", path: "/pages/video/my" },
+  { name: t("tab.dynamic"), iconSrc: "/static/icons/svc-dynamic.svg", path: "/pages/dynamic/my" },
+  { name: t("me.income"), iconSrc: "/static/icons/svc-income.svg", path: "/pages/wallet/detail?type=cash" },
+  { name: t("me.dailyTask"), iconSrc: "/static/icons/svc-task.svg", path: "/pages/task/index" },
+  { name: t("me.roomManage"), iconSrc: "/static/icons/svc-room.svg", path: "/pages/room/manage" }
+]);
 
-const moreServices = [
-  { name: "邀请奖励", iconSrc: "/static/icons/svc-invite.svg", path: "/pages/invite/index" },
-  { name: "中奖记录", iconSrc: "/static/icons/svc-prize.svg" },
-  { name: "在线客服", iconSrc: "/static/icons/svc-support.svg", path: "/pages/service/index" }
-];
+const moreServices = computed(() => [
+  { name: t("me.inviteReward"), iconSrc: "/static/icons/svc-invite.svg", path: "/pages/invite/index" },
+  { name: t("me.winningRecord"), iconSrc: "/static/icons/svc-prize.svg", winningRecord: true },
+  { name: t("me.support"), iconSrc: "/static/icons/svc-support.svg", path: "/pages/service/index" }
+]);
 
-const name = computed(() => user.value?.user_nicename || user.value?.user_nickname || "星域用户");
+const name = computed(() => user.value?.user_nicename || user.value?.user_nickname || t("me.defaultUser"));
 const avatarUrl = computed(() => absolutizeUrl(firstText(user.value?.avatar_thumb, user.value?.avatar, session.value.user?.avatar_thumb, session.value.user?.avatar)) || "/static/icons/avatar-default.svg");
 const sexLabel = computed(() => (String(user.value?.sex || "") === "1" ? "♂" : "♀"));
 const medalSrc = computed(() => medalForLevel(user.value?.level));
@@ -164,7 +167,7 @@ async function load() {
     user.value = profile;
     favoriteCount.value = Array.isArray(favorites) ? favorites.length : undefined;
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "资料加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("me.loadFailed"), icon: "none" });
   } finally {
     uni.stopPullDownRefresh();
   }
@@ -191,11 +194,7 @@ function openProfileEdit() {
 }
 
 function openSettings() {
-  if (loggedIn.value) {
-    uni.navigateTo({ url: "/pages/settings/index" });
-    return;
-  }
-  goLogin();
+  uni.navigateTo({ url: "/pages/settings/index" });
 }
 
 function openRecharge() {
@@ -234,8 +233,8 @@ function openFavorite() {
   uni.navigateTo({ url: "/pages/favorite/index" });
 }
 
-function openMenu(item: UserMenuItem & { path?: string }) {
-  if (item.name === "中奖记录") {
+function openMenu(item: UserMenuItem & { path?: string; winningRecord?: boolean }) {
+  if (item.winningRecord) {
     openWinningRecord();
     return;
   }
@@ -259,7 +258,7 @@ function logout() {
   user.value = undefined;
   loggedIn.value = false;
   favoriteCount.value = undefined;
-  uni.showToast({ title: "已退出登录", icon: "none" });
+  uni.showToast({ title: t("settings.loggedOut"), icon: "none" });
 }
 
 onShow(() => {

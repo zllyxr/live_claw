@@ -2,36 +2,58 @@
   <view class="safe-page settings-page">
     <view class="menu card">
       <view class="menu-item" @tap="openProfile">
-        <text>我的资料</text>
+        <text>{{ t("settings.profile") }}</text>
         <text class="arrow">›</text>
       </view>
       <view class="menu-item" @tap="openPassword">
-        <text>修改密码</text>
+        <text>{{ t("settings.password") }}</text>
         <text class="arrow">›</text>
       </view>
       <view class="menu-item" @tap="openRemote">
-        <text>远程协助</text>
+        <text>{{ t("settings.remote") }}</text>
         <text class="arrow">›</text>
       </view>
       <view class="menu-item" @tap="openCancel">
-        <text>账号注销</text>
+        <text>{{ t("settings.cancel") }}</text>
         <text class="arrow">›</text>
       </view>
     </view>
 
     <view class="menu card">
+      <picker :range="languageNames" :value="languageIndex" @change="changeLanguage">
+        <view class="menu-item">
+          <text>{{ t("language.title") }}</text>
+          <view><text class="current-language">{{ languageNames[languageIndex] }}</text><text class="arrow">›</text></view>
+        </view>
+      </picker>
       <view class="menu-item" @tap="openInvalid">
-        <text>登录失效页</text>
+        <text>{{ t("settings.invalid") }}</text>
         <text class="arrow">›</text>
       </view>
     </view>
 
-    <button class="logout" @tap="logout">退出登录</button>
+    <button class="logout" @tap="logout">{{ t("settings.logout") }}</button>
   </view>
 </template>
 
 <script setup lang="ts">
 import { clearSession, requireLogin } from "@/utils/session";
+import { computed } from "vue";
+import { onShow } from "@dcloudio/uni-app";
+import { supportedLocales, useI18n, type AppLocale } from "@/i18n";
+
+const { locale, t, setLocale } = useI18n();
+const languageNames = computed(() => supportedLocales.map((code) => t(`language.${code === "zh-CN" ? "zh" : code}`)));
+const languageIndex = computed(() => Math.max(0, supportedLocales.indexOf(locale.value)));
+
+function changeLanguage(event: any) {
+  const next = supportedLocales[Number(event.detail.value)] as AppLocale;
+  setLocale(next);
+  uni.setNavigationBarTitle({ title: t("settings.title") });
+  uni.showToast({ title: t("language.changed"), icon: "none" });
+}
+
+onShow(() => uni.setNavigationBarTitle({ title: t("settings.title") }));
 
 function openProfile() {
   if (requireLogin()) {
@@ -58,20 +80,20 @@ function openCancel() {
 }
 
 function openInvalid() {
-  uni.navigateTo({ url: "/pages/auth/invalid?msg=当前登录状态需要重新验证" });
+  uni.navigateTo({ url: `/pages/auth/invalid?msg=${encodeURIComponent(t("settings.sessionRevalidate"))}` });
 }
 
 function logout() {
   uni.showModal({
-    title: "退出登录",
-    content: "确认退出当前账号？",
+    title: t("settings.logout"),
+    content: t("settings.logoutConfirm"),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm) {
         return;
       }
       clearSession();
-      uni.showToast({ title: "已退出登录", icon: "none" });
+      uni.showToast({ title: t("settings.loggedOut"), icon: "none" });
       setTimeout(() => uni.switchTab({ url: "/pages/tabbar/me/index" }), 250);
     }
   });
@@ -105,6 +127,8 @@ function logout() {
   color: #b8bfcc;
   font-size: 46rpx;
 }
+
+.current-language { color: var(--ink-3); font-size: 26rpx; font-weight: 500; }
 
 .logout {
   width: 100%;

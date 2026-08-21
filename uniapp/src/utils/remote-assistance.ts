@@ -2,6 +2,7 @@ import type { RemoteEnrollment, RemotePermissionStatus } from "@/api/remote";
 import { unbindRemoteDevice } from "@/api/remote";
 import { API_HOST } from "@/constants/config";
 import * as remoteHost from "@/uni_modules/claw-rustdesk-host";
+import { t } from "@/i18n";
 
 const INSTALL_ID_KEY = "claw_remote_install_id";
 
@@ -31,7 +32,7 @@ function invoke(method: keyof NativeRemotePlugin, ...args: unknown[]): Promise<N
   if (!plugin || typeof plugin[method] !== "function") {
     return Promise.resolve({
       available: false, running: false, service_status: "unsupported", permissions: {},
-      message: "当前安装包不包含远程协助原生组件，请更新 App"
+      message: t("core.remoteComponentMissing")
     });
   }
   return new Promise((resolve, reject) => {
@@ -75,7 +76,7 @@ export function initializeRemoteNative(enrollment: RemoteEnrollment) {
     backend_url: `${API_HOST.replace(/\/$/, "")}/api/v2`,
     device_id: enrollment.device_id,
     device_token: enrollment.device_token,
-    notification_title: "星域远程协助正在运行"
+    notification_title: t("core.remoteRunning")
   });
 }
 

@@ -9,7 +9,7 @@
           :class="{ active: activeTab === tabItem.key }"
           @tap="switchTab(tabItem.key)"
         >
-          <text>{{ tabItem.name }}</text>
+          <text>{{ tabLabel(tabItem.key) }}</text>
           <view class="tab-line" />
         </view>
       </view>
@@ -19,7 +19,7 @@
         </view>
         <view class="publish-button" @tap="goPublish">
           <text class="pub-plus">+</text>
-          <text>发布</text>
+          <text>{{ t("commerce.dynamic.publish") }}</text>
         </view>
       </view>
     </view>
@@ -51,10 +51,10 @@
                 <view class="author-row" @tap.stop="openUser(post)">
                   <image class="avatar" :src="avatarOf(post)" mode="aspectFill" />
                   <view class="author-main">
-                    <text class="name">{{ post.userinfo?.user_nicename || post.userinfo?.user_nickname || "星域用户" }}</text>
+                    <text class="name">{{ post.userinfo?.user_nicename || post.userinfo?.user_nickname || t("commerce.dynamic.defaultUser") }}</text>
                     <text class="gender-dot">♀</text>
                   </view>
-                  <view class="follow-pill" @tap.stop="follow(post)">关注</view>
+                  <view class="follow-pill" @tap.stop="follow(post)">{{ t("commerce.dynamic.follow") }}</view>
                 </view>
 
                 <text v-if="post.title" class="content">{{ post.title }}</text>
@@ -77,7 +77,7 @@
                   controls
                 />
                 <view v-if="post.voice" class="voice-row">
-                  <text>语音 {{ post.length || 0 }}s</text>
+                  <text>{{ t("commerce.dynamic.voiceDuration").replace("{seconds}", String(post.length || 0)) }}</text>
                 </view>
 
                 <text class="time-line">{{ post.datetime || "" }}</text>
@@ -100,8 +100,8 @@
             <EmptyState
               v-else
               kind="feed"
-              :title="stateOf(tabItem.key).loading ? '正在加载动态' : '暂无动态'"
-              description="左右滑动可切换推荐、关注和最新。"
+              :title="stateOf(tabItem.key).loading ? t('commerce.dynamic.loading') : t('commerce.dynamic.empty')"
+              :description="t('commerce.dynamic.emptyDescription')"
             />
           </view>
         </scroll-view>
@@ -118,6 +118,9 @@ import { getDynamics, likeDynamic, setAttention } from "@/api/services";
 import type { DynamicItem } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type DynamicTab = "recommend" | "follow" | "newest";
 type GestureLock = "" | "horizontal" | "vertical";
@@ -131,10 +134,10 @@ interface DynamicTabState {
   refreshing: boolean;
 }
 
-const tabs: Array<{ key: DynamicTab; name: string }> = [
-  { key: "recommend", name: "推荐" },
-  { key: "follow", name: "关注" },
-  { key: "newest", name: "最新" }
+const tabs: Array<{ key: DynamicTab }> = [
+  { key: "recommend" },
+  { key: "follow" },
+  { key: "newest" }
 ];
 const DYNAMIC_DIRTY_KEY = "claw_dynamic_dirty";
 
@@ -152,6 +155,10 @@ const tabStates = reactive<Record<DynamicTab, DynamicTabState>>({
   newest: createState()
 });
 let gestureResetTimer: ReturnType<typeof setTimeout> | undefined;
+
+function tabLabel(tab: DynamicTab) {
+  return t(`commerce.dynamic.tabs.${tab}`);
+}
 
 function createState(): DynamicTabState {
   return {
@@ -265,7 +272,7 @@ async function load(tab: DynamicTab = activeTab.value, reset = false) {
       state.page += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "动态加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.dynamic.loadFailed"), icon: "none" });
   } finally {
     state.loading = false;
     state.refreshing = false;
@@ -328,7 +335,7 @@ async function like(item: DynamicItem) {
     item.islike = (res?.islike as string | number | undefined) ?? 1;
     item.likes = (res?.likes as string | number | undefined) ?? Number(item.likes || 0) + 1;
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.common.operationFailed"), icon: "none" });
   }
 }
 
@@ -342,9 +349,9 @@ async function follow(item: DynamicItem) {
   }
   try {
     await setAttention(uid);
-    uni.showToast({ title: "已关注", icon: "none" });
+    uni.showToast({ title: t("commerce.dynamic.followed"), icon: "none" });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "关注失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.dynamic.followFailed"), icon: "none" });
   }
 }
 

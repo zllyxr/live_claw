@@ -3,7 +3,7 @@
     <view class="invite-hero">
       <image class="app-icon" src="/static/brand/icon-round.webp" mode="aspectFill" />
       <view class="hero-main">
-        <text class="title">邀请好友加入星域</text>
+        <text class="title">{{ t("misc.invite.title") }}</text>
         <text class="desc">{{ heroDesc }}</text>
       </view>
     </view>
@@ -24,37 +24,37 @@
 
       <view class="qr-box">
         <image v-if="qrUrl" class="qr" :src="qrUrl" mode="aspectFit" />
-        <view v-else class="qr-empty">{{ loading ? "加载中" : "暂无二维码" }}</view>
+        <view v-else class="qr-empty">{{ loading ? t("misc.common.loading") : t("misc.invite.noQr") }}</view>
       </view>
 
       <view class="invite-code">
-        <text>邀请码</text>
+        <text>{{ t("misc.invite.code") }}</text>
         <text>{{ ownInviteCode || "-" }}</text>
       </view>
 
       <view class="invite-link">
-        <text>邀请链接</text>
-        <text>{{ inviteLink || "暂无链接" }}</text>
+        <text>{{ t("misc.invite.link") }}</text>
+        <text>{{ inviteLink || t("misc.invite.noLink") }}</text>
       </view>
 
       <view class="actions">
-        <button @tap="copyCode">复制邀请码</button>
-        <button @tap="copyLink">复制邀请链接</button>
+        <button @tap="copyCode">{{ t("misc.invite.copyCode") }}</button>
+        <button @tap="copyLink">{{ t("misc.invite.copyLink") }}</button>
       </view>
     </view>
 
     <view v-if="canBind" class="bind-card card">
-      <text class="bind-title">{{ mustBind ? "填写邀请码（必填）" : "填写邀请人邀请码" }}</text>
-      <text class="bind-desc">{{ mustBind ? "当前账号需要绑定邀请关系后继续使用。" : "如果你是被好友邀请来的，可以在这里补填邀请码。" }}</text>
+      <text class="bind-title">{{ mustBind ? t("misc.invite.enterCodeRequired") : t("misc.invite.enterReferrerCode") }}</text>
+      <text class="bind-desc">{{ mustBind ? t("misc.invite.bindingRequired") : t("misc.invite.bindingOptional") }}</text>
       <view class="bind-row">
-        <input v-model.trim="bindCode" placeholder="请输入邀请人邀请码" maxlength="20" />
-        <button :disabled="binding" @tap="bindCodeNow">{{ binding ? "提交中" : "绑定" }}</button>
+        <input v-model.trim="bindCode" :placeholder="t('misc.invite.codePlaceholder')" maxlength="20" />
+        <button :disabled="binding" @tap="bindCodeNow">{{ binding ? t("misc.common.submitting") : t("misc.invite.bind") }}</button>
       </view>
     </view>
 
     <view v-else class="bind-card card done-card">
-      <text class="bind-title">{{ hasAgent ? "已绑定邀请关系" : "无需填写邀请码" }}</text>
-      <text class="bind-desc">{{ hasAgent ? "当前账号已经设置过邀请人，不能再次修改。" : "当前未开启邀请码绑定，继续分享你的邀请码即可。" }}</text>
+      <text class="bind-title">{{ hasAgent ? t("misc.invite.relationshipBound") : t("misc.invite.codeNotRequired") }}</text>
+      <text class="bind-desc">{{ hasAgent ? t("misc.invite.cannotChangeReferrer") : t("misc.invite.bindingDisabledHint") }}</text>
     </view>
   </view>
 </template>
@@ -68,6 +68,7 @@ import { PUBLIC_WEB_URL } from "@/constants/config";
 import { absolutizeUrl, firstText } from "@/utils/url";
 import { clearPendingInvite, normalizeInviteCode, pickInviteParams, savePendingInvite, truthyFlag, type PendingInviteParams } from "@/utils/invite";
 import { getSession, isLoggedIn, requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const user = ref<UserProfile>();
 const invite = ref<InviteCode>();
@@ -79,7 +80,7 @@ const binding = ref(false);
 let attemptedRouteBind = "";
 
 const session = computed(() => getSession());
-const name = computed(() => firstText(user.value?.user_nicename, user.value?.user_nickname, "星域用户"));
+const name = computed(() => firstText(user.value?.user_nicename, user.value?.user_nickname, t("misc.common.defaultUser")));
 const avatarUrl = computed(() => absolutizeUrl(firstText(user.value?.avatar_thumb, user.value?.avatar)) || "/static/brand/icon-round.webp");
 const qrUrl = computed(() => absolutizeUrl(firstText(invite.value?.qr, invite.value?.qrcode)));
 const ownInviteCode = computed(() => normalizeInviteCode(invite.value?.code));
@@ -89,33 +90,33 @@ const mustBind = computed(() => truthyFlag(agentState.value?.agent_must));
 const canBind = computed(() => inviteEnabled.value && !hasAgent.value);
 const heroDesc = computed(() => {
   if (hasAgent.value) {
-    return "分享自己的邀请码给好友，当前账号的邀请关系已完成绑定。";
+    return t("misc.invite.heroBound");
   }
   if (canBind.value) {
-    return "上方是你的推广信息；下方可填写邀请人的邀请码。";
+    return t("misc.invite.heroCanBind");
   }
-  return "复制邀请码或分享链接，好友注册后可建立邀请关系。";
+  return t("misc.invite.heroDefault");
 });
 const stateTitle = computed(() => {
   if (loading.value) {
-    return "正在加载邀请信息";
+    return t("misc.invite.loadingInfo");
   }
   if (hasAgent.value) {
-    return "已绑定邀请人";
+    return t("misc.invite.referrerBound");
   }
   if (canBind.value) {
-    return mustBind.value ? "邀请码待填写" : "可填写邀请人";
+    return mustBind.value ? t("misc.invite.codePending") : t("misc.invite.canEnterReferrer");
   }
-  return "邀请绑定未开启";
+  return t("misc.invite.bindingNotEnabled");
 });
 const stateDesc = computed(() => {
   if (hasAgent.value) {
-    return "已设置的邀请关系不可修改。";
+    return t("misc.invite.relationshipImmutable");
   }
   if (canBind.value) {
-    return mustBind.value ? "请填写邀请人邀请码完成绑定。" : "被好友邀请时可在下方补填邀请码。";
+    return mustBind.value ? t("misc.invite.completeBinding") : t("misc.invite.optionalBindingHint");
   }
-  return "你仍然可以分享自己的邀请码和链接。";
+  return t("misc.invite.stillShare");
 });
 const inviteLink = computed(() => {
   if (ownInviteCode.value) {
@@ -149,7 +150,7 @@ async function attemptAutoBind() {
     const result = await bindInviteAttribution(params);
     clearPendingInvite();
     if (isBoundResult(result)) {
-      uni.showToast({ title: result?.msg || "邀请关系已绑定", icon: "none" });
+      uni.showToast({ title: result?.msg || t("misc.invite.relationshipBound"), icon: "none" });
       return true;
     }
   } catch {
@@ -176,7 +177,7 @@ async function load() {
       agentState.value = await checkInviteAgent();
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "邀请信息加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.invite.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -185,7 +186,7 @@ async function load() {
 
 function copy(value: string, title: string) {
   if (!value) {
-    uni.showToast({ title: "暂无可复制内容", icon: "none" });
+    uni.showToast({ title: t("misc.invite.nothingToCopy"), icon: "none" });
     return;
   }
   uni.setClipboardData({
@@ -195,11 +196,11 @@ function copy(value: string, title: string) {
 }
 
 function copyCode() {
-  copy(ownInviteCode.value, "邀请码已复制");
+  copy(ownInviteCode.value, t("misc.invite.codeCopied"));
 }
 
 function copyLink() {
-  copy(inviteLink.value, "邀请链接已复制");
+  copy(inviteLink.value, t("misc.invite.linkCopied"));
 }
 
 async function bindCodeNow() {
@@ -207,26 +208,26 @@ async function bindCodeNow() {
     return;
   }
   if (!bindCode.value) {
-    uni.showToast({ title: "请输入邀请码", icon: "none" });
+    uni.showToast({ title: t("misc.invite.enterCode"), icon: "none" });
     return;
   }
   const code = normalizeInviteCode(bindCode.value);
   if (isSelfInvite(code)) {
-    uni.showToast({ title: "不能绑定自己的邀请码", icon: "none" });
+    uni.showToast({ title: t("misc.invite.cannotBindOwn"), icon: "none" });
     return;
   }
   if (!canBind.value) {
-    uni.showToast({ title: hasAgent.value ? "已设置，不能更改" : "当前无需填写邀请码", icon: "none" });
+    uni.showToast({ title: hasAgent.value ? t("misc.invite.alreadySet") : t("misc.invite.notRequiredNow"), icon: "none" });
     return;
   }
   binding.value = true;
   try {
     const result = await bindInviteCode(code);
-    uni.showToast({ title: result?.msg || "绑定成功", icon: "none" });
+    uni.showToast({ title: result?.msg || t("misc.invite.bindSuccess"), icon: "none" });
     bindCode.value = "";
     agentState.value = await checkInviteAgent();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "绑定失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.invite.bindFailed"), icon: "none" });
   } finally {
     binding.value = false;
   }

@@ -12,9 +12,9 @@
         <view class="nav-btn" @tap="goBack">
           <text class="nav-arrow">‹</text>
         </view>
-        <text class="nav-title">我的资料</text>
+        <text class="nav-title">{{ t("misc.profile.title") }}</text>
         <view class="nav-btn ghost" :class="{ busy: uploading }" @tap="chooseBg">
-          <text class="nav-chip-text">{{ uploading ? "上传中" : "换背景" }}</text>
+          <text class="nav-chip-text">{{ uploading ? t("misc.common.uploading") : t("misc.profile.changeBackground") }}</text>
         </view>
       </view>
     </view>
@@ -30,7 +30,7 @@
           <text class="camera-glyph">✎</text>
         </view>
       </view>
-      <text class="preview-name">{{ nickname || "星域用户" }}</text>
+      <text class="preview-name">{{ nickname || t("misc.common.defaultUser") }}</text>
       <view class="id-chip">ID · {{ user?.liang_name || user?.id || "—" }}</view>
     </view>
 
@@ -39,16 +39,16 @@
       <view class="form-card c1">
         <view class="label-row">
           <view class="label-band" />
-          <text class="label">昵称</text>
+          <text class="label">{{ t("misc.profile.nickname") }}</text>
           <text class="count">{{ nickname.length }}/20</text>
         </view>
-        <input v-model.trim="nickname" class="input-box" placeholder="给自己起个好听的名字" placeholder-class="ph" maxlength="20" />
+        <input v-model.trim="nickname" class="input-box" :placeholder="t('misc.profile.nicknamePlaceholder')" placeholder-class="ph" maxlength="20" />
       </view>
 
       <view class="form-card c2">
         <view class="label-row">
           <view class="label-band" />
-          <text class="label">性别</text>
+          <text class="label">{{ t("misc.profile.gender") }}</text>
         </view>
         <view class="segmented">
           <view
@@ -67,13 +67,13 @@
       <view class="form-card c3">
         <view class="label-row">
           <view class="label-band" />
-          <text class="label">个性签名</text>
+          <text class="label">{{ t("misc.profile.signature") }}</text>
           <text class="count">{{ signature.length }}/80</text>
         </view>
         <textarea
           v-model.trim="signature"
           class="textarea-box"
-          placeholder="写一句话介绍自己，让大家认识你"
+          :placeholder="t('misc.profile.signaturePlaceholder')"
           placeholder-class="ph"
           maxlength="80"
           auto-height
@@ -85,7 +85,7 @@
     <view class="save-bar">
       <view class="save-btn" :class="{ disabled: saving || uploading }" @tap="save">
         <view class="shine" />
-        <text>{{ saving ? "保存中…" : "保存资料" }}</text>
+        <text>{{ saving ? t("misc.common.saving") : t("misc.profile.saveProfile") }}</text>
       </view>
     </view>
   </view>
@@ -98,6 +98,7 @@ import { getBaseInfo, updateAvatar, updateUserBg, updateUserFields, uploadOne } 
 import type { UploadResult, UserProfile } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { requireLogin, saveUser } from "@/utils/session";
+import { t } from "@/i18n";
 
 const user = ref<UserProfile>();
 const nickname = ref("");
@@ -106,11 +107,11 @@ const signature = ref("");
 const saving = ref(false);
 const uploading = ref(false);
 
-const sexes = [
-  { label: "保密", value: "0", icon: "✦" },
-  { label: "男生", value: "1", icon: "♂" },
-  { label: "女生", value: "2", icon: "♀" }
-];
+const sexes = computed(() => [
+  { label: t("misc.profile.secret"), value: "0", icon: "✦" },
+  { label: t("misc.profile.male"), value: "1", icon: "♂" },
+  { label: t("misc.profile.female"), value: "2", icon: "♀" }
+]);
 
 const avatarFailed = ref(false);
 const avatarUrl = computed(() => absolutizeUrl(String(user.value?.avatar_thumb || user.value?.avatar || "")) || "/static/icons/avatar-default.svg");
@@ -142,7 +143,7 @@ async function load() {
     sex.value = String(info?.sex ?? "0");
     signature.value = String(info?.signature || "");
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "资料加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.profile.loadFailed"), icon: "none" });
   }
 }
 
@@ -153,10 +154,10 @@ function chooseAvatar() {
       const uploaded = await uploadOne(path);
       const key = uploadKey(uploaded);
       await updateAvatar(key);
-      uni.showToast({ title: "头像已更新", icon: "none" });
+      uni.showToast({ title: t("misc.profile.avatarUpdated"), icon: "none" });
       await load();
     } catch (error: any) {
-      uni.showToast({ title: error?.message || "头像上传失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("misc.profile.avatarUploadFailed"), icon: "none" });
     } finally {
       uploading.value = false;
     }
@@ -170,10 +171,10 @@ function chooseBg() {
       const uploaded = await uploadOne(path);
       const key = uploadKey(uploaded);
       await updateUserBg(key);
-      uni.showToast({ title: "背景已更新", icon: "none" });
+      uni.showToast({ title: t("misc.profile.backgroundUpdated"), icon: "none" });
       await load();
     } catch (error: any) {
-      uni.showToast({ title: error?.message || "背景上传失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("misc.profile.backgroundUploadFailed"), icon: "none" });
     } finally {
       uploading.value = false;
     }
@@ -202,7 +203,7 @@ async function save() {
     return;
   }
   if (!nickname.value) {
-    uni.showToast({ title: "请输入昵称", icon: "none" });
+    uni.showToast({ title: t("misc.profile.enterNickname"), icon: "none" });
     return;
   }
   saving.value = true;
@@ -216,10 +217,10 @@ async function save() {
     if (info) {
       saveUser(info);
     }
-    uni.showToast({ title: "资料已保存", icon: "none" });
+    uni.showToast({ title: t("misc.profile.saved"), icon: "none" });
     setTimeout(() => uni.navigateBack(), 350);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "保存失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.common.saveFailed"), icon: "none" });
   } finally {
     saving.value = false;
   }

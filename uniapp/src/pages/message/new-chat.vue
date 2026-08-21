@@ -16,13 +16,13 @@
 
     <view v-if="mode === 'group'" class="group-name-panel panel">
       <view class="field-head">
-        <text>群聊名称</text>
+        <text>{{ t("social.newChat.groupName") }}</text>
         <text>{{ groupName.length }}/200</text>
       </view>
       <input
         v-model="groupName"
         maxlength="200"
-        placeholder="给新群聊起个名字"
+        :placeholder="t('social.newChat.groupNamePlaceholder')"
         confirm-type="next"
       />
     </view>
@@ -31,20 +31,20 @@
       <view class="search-mark" />
       <input
         v-model.trim="keyword"
-        placeholder="搜索昵称或用户 ID"
+        :placeholder="t('social.newChat.searchPlaceholder')"
         confirm-type="search"
         @confirm="search"
       />
       <button v-if="keyword" class="clear-search" @tap="clearKeyword">×</button>
       <button class="search-button" :disabled="loading" @tap="search">
-        {{ loading ? "搜索中" : "搜索" }}
+        {{ loading ? t("social.newChat.searching") : t("social.common.search") }}
       </button>
     </view>
 
     <view v-if="mode !== 'single' && selected.length" class="selection-panel panel">
       <view class="selection-head">
-        <text>已选择 {{ selected.length }} 人</text>
-        <button @tap="selected = []">清空</button>
+        <text>{{ t("social.newChat.selected") }} {{ selected.length }} {{ t("social.common.people") }}</text>
+        <button @tap="selected = []">{{ t("social.common.clear") }}</button>
       </view>
       <scroll-view class="selected-scroll" scroll-x>
         <view class="selected-list">
@@ -66,8 +66,8 @@
 
     <view class="section-head">
       <view>
-        <text>{{ keyword ? "搜索结果" : "推荐联系人" }}</text>
-        <text>{{ mode === "single" ? "选择联系人开始聊天" : `还可选择 ${100 - selected.length} 人` }}</text>
+        <text>{{ keyword ? t("social.newChat.searchResults") : t("social.newChat.recommended") }}</text>
+        <text>{{ mode === "single" ? t("social.newChat.chooseToChat") : `${t("social.newChat.canSelectMore")} ${100 - selected.length} ${t("social.common.people")}` }}</text>
       </view>
       <view v-if="users.length" class="result-count">{{ users.length }}</view>
     </view>
@@ -83,10 +83,10 @@
         <image class="avatar" :src="avatarOf(user)" mode="aspectFill" />
         <view class="user-main">
           <text class="user-name">{{ nameOf(user) }}</text>
-          <text class="user-id">用户 ID {{ uidOf(user) }}</text>
+          <text class="user-id">{{ t("social.common.user") }} ID {{ uidOf(user) }}</text>
         </view>
         <view v-if="unavailable(user)" class="state-tag">
-          {{ existingIDs.has(uidOf(user)) ? "已在群内" : "本人" }}
+          {{ existingIDs.has(uidOf(user)) ? t("social.newChat.alreadyInGroup") : t("social.newChat.self") }}
         </view>
         <view
           v-else-if="mode !== 'single'"
@@ -102,8 +102,8 @@
     <EmptyState
       v-else
       kind="search"
-      :title="loading ? '正在搜索用户' : '没有找到用户'"
-      description="换一个昵称或用户 ID 试试。"
+      :title="loading ? t('social.newChat.searchingUsers') : t('social.newChat.noUsers')"
+      :description="t('social.newChat.noUsersDescription')"
     />
 
     <view v-if="mode !== 'single'" class="submit-space" />
@@ -115,7 +115,7 @@
       >
         <view v-if="submitting" class="loading-spinner" />
         <text v-else>
-          {{ mode === "group" ? `创建群聊（${selected.length + 1}）` : `邀请 ${selected.length} 人` }}
+          {{ mode === "group" ? `${t("social.newChat.createGroup")} (${selected.length + 1})` : `${t("social.newChat.invite")} ${selected.length} ${t("social.common.people")}` }}
         </text>
       </button>
     </view>
@@ -136,6 +136,9 @@ import {
 import type { UserProfile } from "@/types/api";
 import { getSession, requireLogin } from "@/utils/session";
 import { absolutizeUrl } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type PageMode = "single" | "group" | "invite";
 
@@ -150,14 +153,18 @@ const loading = ref(false);
 const submitting = ref(false);
 
 const pageTitle = computed(() =>
-  mode.value === "group" ? "创建群聊" : mode.value === "invite" ? "邀请群成员" : "发起新私信"
+  mode.value === "group"
+    ? t("social.newChat.createGroup")
+    : mode.value === "invite"
+      ? t("social.newChat.inviteMembers")
+      : t("social.newChat.startPrivate")
 );
 const pageDescription = computed(() =>
   mode.value === "group"
-    ? "选择联系人，一起开启新的群聊"
+    ? t("social.newChat.createDescription")
     : mode.value === "invite"
-      ? "选择还未加入本群的联系人"
-      : "从关注列表或搜索结果中选择联系人"
+      ? t("social.newChat.inviteDescription")
+      : t("social.newChat.privateDescription")
 );
 
 function uidOf(user: UserProfile) {
@@ -165,7 +172,7 @@ function uidOf(user: UserProfile) {
 }
 
 function nameOf(user: UserProfile) {
-  return String(user.user_nicename || user.user_nickname || `用户 ${uidOf(user)}`);
+  return String(user.user_nicename || user.user_nickname || `${t("social.common.user")} ${uidOf(user)}`);
 }
 
 function avatarOf(user: UserProfile) {
@@ -216,7 +223,7 @@ async function search() {
   try {
     users.value = uniqueUsers(await searchUsers(keyword.value, 1));
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "搜索失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.newChat.searchFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }
@@ -243,7 +250,7 @@ function selectUser(user: UserProfile) {
     return;
   }
   if (selected.value.length >= 100) {
-    uni.showToast({ title: "单次最多选择 100 人", icon: "none" });
+    uni.showToast({ title: t("social.newChat.maxSelection"), icon: "none" });
     return;
   }
   selected.value.push(user);
@@ -252,7 +259,7 @@ function selectUser(user: UserProfile) {
 async function submit() {
   if (!selected.value.length || submitting.value) return;
   if (mode.value === "group" && !groupName.value.trim()) {
-    uni.showToast({ title: "请输入群聊名称", icon: "none" });
+    uni.showToast({ title: t("social.newChat.enterGroupName"), icon: "none" });
     return;
   }
   submitting.value = true;
@@ -268,10 +275,10 @@ async function submit() {
       return;
     }
     const result = await inviteChatGroupMembers(groupID.value, userIDs);
-    uni.showToast({ title: `已邀请 ${result.invited || selected.value.length} 人`, icon: "none" });
+    uni.showToast({ title: `${t("social.newChat.invited")} ${result.invited || selected.value.length} ${t("social.common.people")}`, icon: "none" });
     setTimeout(() => uni.navigateBack(), 350);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.common.operationFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }

@@ -8,7 +8,7 @@
             <text class="author-name">{{ authorName }}</text>
             <text class="author-sub">{{ modeSub }}</text>
           </view>
-          <button class="draft-button" @tap="resetDraft">清空</button>
+          <button class="draft-button" @tap="resetDraft">{{ t("social.common.clear") }}</button>
         </view>
 
         <textarea
@@ -16,7 +16,7 @@
           class="editor"
           maxlength="300"
           auto-height
-          placeholder="分享这一刻..."
+          :placeholder="t('social.publish.placeholder')"
           :adjust-position="true"
         />
         <view class="editor-foot">
@@ -47,7 +47,7 @@
             </view>
             <button v-if="images.length < 9" class="add-cell" @tap="chooseImages">
               <text>+</text>
-              <text>{{ images.length ? "继续添加" : "添加图片" }}</text>
+              <text>{{ images.length ? t("social.publish.addMore") : t("social.publish.addImages") }}</text>
             </button>
           </view>
           <text class="media-tip">{{ imageTip }}</text>
@@ -57,15 +57,15 @@
           <view v-if="videoPath" class="video-card">
             <video class="video-preview" :src="videoPath" :poster="videoThumb" controls />
             <view class="media-actions">
-              <button @tap="chooseVideo">重选视频</button>
-              <button class="danger" @tap="clearVideo">删除视频</button>
+              <button @tap="chooseVideo">{{ t("social.publish.reselectVideo") }}</button>
+              <button class="danger" @tap="clearVideo">{{ t("social.publish.deleteVideo") }}</button>
             </view>
           </view>
           <button v-else class="large-picker" @tap="chooseVideo">
             <text class="large-plus">+</text>
-            <text>选择视频</text>
+            <text>{{ t("social.publish.chooseVideo") }}</text>
           </button>
-          <text class="media-tip">支持单个视频，发布时会先上传视频文件。</text>
+          <text class="media-tip">{{ t("social.publish.videoTip") }}</text>
         </template>
 
         <template v-else>
@@ -79,12 +79,12 @@
             </view>
             <view class="media-actions">
               <button class="record-button" :class="{ recording }" @tap="toggleRecord">
-                {{ recording ? "停止录音" : voicePath ? "重新录音" : "开始录音" }}
+                {{ recording ? t("social.publish.stopRecording") : voicePath ? t("social.publish.recordAgain") : t("social.publish.startRecording") }}
               </button>
-              <button v-if="voicePath" class="danger" @tap="clearVoice">删除语音</button>
+              <button v-if="voicePath" class="danger" @tap="clearVoice">{{ t("social.publish.deleteVoice") }}</button>
             </view>
           </view>
-          <text class="media-tip">最长录制 60 秒，发布时会上传音频文件。</text>
+          <text class="media-tip">{{ t("social.publish.voiceTip") }}</text>
         </template>
       </view>
 
@@ -110,6 +110,9 @@ import { publishDynamic, uploadOne } from "@/api/services";
 import type { UploadResult } from "@/types/api";
 import { getSession, requireLogin } from "@/utils/session";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type PublishMode = "image" | "video" | "voice";
 
@@ -123,11 +126,11 @@ supportsVoice.value = true;
 
 const modes = computed<Array<{ key: PublishMode; name: string; icon: string }>>(() => {
   const base: Array<{ key: PublishMode; name: string; icon: string }> = [
-  { key: "image", name: "图片", icon: "图" },
-  { key: "video", name: "视频", icon: "视" }
+    { key: "image", name: t("social.common.image"), icon: "▧" },
+    { key: "video", name: t("social.common.video"), icon: "▶" }
   ];
   if (supportsVoice.value) {
-    base.push({ key: "voice", name: "语音", icon: "声" });
+    base.push({ key: "voice", name: t("social.common.voice"), icon: "♪" });
   }
   return base;
 });
@@ -152,34 +155,38 @@ let recorder: UniApp.RecorderManager | undefined;
 const session = computed(() => getSession());
 const user = computed(() => session.value.user);
 const avatarUrl = computed(() => absolutizeUrl(firstText(user.value?.avatar_thumb, user.value?.avatar)) || "/static/brand/icon-round.webp");
-const authorName = computed(() => firstText(user.value?.user_nicename, user.value?.user_nickname, "星域用户"));
-const modeLabel = computed(() => modes.value.find((item) => item.key === mode.value)?.name || "图片");
-const imageTip = computed(() => `最多 9 张图片，图片、视频${supportsVoice.value ? "、语音" : ""}只能选择一种。`);
+const authorName = computed(() => firstText(user.value?.user_nicename, user.value?.user_nickname, t("social.common.defaultUser")));
+const modeLabel = computed(() => modes.value.find((item) => item.key === mode.value)?.name || t("social.common.image"));
+const imageTip = computed(() => supportsVoice.value ? t("social.publish.imageTipWithVoice") : t("social.publish.imageTip"));
 const modeSub = computed(() => {
   if (mode.value === "image") {
-    return images.value.length ? `已选择 ${images.value.length} 张图片` : "发布图片动态";
+    return images.value.length
+      ? `${t("social.publish.selectedImages")} ${images.value.length}`
+      : t("social.publish.publishImages");
   }
   if (mode.value === "video") {
-    return videoPath.value ? "已选择 1 个视频" : "发布视频动态";
+    return videoPath.value ? t("social.publish.selectedVideo") : t("social.publish.publishVideo");
   }
   if (recording.value) {
-    return `正在录音 ${recordElapsed.value}s`;
+    return `${t("social.publish.recording")} ${recordElapsed.value}s`;
   }
-  return voicePath.value ? `已录制 ${voiceSeconds.value}s` : "发布语音动态";
+  return voicePath.value
+    ? `${t("social.publish.recorded")} ${voiceSeconds.value}s`
+    : t("social.publish.publishVoice");
 });
 
 const voiceTitle = computed(() => {
   if (recording.value) {
-    return "正在录音";
+    return t("social.publish.recording");
   }
-  return voicePath.value ? "语音已准备好" : "还没有录音";
+  return voicePath.value ? t("social.publish.voiceReady") : t("social.publish.noRecording");
 });
 
 const voiceSubtitle = computed(() => {
   if (recording.value) {
     return `${recordElapsed.value}s / 60s`;
   }
-  return voicePath.value ? `${voiceSeconds.value}s` : "点击下方按钮开始录制";
+  return voicePath.value ? `${voiceSeconds.value}s` : t("social.publish.recordHint");
 });
 
 const canPublish = computed(() => {
@@ -195,17 +202,17 @@ const canPublish = computed(() => {
 
 const submitText = computed(() => {
   if (publishing.value) {
-    return "发布中";
+    return t("social.publish.publishing");
   }
   if (recording.value) {
-    return "请先停止录音";
+    return t("social.publish.stopFirst");
   }
-  return "发布动态";
+  return t("social.publish.submit");
 });
 
 function ensureRecorder() {
   if (!supportsVoice.value) {
-    uni.showToast({ title: "H5暂不支持语音动态，请在App内发布", icon: "none" });
+    uni.showToast({ title: t("social.publish.voiceAppOnly"), icon: "none" });
     return undefined;
   }
   if (recorder) {
@@ -224,11 +231,11 @@ function ensureRecorder() {
     recorder.onError(() => {
       stopRecordTimer();
       recording.value = false;
-      uni.showToast({ title: "录音失败", icon: "none" });
+      uni.showToast({ title: t("social.publish.recordFailed"), icon: "none" });
     });
     return recorder;
   } catch {
-    uni.showToast({ title: "当前环境不支持录音", icon: "none" });
+    uni.showToast({ title: t("social.publish.recordUnsupported"), icon: "none" });
     return undefined;
   }
   // #endif
@@ -255,7 +262,7 @@ function startRecordTimer() {
 
 function switchMode(next: PublishMode) {
   if (next === "voice" && !supportsVoice.value) {
-    uni.showToast({ title: "H5暂不支持语音动态，请在App内发布", icon: "none" });
+    uni.showToast({ title: t("social.publish.voiceAppOnly"), icon: "none" });
     return;
   }
   if (mode.value === next) {
@@ -263,8 +270,8 @@ function switchMode(next: PublishMode) {
   }
   if (hasMedia()) {
     uni.showModal({
-      title: "切换类型",
-      content: "切换后会清空当前已选媒体，确认继续？",
+      title: t("social.publish.switchType"),
+      content: t("social.publish.switchTypeConfirm"),
       confirmColor: "#ff5878",
       success: ({ confirm }) => {
         if (confirm) {
@@ -301,8 +308,8 @@ function resetDraft() {
     return;
   }
   uni.showModal({
-    title: "清空内容",
-    content: "确认清空当前编辑内容？",
+    title: t("social.publish.clearContent"),
+    content: t("social.publish.clearConfirm"),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm) {
@@ -358,7 +365,7 @@ function toggleRecord() {
     return;
   }
   if (!supportsVoice.value) {
-    uni.showToast({ title: "H5暂不支持语音动态，请在App内发布", icon: "none" });
+    uni.showToast({ title: t("social.publish.voiceAppOnly"), icon: "none" });
     return;
   }
   mode.value = "voice";
@@ -418,7 +425,7 @@ async function uploadFiles(paths: string[], label: string) {
     progress.value = Math.round((index / Math.max(1, paths.length)) * 80);
     const key = uploadKey(await uploadOne(path));
     if (!key) {
-      throw new Error("上传服务器未返回文件地址");
+      throw new Error(t("social.publish.uploadMissingUrl"));
     }
     uploaded.push(key);
   }
@@ -439,23 +446,23 @@ async function publish() {
     return;
   }
   if (mode.value === "voice" && !supportsVoice.value) {
-    uni.showToast({ title: "H5暂不支持语音动态，请在App内发布", icon: "none" });
+    uni.showToast({ title: t("social.publish.voiceAppOnly"), icon: "none" });
     return;
   }
   publishing.value = true;
   progress.value = 4;
-  statusText.value = "准备发布";
+  statusText.value = t("social.publish.preparing");
   try {
     if (mode.value === "image" && images.value.length) {
-      const uploaded = await uploadFiles(images.value, "上传图片");
+      const uploaded = await uploadFiles(images.value, t("social.publish.uploadImages"));
       await publishDynamic({
         type: ACTIVE_TYPES.image,
         text: text.value.trim(),
         images: uploaded.join(";")
       });
     } else if (mode.value === "video" && videoPath.value) {
-      const uploaded = await uploadFiles([videoPath.value], "上传视频");
-      const cover = videoThumb.value ? (await uploadFiles([videoThumb.value], "上传封面"))[0] || "" : "";
+      const uploaded = await uploadFiles([videoPath.value], t("social.publish.uploadVideo"));
+      const cover = videoThumb.value ? (await uploadFiles([videoThumb.value], t("social.publish.uploadCover")))[0] || "" : "";
       await publishDynamic({
         type: ACTIVE_TYPES.video,
         text: text.value.trim(),
@@ -463,7 +470,7 @@ async function publish() {
         videoImage: cover
       });
     } else if (mode.value === "voice" && voicePath.value) {
-      const uploaded = await uploadFiles([voicePath.value], "上传语音");
+      const uploaded = await uploadFiles([voicePath.value], t("social.publish.uploadVoice"));
       await publishDynamic({
         type: ACTIVE_TYPES.voice,
         text: text.value.trim(),
@@ -474,20 +481,21 @@ async function publish() {
       await publishDynamic({ type: ACTIVE_TYPES.text, text: text.value.trim() });
     }
     progress.value = 100;
-    statusText.value = "发布成功";
+    statusText.value = t("social.publish.success");
     markDynamicDirty();
-    uni.showToast({ title: "发布成功", icon: "success" });
+    uni.showToast({ title: t("social.publish.success"), icon: "success" });
     setTimeout(() => uni.navigateBack(), 450);
   } catch (error: any) {
     progress.value = 0;
     statusText.value = "";
-    uni.showToast({ title: error?.message || "发布失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("social.publish.failed"), icon: "none" });
   } finally {
     publishing.value = false;
   }
 }
 
 onShow(() => {
+  uni.setNavigationBarTitle({ title: t("social.publish.title") });
   if (!requireLogin()) {
     return;
   }

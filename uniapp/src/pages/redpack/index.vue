@@ -1,55 +1,55 @@
 <template>
   <view class="safe-page redpack-page">
     <view class="hero">
-      <text>直播间红包</text>
-      <text>{{ stream ? "抢红包、查看领取记录，也可以给直播间发红包。" : "缺少直播流信息，无法读取红包。" }}</text>
+      <text>{{ t("misc.redpack.title") }}</text>
+      <text>{{ stream ? t("misc.redpack.description") : t("misc.redpack.missingStream") }}</text>
     </view>
 
     <view class="tabs">
-      <view :class="{ active: tab === 'list' }" @tap="tab = 'list'">红包列表</view>
-      <view :class="{ active: tab === 'send' }" @tap="tab = 'send'">发红包</view>
+      <view :class="{ active: tab === 'list' }" @tap="tab = 'list'">{{ t("misc.redpack.list") }}</view>
+      <view :class="{ active: tab === 'send' }" @tap="tab = 'send'">{{ t("misc.redpack.send") }}</view>
     </view>
 
     <template v-if="tab === 'list'">
       <view class="section-head">
-        <text>当前红包</text>
-        <button @tap="load">刷新</button>
+        <text>{{ t("misc.redpack.current") }}</text>
+        <button @tap="load">{{ t("misc.common.refresh") }}</button>
       </view>
       <view v-if="packs.length" class="pack-list">
         <view v-for="pack in packs" :key="String(pack.id)" class="pack-card card">
           <image :src="avatarOf(pack)" mode="aspectFill" />
           <view class="pack-main">
-            <text>{{ pack.des || "恭喜发财，大吉大利" }}</text>
-            <text>{{ pack.user_nickname || pack.user_nicename || "星域用户" }} · {{ typeText(pack) }}</text>
-            <text v-if="Number(pack.second || 0) > 0">倒计时 {{ pack.second }} 秒</text>
+            <text>{{ pack.des || t("misc.redpack.defaultGreeting") }}</text>
+            <text>{{ pack.user_nickname || pack.user_nicename || t("misc.common.defaultUser") }} · {{ typeText(pack) }}</text>
+            <text v-if="Number(pack.second || 0) > 0">{{ t("misc.redpack.countdown") }} {{ pack.second }} {{ t("misc.redpack.seconds") }}</text>
           </view>
           <button :disabled="Number(pack.isrob || 0) !== 1 || robbingId === String(pack.id)" @tap="rob(pack)">
-            {{ Number(pack.isrob || 0) === 1 ? (robbingId === String(pack.id) ? "抢中" : "抢") : "已抢" }}
+            {{ Number(pack.isrob || 0) === 1 ? (robbingId === String(pack.id) ? t("misc.redpack.grabbing") : t("misc.redpack.grab")) : t("misc.redpack.grabbed") }}
           </button>
         </view>
       </view>
-      <EmptyState v-else :title="loading ? '正在加载红包' : '暂无红包'" description="直播间有红包时会显示在这里。" />
+      <EmptyState v-else :title="loading ? t('misc.redpack.loading') : t('misc.redpack.empty')" :description="t('misc.redpack.emptyDescription')" />
     </template>
 
     <template v-else>
       <view class="form-card card">
         <picker :range="typeNames" @change="onTypeChange">
           <view class="picker-row">
-            <text>红包类型</text>
+            <text>{{ t("misc.redpack.type") }}</text>
             <text>{{ typeNames[typeIndex] }}</text>
           </view>
         </picker>
         <picker :range="grantNames" @change="onGrantChange">
           <view class="picker-row">
-            <text>发放方式</text>
+            <text>{{ t("misc.redpack.grantMethod") }}</text>
             <text>{{ grantNames[grantIndex] }}</text>
           </view>
         </picker>
-        <input v-model.trim="coin" class="input" type="number" placeholder="星币金额" />
-        <input v-model.trim="nums" class="input" type="number" placeholder="红包个数" />
-        <input v-model.trim="desc" class="input" maxlength="50" placeholder="恭喜发财，大吉大利" />
+        <input v-model.trim="coin" class="input" type="number" :placeholder="t('misc.redpack.coinAmount')" />
+        <input v-model.trim="nums" class="input" type="number" :placeholder="t('misc.redpack.quantity')" />
+        <input v-model.trim="desc" class="input" maxlength="50" :placeholder="t('misc.redpack.defaultGreeting')" />
         <button class="primary-button submit" :disabled="sending || !stream || !coin || !nums" @tap="send">
-          {{ sending ? "发送中" : "发送红包" }}
+          {{ sending ? t("misc.common.sending") : t("misc.redpack.sendRedpack") }}
         </button>
       </view>
     </template>
@@ -57,13 +57,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { onLoad, onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import { getRedPacks, robRedPack, sendRedPack } from "@/api/services";
 import type { RedPackItem } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const stream = ref("");
 const tab = ref<"list" | "send">("list");
@@ -75,19 +76,19 @@ const typeIndex = ref(0);
 const grantIndex = ref(0);
 const coin = ref("");
 const nums = ref("");
-const desc = ref("恭喜发财，大吉大利");
+const desc = ref(t("misc.redpack.defaultGreeting"));
 
-const typeNames = ["普通红包", "手气红包"];
-const grantNames = ["立即发放", "延迟发放"];
+const typeNames = computed(() => [t("misc.redpack.normal"), t("misc.redpack.lucky")]);
+const grantNames = computed(() => [t("misc.redpack.immediateGrant"), t("misc.redpack.delayedGrant")]);
 
 function avatarOf(pack: RedPackItem) {
   return absolutizeUrl(String(pack.avatar_thumb || pack.avatar || "")) || "/static/brand/icon-round.webp";
 }
 
 function typeText(pack: RedPackItem) {
-  const grant = Number(pack.type_grant || 0) === 1 ? "延迟" : "立即";
-  const type = Number(pack.type || 0) === 1 ? "手气" : "普通";
-  return `${grant}${type}`;
+  const grant = Number(pack.type_grant || 0) === 1 ? t("misc.redpack.delayed") : t("misc.redpack.immediate");
+  const type = Number(pack.type || 0) === 1 ? t("misc.redpack.lucky") : t("misc.redpack.normal");
+  return `${grant} ${type}`;
 }
 
 function onTypeChange(event: any) {
@@ -107,7 +108,7 @@ async function load() {
   try {
     packs.value = await getRedPacks(stream.value);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "红包加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.redpack.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -122,10 +123,10 @@ async function rob(pack: RedPackItem) {
   try {
     const res = await robRedPack(stream.value, pack.id);
     const win = Number(res?.win || 0);
-    uni.showToast({ title: win > 0 ? `抢到 ${win} 星币` : res?.msg || "手慢了", icon: "none" });
+    uni.showToast({ title: win > 0 ? `${t("misc.redpack.won")} ${win} ${t("misc.redpack.coins")}` : res?.msg || t("misc.redpack.tooSlow"), icon: "none" });
     await load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "抢红包失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.redpack.grabFailed"), icon: "none" });
   } finally {
     robbingId.value = "";
   }
@@ -147,12 +148,12 @@ async function send() {
     });
     coin.value = "";
     nums.value = "";
-    desc.value = "恭喜发财，大吉大利";
+    desc.value = t("misc.redpack.defaultGreeting");
     tab.value = "list";
-    uni.showToast({ title: "红包已发送", icon: "none" });
+    uni.showToast({ title: t("misc.redpack.sent"), icon: "none" });
     await load();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "发送失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.common.sendFailed"), icon: "none" });
   } finally {
     sending.value = false;
   }

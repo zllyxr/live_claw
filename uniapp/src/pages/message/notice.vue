@@ -5,31 +5,31 @@
         <image class="avatar" :src="avatar" mode="aspectFill" />
         <view class="head-main">
           <view class="notice-heading">
-            <text class="notice-type">系统通知</text>
+            <text class="notice-type">{{ t("social.notice.systemNotice") }}</text>
             <text class="notice-source">{{ sourceName }}</text>
           </view>
-          <text class="notice-time">{{ timeText || "刚刚" }}</text>
+          <text class="notice-time">{{ timeText || t("social.common.justNow") }}</text>
         </view>
       </view>
       <text class="notice-title">{{ title }}</text>
-      <text class="notice-content">{{ content || "暂无详细内容" }}</text>
+      <text class="notice-content">{{ content || t("social.notice.noDetails") }}</text>
     </view>
 
     <view class="action-list card">
       <view v-if="targetUid" class="action-row" @tap="openUser">
-        <text>查看用户主页</text>
+        <text>{{ t("social.notice.viewUser") }}</text>
         <text>›</text>
       </view>
       <view v-if="dynamicId" class="action-row" @tap="openDynamic">
-        <text>查看相关动态</text>
+        <text>{{ t("social.notice.viewDynamic") }}</text>
         <text>›</text>
       </view>
       <view v-if="groupId" class="action-row" @tap="openGroup">
-        <text>查看群聊与入群申请</text>
+        <text>{{ t("social.notice.viewGroup") }}</text>
         <text>›</text>
       </view>
       <view class="action-row" @tap="backMessages">
-        <text>返回消息中心</text>
+        <text>{{ t("social.notice.backToMessages") }}</text>
         <text>›</text>
       </view>
     </view>
@@ -40,6 +40,9 @@
 import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type NoticeTab = "system" | "group" | "at" | "like" | "comment" | "fans";
 
@@ -48,14 +51,14 @@ const item = ref<Record<string, unknown>>({});
 
 const sourceName = computed(() => {
   const map: Record<NoticeTab, string> = {
-    system: "平台",
-    group: "群聊申请",
-    at: "提及",
-    like: "点赞",
-    comment: "评论",
-    fans: "关注"
+    system: t("social.notice.platform"),
+    group: t("social.notice.groupApplication"),
+    at: t("social.notice.mention"),
+    like: t("social.dynamicDetail.like"),
+    comment: t("social.common.comments"),
+    fans: t("social.common.follow")
   };
-  return firstText(item.value._notice_label, map[tab.value], "平台");
+  return map[tab.value] || firstText(item.value._notice_label, t("social.notice.platform"));
 });
 
 const title = computed(() =>
@@ -64,7 +67,7 @@ const title = computed(() =>
     item.value.user_nicename,
     item.value.user_nickname,
     item.value.from_user_nicename,
-    "系统通知"
+    t("social.notice.systemNotice")
   )
 );
 const content = computed(() =>
@@ -142,7 +145,7 @@ onLoad((query) => {
       item.value = {};
     }
   }
-  uni.setNavigationBarTitle({ title: "系统通知" });
+  uni.setNavigationBarTitle({ title: t("social.notice.systemNotice") });
 });
 </script>
 

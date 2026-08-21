@@ -3,12 +3,12 @@
     <view class="home-header">
       <view class="brand-lockup">
         <image class="brand-logo" src="/static/brand/icon-round.webp" mode="aspectFit" />
-        <text class="brand-name">星域</text>
+        <text class="brand-name">{{ t("home.brand") }}</text>
       </view>
 
       <view class="header-search" @tap="openSearch">
         <image src="/static/native/home_hot_search_dark.png" mode="aspectFit" />
-        <text>搜索主播、赛事、游戏</text>
+        <text>{{ t("home.searchHint") }}</text>
       </view>
 
       <view class="message-button" @tap="openMessages">
@@ -61,9 +61,9 @@
       <view class="section-heading">
         <view class="section-title-group">
           <image src="/static/native/hot_live.png" mode="aspectFit" />
-          <text class="section-title">今日精选</text>
+          <text class="section-title">{{ t("home.todayPicks") }}</text>
         </view>
-        <text class="section-more" @tap="scrollToLive">更多推荐</text>
+        <text class="section-more" @tap="scrollToLive">{{ t("home.moreRecommendations") }}</text>
       </view>
 
       <scroll-view scroll-x class="featured-scroll" :show-scrollbar="false">
@@ -77,14 +77,14 @@
             />
             <view class="featured-badge">LIVE</view>
             <view class="featured-gradient">
-              <text class="featured-title">{{ anchorName(featuredRoom) || "热门主播" }}</text>
-              <text class="featured-copy">{{ featuredRoom.title || "精彩直播进行中" }}</text>
+              <text class="featured-title">{{ anchorName(featuredRoom) || t("home.popularHost") }}</text>
+              <text class="featured-copy">{{ featuredRoom.title || t("home.liveNow") }}</text>
             </view>
           </view>
 
           <view v-if="featuredMatch" class="featured-card match-feature" @tap="openMatch(featuredMatch)">
             <view class="featured-card-head">
-              <text class="featured-label">热门赛事</text>
+              <text class="featured-label">{{ t("home.popularMatch") }}</text>
               <text>{{ statusText(featuredMatch) }}</text>
             </view>
             <view class="featured-team-row">
@@ -101,12 +101,12 @@
               />
             </view>
             <text class="featured-title dark">{{ teamName(featuredMatch, "home") }}</text>
-            <text class="featured-copy dark">对阵 {{ teamName(featuredMatch, "away") }}</text>
+            <text class="featured-copy dark">{{ t("home.versus", { team: teamName(featuredMatch, "away") }) }}</text>
           </view>
 
           <view v-if="featuredLottery" class="featured-card lottery-feature-card" @tap="openLotteryGame(featuredLottery)">
             <view class="featured-card-head">
-              <text class="featured-label lottery">开奖中</text>
+              <text class="featured-label lottery">{{ t("home.drawing") }}</text>
               <text>{{ issueNumber(featuredLottery) }}</text>
             </view>
             <SafeImage
@@ -126,8 +126,8 @@
               mode="aspectFill"
             />
             <view class="featured-gradient">
-              <text class="featured-title">{{ fishGame?.name || "深海猎手" }}</text>
-              <text class="featured-copy">{{ fishGame?.players_text || "1-4人实时对战" }}</text>
+              <text class="featured-title">{{ fishGame?.name || t("home.deepSeaHunter") }}</text>
+              <text class="featured-copy">{{ fishGame?.players_text || t("home.playersLive") }}</text>
             </view>
           </view>
         </view>
@@ -138,9 +138,9 @@
       <view class="section-heading">
         <view class="section-title-group">
           <image src="/static/art/home/home-entry-sports.webp" mode="aspectFit" />
-          <text class="section-title">体育赛事</text>
+          <text class="section-title">{{ t("home.sportsMatches") }}</text>
         </view>
-        <text class="section-more" @tap="openSports">更多赛事</text>
+        <text class="section-more" @tap="openSports">{{ t("home.moreMatches") }}</text>
       </view>
 
       <scroll-view v-if="featuredMatches.length" scroll-x class="sports-scroll" :show-scrollbar="false">
@@ -152,7 +152,7 @@
             @tap="openMatch(match)"
           >
             <view class="sports-card-head">
-              <text class="sports-league">{{ match.competition_type || match.league_name || "足球赛事" }}</text>
+              <text class="sports-league">{{ match.competition_type || match.league_name || t("home.footballMatch") }}</text>
               <text class="sports-status" :class="{ live: isLiveMatch(match) }">{{ statusText(match) }}</text>
             </view>
             <view class="sports-teams">
@@ -179,24 +179,24 @@
             </view>
             <view v-if="oddsFor(match).length" class="odds-row">
               <view v-for="option in oddsFor(match)" :key="String(option.id || option.option_code)" class="odds-chip">
-                <text>{{ option.option_name || "赔率" }}</text>
+                <text>{{ option.option_name || t("home.odds") }}</text>
                 <text>{{ formatOdds(option.odds) }}</text>
               </view>
             </view>
-            <view v-else class="odds-empty">点击查看赛事详情</view>
+            <view v-else class="odds-empty">{{ t("home.viewMatchDetails") }}</view>
           </view>
         </view>
       </scroll-view>
-      <view v-else class="section-state">{{ loading.sports ? "赛事同步中" : sportsError || "暂无可用赛事" }}</view>
+      <view v-else class="section-state">{{ loading.sports ? t("home.syncingMatches") : sportsError || t("home.noMatches") }}</view>
     </view>
 
     <view class="section lottery-section">
       <view class="section-heading">
         <view class="section-title-group">
           <image src="/static/art/home/home-entry-lottery.webp" mode="aspectFit" />
-          <text class="section-title">彩票中心</text>
+          <text class="section-title">{{ t("home.lotteryCenter") }}</text>
         </view>
-        <text class="section-more" @tap="openLotteryZone">更多玩法</text>
+        <text class="section-more" @tap="openLotteryZone">{{ t("home.moreGames") }}</text>
       </view>
 
       <view v-if="featuredLottery" class="lottery-panel">
@@ -204,7 +204,7 @@
           <view class="lottery-primary-head">
             <view>
               <text class="lottery-primary-title">{{ lotteryName(featuredLottery) }}</text>
-              <text class="lottery-issue">第 {{ issueNumber(featuredLottery) }} 期</text>
+              <text class="lottery-issue">{{ t("home.issue", { issue: issueNumber(featuredLottery) }) }}</text>
             </view>
             <SafeImage
               class="lottery-primary-icon"
@@ -213,9 +213,9 @@
               mode="aspectFit"
             />
           </view>
-          <text class="lottery-count-label">实时封盘倒计时</text>
+          <text class="lottery-count-label">{{ t("home.closeCountdown") }}</text>
           <text class="lottery-count-value">{{ lotteryCountdown(featuredLottery) }}</text>
-          <view class="lottery-action">立即购彩</view>
+          <view class="lottery-action">{{ t("home.playNow") }}</view>
         </view>
 
         <view class="lottery-secondary">
@@ -232,30 +232,30 @@
             />
             <view>
               <text>{{ lotteryName(game) }}</text>
-              <text>{{ issueNumber(game) }}期</text>
+              <text>{{ t("home.issueShort", { issue: issueNumber(game) }) }}</text>
             </view>
           </view>
         </view>
       </view>
-      <view v-else class="section-state">{{ loading.lottery ? "彩票数据同步中" : lotteryError || "暂无彩票数据" }}</view>
+      <view v-else class="section-state">{{ loading.lottery ? t("home.syncingLottery") : lotteryError || t("home.noLottery") }}</view>
     </view>
 
     <view class="section">
       <view class="section-heading">
         <view class="section-title-group">
           <image src="/static/art/home/home-entry-fishing.webp" mode="aspectFit" />
-          <text class="section-title">捕鱼达人</text>
+          <text class="section-title">{{ t("home.fishingMaster") }}</text>
         </view>
-        <text class="section-more" @tap="openFishingZone">更多游戏</text>
+        <text class="section-more" @tap="openFishingZone">{{ t("home.moreGames") }}</text>
       </view>
 
       <view class="fishing-banner" @tap="launchFish">
         <image src="/static/art/home/home-fishing-banner.webp" mode="aspectFill" />
         <view class="fishing-copy">
-          <text class="fishing-kicker">多人实时 · 统一结算</text>
-          <text class="fishing-title">{{ fishGame?.name || "深海猎手" }}</text>
-          <text class="fishing-subtitle">{{ fishGame?.remark || "探索黄金海域，挑战深海巨兽" }}</text>
-          <view class="fishing-action">{{ launchingFish ? "正在进入" : "快速开始" }}</view>
+          <text class="fishing-kicker">{{ t("home.multiplayerSettlement") }}</text>
+          <text class="fishing-title">{{ fishGame?.name || t("home.deepSeaHunter") }}</text>
+          <text class="fishing-subtitle">{{ fishGame?.remark || t("home.exploreOcean") }}</text>
+          <view class="fishing-action">{{ launchingFish ? t("home.entering") : t("home.quickStart") }}</view>
         </view>
       </view>
     </view>
@@ -264,9 +264,9 @@
       <view class="section-heading">
         <view class="section-title-group">
           <image src="/static/native/hot_live.png" mode="aspectFit" />
-          <text class="section-title">热门直播</text>
+          <text class="section-title">{{ t("home.popularLive") }}</text>
         </view>
-        <text class="section-more" @tap="openFollow">我的关注</text>
+        <text class="section-more" @tap="openFollow">{{ t("home.myFollowing") }}</text>
       </view>
 
       <view v-if="visibleRooms.length" class="live-grid">
@@ -278,11 +278,11 @@
         >
           <view class="live-cover">
             <SafeImage :src="coverOf(room)" :fallback="coverFallback(room)" mode="aspectFill" />
-            <view class="live-status">直播中</view>
-            <view class="live-count">{{ displayCount(room.nums || room.hotvotes) }}人</view>
+            <view class="live-status">{{ t("home.live") }}</view>
+            <view class="live-count">{{ t("home.people", { count: displayCount(room.nums || room.hotvotes) }) }}</view>
             <view class="live-copy">
-              <text>{{ room.title || "星域直播间" }}</text>
-              <text>{{ anchorName(room) || "主播" }}</text>
+              <text>{{ room.title || t("home.defaultRoom") }}</text>
+              <text>{{ anchorName(room) || t("home.host") }}</text>
             </view>
           </view>
         </view>
@@ -290,13 +290,13 @@
       <EmptyState
         v-else-if="!loading.live"
         kind="live"
-        title="暂无直播房间"
-        :description="liveError || '下拉页面可重新刷新。'"
+        :title="t('home.noLiveRooms')"
+        :description="liveError || t('home.pullToRefresh')"
       />
-      <view v-else class="section-state">直播房间同步中</view>
+      <view v-else class="section-state">{{ t("home.syncingLive") }}</view>
 
       <view v-if="rooms.length && (!liveExpanded || !liveFinished)" class="load-more" @tap="showMoreLive">
-        {{ liveExpanded ? (loading.live ? "加载中" : "加载更多") : "查看更多直播" }}
+        {{ liveExpanded ? (loading.live ? t("home.loading") : t("home.loadMore")) : t("home.viewMoreLive") }}
       </view>
     </view>
 
@@ -342,6 +342,9 @@ import {
 } from "@/utils/navigation";
 import { isLoggedIn, requireLogin } from "@/utils/session";
 import { absolutizeUrl, displayUrl, firstText } from "@/utils/url";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const rooms = ref<LiveRoom[]>([]);
 const sportsHome = ref<SportsHome>();
@@ -432,57 +435,57 @@ const COVERS = [
   "/static/art/cover/cover4.webp"
 ];
 
-const heroSlides = [
+const heroSlides = computed(() => [
   {
     image: "/static/art/home/home-hero-live.webp",
-    kicker: "精彩赛事 · 热门直播",
-    title: "每一场精彩 都在星域",
-    subtitle: "实时赛事与人气主播一站直达",
-    actionText: "查看赛事",
+    kicker: t("home.heroLiveKicker"),
+    title: t("home.heroLiveTitle"),
+    subtitle: t("home.heroLiveSubtitle"),
+    actionText: t("home.viewMatches"),
     copyClass: "hero-copy-center",
     action: openSports
   },
   {
     image: "/static/art/home/home-hero-games.webp",
-    kicker: "彩票游戏 · 深海捕鱼",
-    title: "多种玩法 随时开局",
-    subtitle: "平台余额统一结算，过程清晰透明",
-    actionText: "进入游戏",
+    kicker: t("home.heroGameKicker"),
+    title: t("home.heroGameTitle"),
+    subtitle: t("home.heroGameSubtitle"),
+    actionText: t("home.enterGame"),
     copyClass: "",
     action: openFishingZone
   }
-];
+]);
 
-const quickEntries = [
+const quickEntries = computed(() => [
   {
     key: "live",
-    name: "直播",
-    subtitle: "热门主播",
+    name: t("home.liveCategory"),
+    subtitle: t("home.popularHost"),
     icon: "/static/art/home/home-entry-live.webp",
     action: scrollToLive
   },
   {
     key: "sports",
-    name: "体育",
-    subtitle: "实时赛事",
+    name: t("tab.sports"),
+    subtitle: t("home.liveMatches"),
     icon: "/static/art/home/home-entry-sports.webp",
     action: openSports
   },
   {
     key: "lottery",
-    name: "彩票",
-    subtitle: "多种彩票",
+    name: t("home.lottery"),
+    subtitle: t("home.manyLotteries"),
     icon: "/static/art/home/home-entry-lottery.webp",
     action: openLotteryZone
   },
   {
     key: "fishing",
-    name: "捕鱼",
-    subtitle: "多人在线",
+    name: t("home.fishing"),
+    subtitle: t("home.multiplayerOnline"),
     icon: "/static/art/home/home-entry-fishing.webp",
     action: openFishingZone
   }
-];
+]);
 
 const featuredRoom = computed(() => rooms.value[0]);
 const visibleRooms = computed(() => (liveExpanded.value ? rooms.value : rooms.value.slice(0, 6)));
@@ -521,14 +524,14 @@ const fishGame = computed<MiniGameItem | undefined>(() => {
 
 const balanceText = computed(() => {
   if (!loggedIn.value) {
-    return "登录";
+    return t("me.login");
   }
   const raw = String(lotteryHome.value?.coin || "0");
   const value = Number(raw);
   if (Number.isFinite(value) && Math.abs(value) >= 10000) {
-    return `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}万 星币`;
+    return t("home.balanceWan", { amount: (value / 10000).toFixed(value >= 100000 ? 0 : 1) });
   }
-  return `${raw} 星币`;
+  return t("home.balance", { amount: raw });
 });
 
 function onHeroChange(event: { detail?: { current?: number } }) {
@@ -591,18 +594,18 @@ function matchPriority(match: SportsMatch) {
 function statusText(match: SportsMatch) {
   const value = String(match.status_text || match.bet_status_text || "");
   const lower = value.toLowerCase();
-  if (isLiveMatch(match)) return "进行中";
-  if (lower.includes("not started")) return "未开始";
-  if (lower.includes("finished")) return "已结束";
-  return value || "待开赛";
+  if (isLiveMatch(match)) return t("home.inProgress");
+  if (lower.includes("not started")) return t("home.notStarted");
+  if (lower.includes("finished")) return t("home.finished");
+  return value || t("home.pending");
 }
 
 function teamName(match: SportsMatch, side: "home" | "away") {
   const direct = side === "home" ? match.home_name : match.away_name;
   const team = side === "home" ? match.home_team : match.away_team;
   if (direct) return String(direct);
-  if (team && typeof team === "object") return String(team.name || "球队");
-  return String(team || "球队");
+  if (team && typeof team === "object") return String(team.name || t("home.team"));
+  return String(team || t("home.team"));
 }
 
 function teamLogo(match: SportsMatch, side: "home" | "away") {
@@ -629,7 +632,7 @@ function formatOdds(value?: string | number) {
 }
 
 function lotteryName(game: LotteryGame) {
-  return String(game.game_name || game.game_name_en || "彩票游戏");
+  return String(game.game_name || game.game_name_en || t("home.lotteryGame"));
 }
 
 function gameIcon(game: LotteryGame) {
@@ -651,7 +654,7 @@ function lotteryCountdown(game: LotteryGame) {
   const fallback = Number(issue.seal_countdown || issue.open_countdown || 0);
   const seconds = deadline > 0 ? Math.max(0, deadline - nowSeconds.value) : Math.max(0, fallback);
   if (seconds <= 0) {
-    return "等待开奖";
+    return t("home.waitingDraw");
   }
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -685,7 +688,7 @@ async function loadRooms(reset = false) {
       livePage.value += 1;
     }
   } catch {
-    liveError.value = "直播数据暂时不可用，请下拉重试";
+    liveError.value = t("home.liveUnavailable");
   } finally {
     loading.live = false;
   }
@@ -749,15 +752,15 @@ function aggregateFishingGame(venues: HomeFishingVenue[]): MiniGameItem | undefi
   return {
     id: String(venue.game_id || ""),
     code: venue.game_code || "deepsea_hunter",
-    name: venue.game_name || "深海猎手",
+    name: venue.game_name || t("home.deepSeaHunter"),
     category: "fishing",
     entry_type: "internal",
-    players_text: `1-${venue.seats_per_table || 4}人`,
+    players_text: t("home.playerRange", { count: venue.seats_per_table || 4 }),
     play_mode: "match",
     need_login: "1",
     use_wallet: "1",
     orientation: "landscape",
-    remark: `${venues.length || 3}个倍率场，随机分配桌位`
+    remark: t("home.venueRemark", { count: venues.length || 3 })
   };
 }
 
@@ -774,10 +777,10 @@ function applyHomeDashboard(payload: HomeDashboard) {
     games: game ? [game] : [],
     categories: []
   };
-  liveError.value = sectionError(payload.live, "直播数据暂时不可用，请下拉重试");
-  sportsError.value = sectionError(payload.sports, "赛事数据暂时不可用，请下拉重试");
-  lotteryError.value = sectionError(payload.lottery, "彩票数据暂时不可用，请下拉重试");
-  gamesError.value = sectionError(payload.fishing, "游戏数据暂时不可用，请下拉重试");
+  liveError.value = sectionError(payload.live, t("home.liveUnavailable"));
+  sportsError.value = sectionError(payload.sports, t("home.sportsUnavailable"));
+  lotteryError.value = sectionError(payload.lottery, t("home.lotteryUnavailable"));
+  gamesError.value = sectionError(payload.fishing, t("home.gamesUnavailable"));
 }
 
 async function loadDashboard() {
@@ -788,14 +791,14 @@ async function loadDashboard() {
   try {
     const payload = await getHomeDashboard();
     if (!payload) {
-      throw new Error("首页数据为空");
+      throw new Error(t("home.emptyDashboard"));
     }
     applyHomeDashboard(payload);
   } catch {
-    liveError.value = "直播数据暂时不可用，请下拉重试";
-    sportsError.value = "赛事数据暂时不可用，请下拉重试";
-    lotteryError.value = "彩票数据暂时不可用，请下拉重试";
-    gamesError.value = "游戏数据暂时不可用，请下拉重试";
+    liveError.value = t("home.liveUnavailable");
+    sportsError.value = t("home.sportsUnavailable");
+    lotteryError.value = t("home.lotteryUnavailable");
+    gamesError.value = t("home.gamesUnavailable");
   } finally {
     loading.live = false;
     loading.sports = false;
@@ -811,10 +814,10 @@ function openRoom(room: LiveRoom) {
   const stream = firstText(room.stream);
   uni.navigateTo({
     url:
-      `/pages/live/player?title=${encodeURIComponent(String(room.title || anchorName(room) || "直播间"))}` +
+      `/pages/live/player?title=${encodeURIComponent(String(room.title || anchorName(room) || t("home.liveRoom")))}` +
       `&src=${encodeURIComponent(src)}&cover=${encodeURIComponent(coverOf(room))}` +
       `&liveuid=${encodeURIComponent(liveUid)}&stream=${encodeURIComponent(stream)}` +
-      `&avatar=${encodeURIComponent(avatarOf(room))}&anchor=${encodeURIComponent(String(anchorName(room) || "主播"))}` +
+      `&avatar=${encodeURIComponent(avatarOf(room))}&anchor=${encodeURIComponent(String(anchorName(room) || t("home.host")))}` +
       `&nums=${encodeURIComponent(String(room.nums || 0))}&votes=${encodeURIComponent(String(room.hotvotes || 0))}`
   });
 }
@@ -895,7 +898,7 @@ async function launchFishingVenue(venue: FishingVenue) {
   if (!game || launchingFish.value) return;
   venuePickerVisible.value = false;
   launchingFish.value = true;
-  uni.showLoading({ title: "进入游戏", mask: true });
+  uni.showLoading({ title: t("home.enterGame"), mask: true });
   try {
     const info = await enterMiniGame(
       String(game.code || "deepsea_hunter"),
@@ -903,11 +906,11 @@ async function launchFishingVenue(venue: FishingVenue) {
     );
     const url = String(info?.launch_url || "");
     if (!url) {
-      throw new Error("游戏地址无效");
+      throw new Error(t("home.invalidGameUrl"));
     }
     openGameView(absolutizeUrl(url) || url);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "进入游戏失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("home.enterGameFailed"), icon: "none" });
   } finally {
     uni.hideLoading();
     launchingFish.value = false;

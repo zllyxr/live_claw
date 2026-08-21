@@ -5,12 +5,12 @@
       <image class="fallback-cover" src="/static/art/live/stream-away-v1.webp" mode="aspectFill" />
       <view class="fallback-mask" />
       <view class="fallback-content">
-        <text class="fallback-status">{{ resolvingStream ? "正在连接" : "直播暂停" }}</text>
-        <text class="fallback-title">{{ resolvingStream ? "正在连接直播" : "主播暂时离开" }}</text>
+        <text class="fallback-status">{{ resolvingStream ? t("live.connecting") : t("live.paused") }}</text>
+        <text class="fallback-title">{{ resolvingStream ? t("live.connectingLive") : t("live.hostAway") }}</text>
         <text class="fallback-description">
-          {{ resolvingStream ? "正在为你接入直播信号" : "暂时没有收到直播信号，稍后再来看看" }}
+          {{ resolvingStream ? t("live.connectingSignal") : t("live.noSignal") }}
         </text>
-        <button v-if="src && !resolvingStream" @tap="() => resolveRoomStream()">重试拉流</button>
+        <button v-if="src && !resolvingStream" @tap="() => resolveRoomStream()">{{ t("live.retryStream") }}</button>
       </view>
     </view>
 
@@ -21,14 +21,14 @@
       <view class="anchor-pill" @tap="openAnchorHome">
         <view class="avatar-wrap">
           <image class="anchor-avatar" :src="anchorAvatar" mode="aspectFill" />
-          <view class="anchor-level">播</view>
+          <view class="anchor-level">{{ t("live.hostBadge") }}</view>
         </view>
         <view class="anchor-copy">
           <text class="anchor-name">{{ anchorName }}</text>
           <text class="anchor-id">ID: {{ liveUid || "0" }}</text>
         </view>
         <button class="follow-chip" :class="{ followed }" @tap.stop="followAnchor">
-          {{ followed ? "已关" : "关注" }}
+          {{ followed ? t("live.followedShort") : t("live.follow") }}
         </button>
       </view>
 
@@ -47,19 +47,19 @@
 
       <view class="room-tools">
         <view class="user-count" @tap="openPanel('users')">{{ onlineCount }}</view>
-        <button class="sound-chip" :class="{ muted: isMuted }" @tap="toggleSound">{{ isMuted ? "静音" : "声音" }}</button>
+        <button class="sound-chip" :class="{ muted: isMuted }" @tap="toggleSound">{{ isMuted ? t("live.muted") : t("live.sound") }}</button>
         <image class="close-icon" src="/static/live/icon_live_close.png" mode="aspectFit" @tap="leaveRoom" />
       </view>
     </view>
 
     <view class="income-row">
       <view class="income-chip" @tap="openPanel('rank')">
-        <text>星币</text>
+        <text>{{ t("me.coin") }}</text>
         <text>{{ roomVotes }}</text>
         <image src="/static/live/icon_arrow_right.png" mode="aspectFit" />
       </view>
       <view class="income-chip" @tap="openPanel('guard')">
-        <text>守护</text>
+        <text>{{ t("live.guard") }}</text>
         <text>{{ guardCount }}</text>
         <image src="/static/live/icon_arrow_right.png" mode="aspectFit" />
       </view>
@@ -70,7 +70,7 @@
       <text>{{ titleTip }}</text>
     </view>
     <view v-if="trialCountdown > 0" class="trial-chip">
-      <text>试看 {{ trialCountdown }}s</text>
+      <text>{{ t("live.trial", { seconds: trialCountdown }) }}</text>
     </view>
 
     <view class="enter-room-tip">
@@ -82,7 +82,7 @@
       <image class="gift-toast-avatar" :src="avatarForGift" mode="aspectFill" />
       <view class="gift-toast-main">
         <text>{{ giftToast.name }}</text>
-        <text>送出 {{ giftToast.gift }} x{{ giftToast.count }}</text>
+        <text>{{ t("live.giftSentBanner", { gift: giftToast.gift, count: giftToast.count }) }}</text>
       </view>
       <image class="gift-toast-icon" :src="giftToast.icon" mode="aspectFit" />
     </view>
@@ -110,7 +110,7 @@
           <view v-else class="chat-inline">
             <text v-if="message.level" class="chat-level">LV{{ message.level }}</text>
             <text v-if="message.vipType" class="chat-vip">VIP</text>
-            <text v-if="message.guardType" class="chat-guard">守</text>
+            <text v-if="message.guardType" class="chat-guard">{{ t("live.guardBadge") }}</text>
             <text v-if="message.badge" class="chat-badge">{{ message.badge }}</text>
             <text class="chat-name">{{ message.name }}</text>
             <text class="chat-colon">{{ message.type === "enter" ? "" : "：" }}</text>
@@ -125,19 +125,19 @@
         <input
           v-model.trim="draft"
           class="chat-input"
-          placeholder="说点什么..."
+          :placeholder="t('live.saySomething')"
           confirm-type="send"
           :focus="inputFocus"
           @confirm="sendChat"
           @blur="onChatBlur"
         />
         <button class="chat-send" :disabled="!draft || sendingChat" @tap="sendChat">
-          {{ sendingChat ? "发送中" : "发送" }}
+          {{ sendingChat ? t("live.sending") : t("live.send") }}
         </button>
       </view>
       <template v-else>
         <view class="chat-entry" @tap="focusChat">
-          <text>说点什么...</text>
+          <text>{{ t("live.saySomething") }}</text>
           <image src="/static/live/icon_live_chat_face.png" mode="aspectFit" />
         </view>
         <view class="bottom-actions">
@@ -149,11 +149,11 @@
         <view v-if="gameChooserOpen" class="live-game-popover">
           <view class="live-game-option" @tap="openLiveGame('sports')">
             <image src="/static/live/icon_live_game_sports.png" mode="aspectFit" />
-            <text>体育</text>
+            <text>{{ t("tab.sports") }}</text>
           </view>
           <view class="live-game-option" @tap="openLiveGame('lottery')">
             <image src="/static/live/icon_live_game_lottery.png" mode="aspectFit" />
-            <text>彩票</text>
+            <text>{{ t("live.lottery") }}</text>
           </view>
           <view class="game-popover-arrow" />
         </view>
@@ -164,36 +164,36 @@
       <view class="bottom-sheet" :class="panel" @tap.stop>
         <view class="sheet-head">
           <text>{{ panelTitle }}</text>
-          <p class="sheet-close" @tap="closePanel">关闭</p>
+          <p class="sheet-close" @tap="closePanel">{{ t("live.close") }}</p>
         </view>
         <view v-if="panel === 'gift'" class="gift-sheet">
           <view class="gift-tabs">
-            <text class="active">热门</text>
-            <text>礼物</text>
-            <text>背包</text>
-            <view class="gift-tip">幸运礼物说明 ›</view>
+            <text class="active">{{ t("live.popular") }}</text>
+            <text>{{ t("live.gift") }}</text>
+            <text>{{ t("live.backpack") }}</text>
+            <view class="gift-tip">{{ t("live.luckyGiftInfo") }} ›</view>
           </view>
           <scroll-view scroll-y class="gift-body" :show-scrollbar="false">
             <view class="gift-grid">
               <button v-for="gift in gifts" :key="String(gift.id)" class="gift-card" :class="{ active: String(selectedGift?.id || '') === String(gift.id || '') }" @tap="selectedGift = gift">
                 <image class="gift-icon" :src="giftIcon(gift)" mode="aspectFit" />
-                <text class="gift-name">{{ gift.giftname || gift.name || "礼物" }}</text>
-                <text class="gift-price">{{ gift.needcoin || 0 }}星币</text>
+                <text class="gift-name">{{ gift.giftname || gift.name || t("live.gift") }}</text>
+                <text class="gift-price">{{ t("live.coinAmount", { amount: gift.needcoin || 0 }) }}</text>
               </button>
             </view>
-            <view v-if="!gifts.length" class="sheet-empty">暂无礼物数据</view>
+            <view v-if="!gifts.length" class="sheet-empty">{{ t("live.noGifts") }}</view>
           </scroll-view>
           <view class="gift-footer">
             <view class="coin-charge" @tap="openRecharge">
               <image src="/static/live/icon_live_gift.png" mode="aspectFit" />
               <text>{{ giftBundle?.coin || "0" }}</text>
-              <text class="charge-text">充值</text>
+              <text class="charge-text">{{ t("me.recharge") }}</text>
               <text class="charge-arrow">›</text>
             </view>
             <picker :range="giftCountOptions" @change="changeGiftCount">
               <view class="count-picker">{{ giftCount }}</view>
             </picker>
-            <button class="send-gift" :disabled="sendingGift || !selectedGift" @tap="sendGift">赠送</button>
+            <button class="send-gift" :disabled="sendingGift || !selectedGift" @tap="sendGift">{{ t("live.give") }}</button>
           </view>
         </view>
         <scroll-view v-else-if="panel === 'users'" scroll-y class="user-list sheet-body" :show-scrollbar="false">
@@ -201,11 +201,11 @@
             <image class="user-avatar" :src="userAvatar(item)" mode="aspectFill" />
             <view class="user-main">
               <text class="user-name">{{ userName(item) }}</text>
-              <text class="user-id">ID: {{ userId(item) || "-" }} · 贡献 {{ userContribution(item) }}</text>
+              <text class="user-id">{{ t("live.userContribution", { id: userId(item) || "-", value: userContribution(item) }) }}</text>
             </view>
-            <button class="row-action" @tap.stop="chooseManageUser(item)">管理</button>
+            <button class="row-action" @tap.stop="chooseManageUser(item)">{{ t("live.manage") }}</button>
           </view>
-          <view v-if="!onlineSheetUsers.length" class="sheet-empty">暂无在线用户</view>
+          <view v-if="!onlineSheetUsers.length" class="sheet-empty">{{ t("live.noOnlineUsers") }}</view>
         </scroll-view>
         <scroll-view v-else-if="panel === 'manage'" scroll-y class="manage-panel sheet-body" :show-scrollbar="false">
           <view v-if="selectedUser" class="selected-user" @tap="openUser(selectedUser)">
@@ -216,21 +216,21 @@
             </view>
           </view>
           <view v-if="selectedUser" class="manage-actions">
-            <button @tap="setAdmin(selectedUser)">房管</button>
-            <button @tap="shutUp(selectedUser)">禁言</button>
-            <button @tap="kick(selectedUser)">踢出</button>
-            <button @tap="reportUser(selectedUser)">举报</button>
+            <button @tap="setAdmin(selectedUser)">{{ t("live.admin") }}</button>
+            <button @tap="shutUp(selectedUser)">{{ t("live.muteUser") }}</button>
+            <button @tap="kick(selectedUser)">{{ t("live.kick") }}</button>
+            <button @tap="reportUser(selectedUser)">{{ t("live.report") }}</button>
           </view>
-          <text class="sheet-subtitle">房管列表</text>
+          <text class="sheet-subtitle">{{ t("live.adminList") }}</text>
           <view v-for="item in admins" :key="userId(item)" class="user-row" @tap="openUser(item)">
             <image class="user-avatar" :src="userAvatar(item)" mode="aspectFill" />
             <view class="user-main">
               <text class="user-name">{{ userName(item) }}</text>
               <text class="user-id">ID: {{ userId(item) || "-" }}</text>
             </view>
-            <button class="row-action" @tap.stop="chooseManageUser(item)">管理</button>
+            <button class="row-action" @tap.stop="chooseManageUser(item)">{{ t("live.manage") }}</button>
           </view>
-          <view v-if="!selectedUser && !admins.length" class="sheet-empty">请选择在线用户进行管理</view>
+          <view v-if="!selectedUser && !admins.length" class="sheet-empty">{{ t("live.selectUserToManage") }}</view>
         </scroll-view>
         <scroll-view v-else-if="panel === 'guard'" scroll-y class="rank-list sheet-body" :show-scrollbar="false">
           <view v-for="item in guards" :key="rowKey(item)" class="rank-row">
@@ -240,7 +240,7 @@
               <text class="rank-desc">{{ guardDesc(item) }}</text>
             </view>
           </view>
-          <view v-if="!guards.length" class="sheet-empty">暂无守护用户</view>
+          <view v-if="!guards.length" class="sheet-empty">{{ t("live.noGuards") }}</view>
         </scroll-view>
         <scroll-view v-else-if="panel === 'rank'" scroll-y class="rank-list sheet-body" :show-scrollbar="false">
           <view v-for="item in ranks" :key="rowKey(item)" class="rank-row">
@@ -250,7 +250,7 @@
               <text class="rank-desc">{{ rowDesc(item) }}</text>
             </view>
           </view>
-          <view v-if="!ranks.length" class="sheet-empty">暂无贡献记录</view>
+          <view v-if="!ranks.length" class="sheet-empty">{{ t("live.noContributions") }}</view>
         </scroll-view>
       </view>
     </view>
@@ -259,15 +259,15 @@
       <view class="live-native-game-sheet" @tap.stop>
         <view class="live-native-game-grabber" />
         <view class="live-native-game-header">
-          <button class="game-header-btn" :class="{ hidden: liveGameView === 'home' }" @tap="backLiveGameHome">返回</button>
+          <button class="game-header-btn" :class="{ hidden: liveGameView === 'home' }" @tap="backLiveGameHome">{{ t("live.back") }}</button>
           <view class="game-header-title">
             <text>{{ liveGameTitle }}</text>
-            <text>直播不中断</text>
+            <text>{{ t("live.uninterrupted") }}</text>
           </view>
           <button class="game-header-btn" @tap="closeLiveGamePanel">X</button>
         </view>
 
-        <view v-if="liveGameLoading" class="live-native-game-loading">加载中...</view>
+        <view v-if="liveGameLoading" class="live-native-game-loading">{{ t("home.loading") }}...</view>
         <scroll-view v-else scroll-y class="live-native-game-body" :show-scrollbar="false">
           <view v-if="liveGameKind === 'sports' && liveGameView === 'home'" class="live-sports-panel">
             <scroll-view scroll-x class="live-game-tabs" :show-scrollbar="false">
@@ -282,12 +282,12 @@
               </view>
             </scroll-view>
             <view class="live-panel-actions">
-              <button @tap="openLiveSportsAllRecords">投注记录</button>
-              <button @tap="loadLiveGamePanel('sports')">刷新赛事</button>
+              <button @tap="openLiveSportsAllRecords">{{ t("live.betRecords") }}</button>
+              <button @tap="loadLiveGamePanel('sports')">{{ t("live.refreshMatches") }}</button>
             </view>
             <view v-for="match in liveSportsMatches" :key="liveSportsMatchId(match)" class="live-sports-card">
               <view class="live-sports-league">
-                <text>{{ match.competition_type || match.league_name || "足球赛事" }}</text>
+                <text>{{ match.competition_type || match.league_name || t("home.footballMatch") }}</text>
                 <text>{{ liveSportsStatus(match) }}</text>
               </view>
               <view class="live-sports-score">
@@ -296,21 +296,21 @@
                 <text>{{ liveSportsTeamName(match, "away") }}</text>
               </view>
               <view class="live-card-actions">
-                <button class="live-game-primary" @tap="openLiveSportsBet(match)">下注</button>
-                <button class="live-game-secondary" @tap="openLiveSportsRecords(match, 'home')">记录</button>
+                <button class="live-game-primary" @tap="openLiveSportsBet(match)">{{ t("live.bet") }}</button>
+                <button class="live-game-secondary" @tap="openLiveSportsRecords(match, 'home')">{{ t("live.records") }}</button>
               </view>
             </view>
-            <view v-if="!liveSportsMatches.length" class="live-native-game-empty">暂无赛事</view>
+            <view v-if="!liveSportsMatches.length" class="live-native-game-empty">{{ t("home.noMatches") }}</view>
           </view>
 
           <view v-else-if="liveGameKind === 'lottery' && liveGameView === 'home'" class="live-lottery-panel">
             <view class="live-lottery-balance">
-              <text>余额</text>
-              <text>{{ liveLotteryHome?.coin || "0" }}星币</text>
+              <text>{{ t("live.balanceLabel") }}</text>
+              <text>{{ t("live.coinAmount", { amount: liveLotteryHome?.coin || "0" }) }}</text>
             </view>
             <view class="live-panel-actions">
-              <button @tap="openLiveLotteryAllRecords">投注记录</button>
-              <button @tap="loadLiveGamePanel('lottery')">刷新余额</button>
+              <button @tap="openLiveLotteryAllRecords">{{ t("live.betRecords") }}</button>
+              <button @tap="loadLiveGamePanel('lottery')">{{ t("live.refreshBalance") }}</button>
             </view>
             <scroll-view scroll-x class="live-game-tabs" :show-scrollbar="false">
               <view
@@ -330,10 +330,10 @@
                   <text>{{ liveLotteryGameName(game) }}</text>
                   <text>{{ game.game_code || "LOTTERY" }}</text>
                 </view>
-                <button>下注</button>
+                <button>{{ t("live.bet") }}</button>
               </view>
             </view>
-            <view v-if="!liveLotteryGames.length" class="live-native-game-empty">暂无彩票</view>
+            <view v-if="!liveLotteryGames.length" class="live-native-game-empty">{{ t("live.noLottery") }}</view>
           </view>
 
           <view v-else-if="liveGameKind === 'lottery' && liveGameView === 'lotteryBet'" class="live-bet-panel">
@@ -342,7 +342,7 @@
               <text class="live-bet-sub">{{ liveLotteryIssueText() }}</text>
             </view>
             <view class="live-panel-actions">
-              <button @tap="openLiveLotteryRecords(liveLotteryGame, 'lotteryBet')">投注记录</button>
+              <button @tap="openLiveLotteryRecords(liveLotteryGame, 'lotteryBet')">{{ t("live.betRecords") }}</button>
             </view>
             <view v-for="play in liveLotteryPlays" :key="playName(play)" class="live-bet-section">
               <text class="live-bet-section-title">{{ playName(play) }}</text>
@@ -358,20 +358,20 @@
                 </button>
               </view>
             </view>
-            <view v-if="!liveLotteryPlays.length" class="live-native-game-empty">暂无玩法</view>
+            <view v-if="!liveLotteryPlays.length" class="live-native-game-empty">{{ t("live.noPlays") }}</view>
             <view class="live-bet-submit">
-              <input v-model="liveLotteryAmount" type="number" placeholder="金额" />
-              <button @tap="confirmLiveLotteryBet">确认投注</button>
+              <input v-model="liveLotteryAmount" type="number" :placeholder="t('live.amount')" />
+              <button @tap="confirmLiveLotteryBet">{{ t("live.confirmBet") }}</button>
             </view>
           </view>
 
           <view v-else-if="liveGameKind === 'sports' && liveGameView === 'sportsBet'" class="live-bet-panel">
             <view class="live-bet-card">
-              <text class="live-bet-title">{{ liveSportsMatch ? `${liveSportsTeamName(liveSportsMatch, "home")} vs ${liveSportsTeamName(liveSportsMatch, "away")}` : "体育投注" }}</text>
+              <text class="live-bet-title">{{ liveSportsMatch ? `${liveSportsTeamName(liveSportsMatch, "home")} vs ${liveSportsTeamName(liveSportsMatch, "away")}` : t("live.sportsBet") }}</text>
               <text class="live-bet-sub">{{ liveSportsMatch ? `${liveSportsScore(liveSportsMatch)}  ${liveSportsStatus(liveSportsMatch)}` : "" }}</text>
             </view>
             <view class="live-panel-actions">
-              <button @tap="openLiveSportsRecords(liveSportsMatch, 'sportsBet')">投注记录</button>
+              <button @tap="openLiveSportsRecords(liveSportsMatch, 'sportsBet')">{{ t("live.betRecords") }}</button>
             </view>
             <view v-for="market in liveSportsMarketList" :key="marketName(market)" class="live-bet-section">
               <text class="live-bet-section-title">{{ marketName(market) }}</text>
@@ -387,28 +387,28 @@
                 </button>
               </view>
             </view>
-            <view v-if="!liveSportsMarketList.length" class="live-native-game-empty">盘口未开放</view>
+            <view v-if="!liveSportsMarketList.length" class="live-native-game-empty">{{ t("live.marketClosed") }}</view>
             <view class="live-bet-submit sports">
-              <input v-model="liveSportsAmount" type="number" placeholder="金额" />
-              <button @tap="confirmLiveSportsBet">确认投注</button>
+              <input v-model="liveSportsAmount" type="number" :placeholder="t('live.amount')" />
+              <button @tap="confirmLiveSportsBet">{{ t("live.confirmBet") }}</button>
             </view>
           </view>
 
           <view v-else-if="liveGameKind === 'lottery' && liveGameView === 'lotteryRecords'" class="live-record-panel">
             <view class="live-panel-actions">
-              <button @tap="openLiveLotteryRecords(liveLotteryGame, liveRecordBackView)">刷新记录</button>
+              <button @tap="openLiveLotteryRecords(liveLotteryGame, liveRecordBackView)">{{ t("live.refreshRecords") }}</button>
             </view>
             <view class="live-record-summary">
               <view>
-                <text>下注</text>
+                <text>{{ t("live.bet") }}</text>
                 <text>{{ amountValue(liveLotteryRecords, ["total_bet"]) }}</text>
               </view>
               <view>
-                <text>派彩</text>
+                <text>{{ t("live.payout") }}</text>
                 <text>{{ amountValue(liveLotteryRecords, ["total_payout"]) }}</text>
               </view>
               <view>
-                <text>盈亏</text>
+                <text>{{ t("live.profitLoss") }}</text>
                 <text>{{ amountValue(liveLotteryRecords, ["profit_loss", "net_amount"]) }}</text>
               </view>
             </view>
@@ -418,21 +418,21 @@
                 <text>{{ recordStatus(order) }}</text>
               </view>
               <text class="live-record-meta">{{ lotteryOrderMeta(order) }}</text>
-              <text v-if="recordTime(order)" class="live-record-meta">时间：{{ recordTime(order) }}</text>
+              <text v-if="recordTime(order)" class="live-record-meta">{{ t("live.time", { value: recordTime(order) }) }}</text>
               <view class="live-record-result">
                 <view>
-                  <text>开奖号码</text>
+                  <text>{{ t("live.winningNumbers") }}</text>
                   <text>{{ lotteryRecordOpenCode(order) }}</text>
                 </view>
                 <view>
-                  <text>开奖状态</text>
+                  <text>{{ t("live.drawStatus") }}</text>
                   <text>{{ lotteryRecordIssueStatus(order) }}</text>
                 </view>
               </view>
               <view class="live-record-amounts">
-                <view><text>下注</text><text>{{ amountValue(order, ["total_bet", "bet_money", "money"]) }}</text></view>
-                <view><text>派彩</text><text>{{ amountValue(order, ["total_payout", "win_money"]) }}</text></view>
-                <view><text>盈亏</text><text>{{ amountValue(order, ["profit_loss", "net_amount"]) }}</text></view>
+                <view><text>{{ t("live.bet") }}</text><text>{{ amountValue(order, ["total_bet", "bet_money", "money"]) }}</text></view>
+                <view><text>{{ t("live.payout") }}</text><text>{{ amountValue(order, ["total_payout", "win_money"]) }}</text></view>
+                <view><text>{{ t("live.profitLoss") }}</text><text>{{ amountValue(order, ["profit_loss", "net_amount"]) }}</text></view>
               </view>
               <view v-if="recordItems(order).length" class="live-record-lines">
                 <view v-for="item in recordItems(order)" :key="recordKey(item)" class="live-record-line">
@@ -441,12 +441,12 @@
                 </view>
               </view>
             </view>
-            <view v-if="!liveLotteryOrderList.length" class="live-native-game-empty">暂无投注记录</view>
+            <view v-if="!liveLotteryOrderList.length" class="live-native-game-empty">{{ t("live.noBetRecords") }}</view>
           </view>
 
           <view v-else-if="liveGameKind === 'sports' && liveGameView === 'sportsRecords'" class="live-record-panel">
             <view class="live-panel-actions">
-              <button @tap="openLiveSportsRecords(liveSportsMatch, liveRecordBackView)">刷新记录</button>
+              <button @tap="openLiveSportsRecords(liveSportsMatch, liveRecordBackView)">{{ t("live.refreshRecords") }}</button>
             </view>
             <view v-for="order in liveSportsOrderList" :key="recordKey(order)" class="live-record-card sports">
               <view class="live-record-head">
@@ -454,21 +454,21 @@
                 <text>{{ recordStatus(order) }}</text>
               </view>
               <text class="live-record-meta">{{ sportsOrderMeta(order) }}</text>
-              <text v-if="recordTime(order)" class="live-record-meta">时间：{{ recordTime(order) }}</text>
+              <text v-if="recordTime(order)" class="live-record-meta">{{ t("live.time", { value: recordTime(order) }) }}</text>
               <view class="live-record-result sports">
                 <view>
-                  <text>赛果</text>
+                  <text>{{ t("live.matchResult") }}</text>
                   <text>{{ sportsRecordScore(order) }}</text>
                 </view>
                 <view>
-                  <text>状态</text>
+                  <text>{{ t("live.status") }}</text>
                   <text>{{ sportsRecordResultStatus(order) }}</text>
                 </view>
               </view>
               <view class="live-record-amounts">
-                <view><text>下注</text><text>{{ amountValue(order, ["total_bet", "bet_money", "money"]) }}</text></view>
-                <view><text>派彩</text><text>{{ amountValue(order, ["total_payout", "win_money"]) }}</text></view>
-                <view><text>盈亏</text><text>{{ amountValue(order, ["net_amount", "profit_loss"]) }}</text></view>
+                <view><text>{{ t("live.bet") }}</text><text>{{ amountValue(order, ["total_bet", "bet_money", "money"]) }}</text></view>
+                <view><text>{{ t("live.payout") }}</text><text>{{ amountValue(order, ["total_payout", "win_money"]) }}</text></view>
+                <view><text>{{ t("live.profitLoss") }}</text><text>{{ amountValue(order, ["net_amount", "profit_loss"]) }}</text></view>
               </view>
               <view v-if="recordItems(order).length" class="live-record-lines">
                 <view v-for="item in recordItems(order)" :key="recordKey(item)" class="live-record-line">
@@ -477,7 +477,7 @@
                 </view>
               </view>
             </view>
-            <view v-if="!liveSportsOrderList.length" class="live-native-game-empty">暂无体育投注记录</view>
+            <view v-if="!liveSportsOrderList.length" class="live-native-game-empty">{{ t("live.noSportsBetRecords") }}</view>
           </view>
         </scroll-view>
       </view>
@@ -521,6 +521,9 @@ import {
   type LiveSocketChat,
   type LiveSocketGift
 } from "@/utils/liveSocket";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type Panel = "" | "gift" | "users" | "manage" | "guard" | "rank" | "function";
 type FunctionKey = "users" | "manage" | "guard" | "rank" | "report" | "share" | "recharge";
@@ -534,7 +537,7 @@ const streamError = ref("");
 const cover = ref("");
 const liveUid = ref("");
 const stream = ref("");
-const anchorName = ref("主播");
+const anchorName = ref(t("home.host"));
 const BRAND_ICON = staticAsset("/static/brand/icon.webp");
 const BRAND_ICON_ROUND = staticAsset("/static/brand/icon-round.webp");
 const anchorAvatar = ref(BRAND_ICON_ROUND);
@@ -605,11 +608,11 @@ const onlineCount = computed(() => {
 const guardCount = computed(() => String(guards.value.length || 0));
 const socketStateLabel = computed(() => {
   const labels: Record<LiveConnectionState, string> = {
-    idle: isLoggedIn() ? "聊天待连接" : "登录后可聊天",
-    connecting: "聊天连接中",
-    ready: "聊天已连接",
-    reconnecting: "聊天重连中",
-    offline: "聊天暂时离线"
+    idle: isLoggedIn() ? t("live.chatWaiting") : t("live.loginToChat"),
+    connecting: t("live.chatConnecting"),
+    ready: t("live.chatConnected"),
+    reconnecting: t("live.chatReconnecting"),
+    offline: t("live.chatOffline")
   };
   return labels[socketState.value];
 });
@@ -638,35 +641,35 @@ const giftBurstItems = computed(() =>
     delay: `${index * 48}ms`
   }))
 );
-const enterTip = computed(() => `${anchorName.value} 的直播间`);
-const titleTip = computed(() => "欢迎来到星域直播，关注主播不错过开播。");
+const enterTip = computed(() => t("live.hostRoom", { host: anchorName.value }));
+const titleTip = computed(() => t("live.welcomeTip"));
 const panelTitle = computed(() => {
   const titles: Record<Panel, string> = {
     "": "",
-    gift: "礼物",
-    users: "在线用户",
-    manage: "房管与操作",
-    guard: "守护",
-    rank: "贡献榜",
-    function: "更多功能"
+    gift: t("live.gift"),
+    users: t("live.onlineUsers"),
+    manage: t("live.adminActions"),
+    guard: t("live.guard"),
+    rank: t("live.contributionRank"),
+    function: t("live.moreFunctions")
   };
   return titles[panel.value];
 });
 
 const liveGameTitle = computed(() => {
   if (liveGameView.value === "sportsRecords") {
-    return "体育投注记录";
+    return t("live.sportsBetRecords");
   }
   if (liveGameView.value === "lotteryRecords") {
-    return "彩票投注记录";
+    return t("live.lotteryBetRecords");
   }
   if (liveGameView.value === "sportsBet") {
-    return "体育投注";
+    return t("live.sportsBet");
   }
   if (liveGameView.value === "lotteryBet") {
-    return "彩票投注";
+    return t("live.lotteryBet");
   }
-  return liveGameKind.value === "sports" ? "体育" : "彩票";
+  return liveGameKind.value === "sports" ? t("tab.sports") : t("live.lottery");
 });
 const liveSportsTabs = computed(() => {
   const apiTabs = (liveSportsHome.value?.tabs || [])
@@ -675,9 +678,9 @@ const liveSportsTabs = computed(() => {
   return apiTabs.length
     ? apiTabs
     : [
-        { key: "today", name: "今日" },
-        { key: "tomorrow", name: "明日" },
-        { key: "fixtures", name: "赛程" }
+        { key: "today", name: t("live.today") },
+        { key: "tomorrow", name: t("live.tomorrow") },
+        { key: "fixtures", name: t("live.fixtures") }
       ];
 });
 const liveSportsMatches = computed(() => liveSportsHome.value?.matches || liveSportsHome.value?.upcoming || []);
@@ -693,8 +696,8 @@ const liveLotteryPlays = computed(() => arrayValue(liveLotteryDetail.value, "pla
 const liveSportsMarketList = computed(() => firstArray(liveSportsMarkets.value, ["markets", "items", "list"]));
 const liveLotteryOrderList = computed(() => firstArray(liveLotteryRecords.value, ["items", "list", "orders"]));
 const liveSportsOrderList = computed(() => firstArray(liveSportsRecords.value, ["items", "list", "orders"]));
-function addSystem(content: string, badge = "系统") {
-  messages.value.push({ id: `system-${Date.now()}-${messages.value.length}`, name: "系统", content, badge, type: "system" });
+function addSystem(content: string, badge = t("live.system")) {
+  messages.value.push({ id: `system-${Date.now()}-${messages.value.length}`, name: t("live.system"), content, badge, type: "system" });
   scrollChat();
 }
 
@@ -831,7 +834,7 @@ function connectLiveSocket(info: unknown) {
     onLeave: removeLiveUser,
     onKick: (uid) => {
       if (uid && uid === getSession().uid) {
-        uni.showToast({ title: "你已被踢出直播间", icon: "none" });
+        uni.showToast({ title: t("live.youWereKicked"), icon: "none" });
         leaveRoom();
         return;
       }
@@ -839,7 +842,7 @@ function connectLiveSocket(info: unknown) {
     },
     onShutUp: (uid, content) => {
       if (uid && uid === getSession().uid) {
-        uni.showToast({ title: content || "你已被禁言", icon: "none" });
+        uni.showToast({ title: content || t("live.youWereMuted"), icon: "none" });
       }
     },
     onSetAdmin: (uid, action) => {
@@ -858,7 +861,7 @@ function connectLiveSocket(info: unknown) {
       }
     },
     onLiveEnd: (reason) => {
-      addSystem(reason || "直播已结束");
+      addSystem(reason || t("live.liveEnded"));
     },
     onFakeFans: mergeLiveUsers,
     onError: (message) => {
@@ -909,7 +912,7 @@ function startTrialCountdown(seconds = 10) {
       clearTrialCountdown();
       destroyHlsPreview();
       playSrc.value = "";
-      uni.showToast({ title: "试看已结束，请开通会员后继续观看", icon: "none" });
+      uni.showToast({ title: t("live.trialEnded"), icon: "none" });
       setTimeout(() => leaveRoom(), 350);
     }
   }, 1000);
@@ -924,11 +927,11 @@ function configureTrial(enterInfo?: unknown) {
 }
 
 function liveLotteryCategoryName(category: Record<string, unknown>) {
-  return textValue(category, ["name", "name_cn", "title"], "全部");
+  return textValue(category, ["name", "name_cn", "title"], t("live.all"));
 }
 
 function liveLotteryGameName(game?: LotteryGame) {
-  return String(game?.game_name || game?.game_name_en || game?.name || "彩票");
+  return String(game?.game_name || game?.game_name_en || game?.name || t("live.lottery"));
 }
 
 function liveLotteryGameIcon(game?: LotteryGame) {
@@ -939,12 +942,12 @@ function liveLotteryGameIcon(game?: LotteryGame) {
 function liveLotteryIssueText() {
   const issue = asRecord(liveLotteryDetail.value?.current_issue);
   if (!Object.keys(issue).length) {
-    return "暂无可投注期号";
+    return t("live.noBettableIssue");
   }
   const issueNo = textValue(issue, ["issue_num", "issue", "id"], "--");
   const countdown = textValue(issue, ["bet_countdown", "seal_countdown", "countdown"], "0");
-  const closed = lotteryIssueCanBet(issue) ? "" : " 已封盘";
-  return `期号：${issueNo}  倒计时：${countdown}${closed}`;
+  const closed = lotteryIssueCanBet(issue) ? "" : t("live.closedSuffix");
+  return t("live.issueCountdown", { issue: issueNo, countdown, closed });
 }
 
 function liveLotteryIssueId() {
@@ -961,7 +964,7 @@ function lotteryIssueCanBet(issue: Record<string, unknown>) {
 }
 
 function playName(play: Record<string, unknown>) {
-  return textValue(play, ["play_name", "name", "title"], "玩法");
+  return textValue(play, ["play_name", "name", "title"], t("live.play"));
 }
 
 function playOptions(play: Record<string, unknown>) {
@@ -969,7 +972,7 @@ function playOptions(play: Record<string, unknown>) {
 }
 
 function optionName(option: Record<string, unknown>) {
-  return textValue(option, ["option_name", "name", "title"], "选项");
+  return textValue(option, ["option_name", "name", "title"], t("live.option"));
 }
 
 function optionOdds(option: Record<string, unknown>) {
@@ -994,9 +997,9 @@ function liveSportsTeamName(match: SportsMatch, side: "home" | "away") {
     return String(direct);
   }
   if (team && typeof team === "object") {
-    return String(team.name || "球队");
+    return String(team.name || t("home.team"));
   }
-  return String(team || "球队");
+  return String(team || t("home.team"));
 }
 
 function liveSportsScore(match: SportsMatch) {
@@ -1004,11 +1007,11 @@ function liveSportsScore(match: SportsMatch) {
 }
 
 function liveSportsStatus(match: SportsMatch) {
-  return String(match.status_text || match.kickoff_text || match.kickoff_time_text || match.match_time || "赛程");
+  return String(match.status_text || match.kickoff_text || match.kickoff_time_text || match.match_time || t("live.fixtures"));
 }
 
 function marketName(market: Record<string, unknown>) {
-  return textValue(market, ["market_name", "name", "market_code"], "盘口");
+  return textValue(market, ["market_name", "name", "market_code"], t("live.market"));
 }
 
 function marketOptions(market: Record<string, unknown>) {
@@ -1020,7 +1023,7 @@ function amountValue(source: unknown, keys: string[], fallback = "0") {
 }
 
 function lotteryRecordTitle(order: Record<string, unknown>) {
-  return textValue(order, ["game_name", "game_name_en", "name"], "彩票订单");
+  return textValue(order, ["game_name", "game_name_en", "name"], t("live.lotteryOrder"));
 }
 
 function recordField(source: Record<string, unknown>, key: string) {
@@ -1034,8 +1037,8 @@ function sportsRecordTitle(order: Record<string, unknown>) {
     return direct;
   }
   const match = recordField(order, "match");
-  const home = textValue(match, ["home_name"], textValue(order, ["home_name"], "主队"));
-  const away = textValue(match, ["away_name"], textValue(order, ["away_name"], "客队"));
+  const home = textValue(match, ["home_name"], textValue(order, ["home_name"], t("live.homeTeam")));
+  const away = textValue(match, ["away_name"], textValue(order, ["away_name"], t("live.awayTeam")));
   return `${home} VS ${away}`;
 }
 
@@ -1046,13 +1049,13 @@ function recordStatus(order: Record<string, unknown>) {
 function lotteryOrderMeta(order: Record<string, unknown>) {
   const issue = textValue(order, ["issue_num", "issue"], "--");
   const no = textValue(order, ["order_no", "orderid", "id"], "--");
-  return `期号：${issue}  订单：${no}`;
+  return t("live.lotteryOrderMeta", { issue, order: no });
 }
 
 function sportsOrderMeta(order: Record<string, unknown>) {
   const matchId = textValue(order, ["display_match_id", "public_match_id", "match_id"], "--");
   const no = textValue(order, ["order_no", "orderid", "id"], "--");
-  return `编号：${matchId}  订单：${no}`;
+  return t("live.sportsOrderMeta", { match: matchId, order: no });
 }
 
 function recordTime(order: Record<string, unknown>) {
@@ -1073,7 +1076,7 @@ function recordKey(item: Record<string, unknown>) {
 }
 
 function lotteryRecordOpenCode(order: Record<string, unknown>) {
-  return textValue(order, ["open_code", "award_code", "result_code"], "待开奖");
+  return textValue(order, ["open_code", "award_code", "result_code"], t("live.awaitingDraw"));
 }
 
 function lotteryRecordIssueStatus(order: Record<string, unknown>) {
@@ -1083,15 +1086,15 @@ function lotteryRecordIssueStatus(order: Record<string, unknown>) {
 function lotteryRecordItemTitle(item: Record<string, unknown>) {
   const play = textValue(item, ["play_name", "play_code"], "");
   const option = textValue(item, ["option_name", "option_code"], "");
-  return `${play || "玩法"} · ${option || "投注项"}`;
+  return `${play || t("live.play")} · ${option || t("live.betOption")}`;
 }
 
 function lotteryRecordItemMeta(item: Record<string, unknown>) {
   const odds = optionOdds(item);
   const amount = amountValue(item, ["bet_amount", "amount", "money"]);
   const payout = amountValue(item, ["payout_amount", "win_money"], "-");
-  const status = textValue(item, ["win_status_text", "status_text"], "待开奖");
-  return `赔率 ${odds} · 投注 ${amount} · 派彩 ${payout} · ${status}`;
+  const status = textValue(item, ["win_status_text", "status_text"], t("live.awaitingDraw"));
+  return t("live.betSummary", { odds, amount, payout, status });
 }
 
 function sportsRecordScore(order: Record<string, unknown>) {
@@ -1101,7 +1104,7 @@ function sportsRecordScore(order: Record<string, unknown>) {
   if (home !== "" && away !== "") {
     return `${home} : ${away}`;
   }
-  return "待同步";
+  return t("live.pendingSync");
 }
 
 function sportsRecordResultStatus(order: Record<string, unknown>) {
@@ -1112,12 +1115,12 @@ function sportsRecordResultStatus(order: Record<string, unknown>) {
   }
   const settle = textValue(match, ["settle_status"], textValue(order, ["settle_status"], ""));
   if (settle === "1" || settle === "2") {
-    return "已结算";
+    return t("live.settled");
   }
   if (settle === "0") {
-    return "待结算";
+    return t("live.pendingSettlement");
   }
-  return "赛果";
+  return t("live.matchResult");
 }
 
 function sportsRecordItemTitle(item: Record<string, unknown>) {
@@ -1130,8 +1133,8 @@ function sportsRecordItemMeta(item: Record<string, unknown>) {
   const odds = optionOdds(item);
   const amount = amountValue(item, ["bet_amount", "amount", "money"]);
   const payout = amountValue(item, ["payout_amount", "win_money"], "-");
-  const status = textValue(item, ["win_status_text", "status_text"], "待结算");
-  return `赔率 ${odds} · 投注 ${amount} · 派彩 ${payout} · ${status}`;
+  const status = textValue(item, ["win_status_text", "status_text"], t("live.pendingSettlement"));
+  return t("live.betSummary", { odds, amount, payout, status });
 }
 
 function destroyHlsPreview() {
@@ -1164,7 +1167,7 @@ function playH5Video(video: HTMLVideoElement) {
   syncSoundState(video);
   void video.play().catch(() => {
     if (!isMuted.value) {
-      uni.showToast({ title: "浏览器拦截自动播放声音，请点声音按钮", icon: "none" });
+      uni.showToast({ title: t("live.autoplayBlocked"), icon: "none" });
     }
   });
 }
@@ -1252,7 +1255,7 @@ async function resolveRoomStream(nextSource: unknown = src.value, forceRefresh =
   streamError.value = "";
   destroyHlsPreview();
   if (!sourcePage) {
-    streamError.value = "直播地址暂不可用";
+    streamError.value = t("live.streamUnavailable");
     return;
   }
   resolvingStream.value = true;
@@ -1262,7 +1265,7 @@ async function resolveRoomStream(nextSource: unknown = src.value, forceRefresh =
       const direct = await resolveLiveSource(liveUid.value, stream.value, forceRefresh);
       mediaSource = deepDecode(direct?.url || "");
       if (!mediaSource || direct?.delivery !== "direct") {
-        throw new Error("没有取得可用的直播地址");
+        throw new Error(t("live.noStreamUrl"));
       }
     }
     const resolved = await resolveLiveStream(mediaSource);
@@ -1271,9 +1274,9 @@ async function resolveRoomStream(nextSource: unknown = src.value, forceRefresh =
       await attachHlsPreview();
       return;
     }
-    streamError.value = resolved.reason || "未解析到可播放直播流";
+    streamError.value = resolved.reason || t("live.noPlayableStream");
   } catch (error: any) {
-    streamError.value = error?.message || "直播流拉取失败";
+    streamError.value = error?.message || t("live.streamFetchFailed");
   } finally {
     resolvingStream.value = false;
   }
@@ -1287,14 +1290,14 @@ async function retryDirectSource() {
     stream.value
   );
   if (!isServerResolvedSource || directRefreshAttempts >= 4) {
-    streamError.value = "直播流播放失败，请重试";
+    streamError.value = t("live.streamPlaybackFailed");
     return;
   }
   if (resolvingStream.value || directRefreshTimer) {
     return;
   }
   directRefreshAttempts += 1;
-  streamError.value = "直播地址正在更新…";
+  streamError.value = t("live.streamUpdating");
   const retryDelays = [500, 1500, 4000, 8000];
   directRefreshTimer = setTimeout(() => {
     directRefreshTimer = undefined;
@@ -1344,7 +1347,7 @@ async function initRoom() {
       guards.value = list;
     }).catch(() => undefined);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "直播间初始化失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.roomInitFailed"), icon: "none" });
   }
 }
 
@@ -1377,7 +1380,7 @@ async function openPanel(next: Panel) {
       ranks.value = await getLiveUserRank(liveUid.value, stream.value);
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "面板加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.panelLoadFailed"), icon: "none" });
   }
 }
 
@@ -1391,7 +1394,7 @@ function userId(item?: UserProfile) {
 }
 
 function userName(item?: UserProfile) {
-  return item?.user_nicename || item?.user_nickname || "星域用户";
+  return item?.user_nicename || item?.user_nickname || t("me.defaultUser");
 }
 
 function userAvatar(item?: UserProfile) {
@@ -1415,16 +1418,16 @@ function rowAvatar(item: Record<string, unknown>) {
 }
 
 function rowName(item: Record<string, unknown>) {
-  return String(item.user_nicename || item.user_nickname || item.name || item.uid || "星域用户");
+  return String(item.user_nicename || item.user_nickname || item.name || item.uid || t("me.defaultUser"));
 }
 
 function rowDesc(item: Record<string, unknown>) {
-  return String(item.totalcoin || item.coin || item.contribute || item.endtime || item.addtime || "贡献记录");
+  return String(item.totalcoin || item.coin || item.contribute || item.endtime || item.addtime || t("live.contributionRecord"));
 }
 
 function guardDesc(item: Record<string, unknown>) {
   const type = String(item.type || item.guard_type || "");
-  const typeName = type === "2" ? "年守护" : type === "1" ? "月守护" : "守护用户";
+  const typeName = type === "2" ? t("live.yearGuard") : type === "1" ? t("live.monthGuard") : t("live.guardUser");
   const end = String(item.endtime || item.end_time || item.addtime || "");
   return end ? `${typeName} · ${end}` : typeName;
 }
@@ -1460,12 +1463,12 @@ async function sendChat() {
   }
   const level = Number(getSession().user?.level || 0);
   if (speakLimit.value > 0 && level < speakLimit.value) {
-    uni.showToast({ title: `等级达到 ${speakLimit.value} 才能发言`, icon: "none" });
+    uni.showToast({ title: t("live.levelRequired", { level: speakLimit.value }), icon: "none" });
     return;
   }
   const client = liveSocketClient;
   if (!client?.isConnected()) {
-    uni.showToast({ title: "聊天服务器未连接，请稍后重试", icon: "none" });
+    uni.showToast({ title: t("live.chatServerDisconnected"), icon: "none" });
     return;
   }
   sendingChat.value = true;
@@ -1489,9 +1492,9 @@ async function followAnchor() {
   try {
     const res = await setAttention(liveUid.value);
     followed.value = Number(res?.isattent ?? (followed.value ? 0 : 1)) === 1;
-    addSystem(followed.value ? "已关注主播" : "已取消关注主播");
+    addSystem(followed.value ? t("live.hostFollowed") : t("live.hostUnfollowed"));
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "关注失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.followFailed"), icon: "none" });
   }
 }
 
@@ -1504,7 +1507,7 @@ function toggleSound() {
       playH5Video(video);
     }
   });
-  uni.showToast({ title: isMuted.value ? "已静音" : "已开启声音", icon: "none" });
+  uni.showToast({ title: isMuted.value ? t("live.nowMuted") : t("live.soundOn"), icon: "none" });
 }
 
 function changeGiftCount(event: any) {
@@ -1530,9 +1533,9 @@ async function sendGift() {
     if (result?.coin !== undefined && giftBundle.value) {
       giftBundle.value = { ...giftBundle.value, coin: result.coin as string | number };
     }
-    uni.showToast({ title: "礼物已送出", icon: "none" });
+    uni.showToast({ title: t("live.giftSent"), icon: "none" });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "送礼失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.giftFailed"), icon: "none" });
   } finally {
     sendingGift.value = false;
   }
@@ -1572,13 +1575,13 @@ function reportLiveTarget(toUid: string) {
   if (!requireLogin() || !toUid) {
     return;
   }
-  const reasons = ["直播内容违规", "骚扰辱骂", "广告引流", "其他原因"];
+  const reasons = [t("live.reportIllegal"), t("live.reportHarassment"), t("live.reportAds"), t("live.reportOther")];
   uni.showActionSheet({
     itemList: reasons,
     success: ({ tapIndex }) => {
-      reportLiveUser(toUid, reasons[tapIndex] || "其他原因")
-        .then(() => uni.showToast({ title: "已举报", icon: "none" }))
-        .catch((error: any) => uni.showToast({ title: error?.message || "举报失败", icon: "none" }));
+      reportLiveUser(toUid, reasons[tapIndex] || t("live.reportOther"))
+        .then(() => uni.showToast({ title: t("live.reported"), icon: "none" }))
+        .catch((error: any) => uni.showToast({ title: error?.message || t("live.reportFailed"), icon: "none" }));
     }
   });
 }
@@ -1594,11 +1597,11 @@ function setAdmin(item: UserProfile) {
       if (liveSocketClient?.isConnected()) {
         liveSocketClient.sendSetAdmin(action, targetId, userName(item));
       } else {
-        addSystem(`${userName(item)} 房管状态已更新`);
+        addSystem(t("live.adminUpdated", { user: userName(item) }));
       }
       return openPanel("manage");
     })
-    .catch((error: any) => uni.showToast({ title: error?.message || "设置失败", icon: "none" }));
+    .catch((error: any) => uni.showToast({ title: error?.message || t("live.settingFailed"), icon: "none" }));
 }
 
 function shutUp(item: UserProfile) {
@@ -1610,10 +1613,10 @@ function shutUp(item: UserProfile) {
       if (liveSocketClient?.isConnected()) {
         liveSocketClient.sendShutUp(userId(item), userName(item), 1);
       } else {
-        addSystem(`${userName(item)} 已被禁言`);
+        addSystem(t("live.userMuted", { user: userName(item) }));
       }
     })
-    .catch((error: any) => uni.showToast({ title: error?.message || "禁言失败", icon: "none" }));
+    .catch((error: any) => uni.showToast({ title: error?.message || t("live.muteFailed"), icon: "none" }));
 }
 
 function kick(item: UserProfile) {
@@ -1621,8 +1624,8 @@ function kick(item: UserProfile) {
     return;
   }
   uni.showModal({
-    title: "踢出直播间",
-    content: `确认踢出 ${userName(item)}？`,
+    title: t("live.kickTitle"),
+    content: t("live.kickConfirm", { user: userName(item) }),
     confirmColor: "#ff5878",
     success: ({ confirm }) => {
       if (!confirm) {
@@ -1634,10 +1637,10 @@ function kick(item: UserProfile) {
             liveSocketClient.sendKick(userId(item), userName(item));
           } else {
             users.value = users.value.filter((user) => userId(user) !== userId(item));
-            addSystem(`${userName(item)} 已被踢出直播间`);
+            addSystem(t("live.userKicked", { user: userName(item) }));
           }
         })
-        .catch((error: any) => uni.showToast({ title: error?.message || "踢人失败", icon: "none" }));
+        .catch((error: any) => uni.showToast({ title: error?.message || t("live.kickFailed"), icon: "none" }));
     }
   });
 }
@@ -1656,7 +1659,7 @@ function runFunction(key: FunctionKey) {
       `&nums=${encodeURIComponent(initialNums.value)}&votes=${encodeURIComponent(roomVotes.value)}`;
     uni.setClipboardData({
       data: shareUrl,
-      success: () => uni.showToast({ title: "直播间链接已复制", icon: "none" })
+      success: () => uni.showToast({ title: t("live.linkCopied"), icon: "none" })
     });
     return;
   }
@@ -1711,7 +1714,7 @@ async function loadLiveGamePanel(kind = liveGameKind.value) {
       }
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.loadFailed"), icon: "none" });
   } finally {
     liveGameLoading.value = false;
   }
@@ -1731,7 +1734,7 @@ function selectLiveLotteryCategory(categoryId: string) {
 
 function openLiveLotteryBet(game: LotteryGame) {
   if (String(game.status || "1") !== "1") {
-    uni.showToast({ title: "游戏维护中", icon: "none" });
+    uni.showToast({ title: t("live.gameMaintenance"), icon: "none" });
     return;
   }
   const query = [
@@ -1745,7 +1748,7 @@ function openLiveLotteryBet(game: LotteryGame) {
 async function openLiveSportsBet(match: SportsMatch) {
   const matchId = liveSportsMatchId(match);
   if (!matchId) {
-    uni.showToast({ title: "赛事ID缺失", icon: "none" });
+    uni.showToast({ title: t("live.matchIdMissing"), icon: "none" });
     return;
   }
   liveGameLoading.value = true;
@@ -1758,7 +1761,7 @@ async function openLiveSportsBet(match: SportsMatch) {
     liveSportsOption.value = firstOption;
     liveGameView.value = "sportsBet";
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "盘口加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.marketLoadFailed"), icon: "none" });
   } finally {
     liveGameLoading.value = false;
   }
@@ -1799,7 +1802,7 @@ async function openLiveLotteryRecords(game = liveLotteryGame.value, backView = l
     liveLotteryRecords.value = await getLotteryBetRecords(game, 1);
     liveGameView.value = "lotteryRecords";
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "记录加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.recordLoadFailed"), icon: "none" });
   } finally {
     liveGameLoading.value = false;
   }
@@ -1823,7 +1826,7 @@ async function openLiveSportsRecords(match = liveSportsMatch.value, backView = l
     liveSportsRecords.value = await getSportsBetRecords(match ? liveSportsMatchId(match) : "", 1);
     liveGameView.value = "sportsRecords";
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "记录加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.recordLoadFailed"), icon: "none" });
   } finally {
     liveGameLoading.value = false;
   }
@@ -1839,15 +1842,15 @@ async function confirmLiveLotteryBet() {
   const amount = Number(liveLotteryAmount.value);
   const issueId = liveLotteryIssueId();
   if (!game || !option || !optionId(option)) {
-    uni.showToast({ title: "请选择投注项", icon: "none" });
+    uni.showToast({ title: t("live.selectBetOption"), icon: "none" });
     return;
   }
   if (!issueId) {
-    uni.showToast({ title: "暂无可投注期号", icon: "none" });
+    uni.showToast({ title: t("live.noBettableIssue"), icon: "none" });
     return;
   }
   if (!amount || amount < 1) {
-    uni.showToast({ title: "请输入正确金额", icon: "none" });
+    uni.showToast({ title: t("live.enterValidAmount"), icon: "none" });
     return;
   }
   liveGameLoading.value = true;
@@ -1859,10 +1862,10 @@ async function confirmLiveLotteryBet() {
       optionId: optionId(option),
       amount
     });
-    uni.showToast({ title: "投注成功", icon: "none" });
+    uni.showToast({ title: t("live.betSuccess"), icon: "none" });
     await openLiveLotteryRecords(game, "lotteryBet");
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "投注失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.betFailed"), icon: "none" });
   } finally {
     liveGameLoading.value = false;
   }
@@ -1873,11 +1876,11 @@ async function confirmLiveSportsBet() {
   const option = liveSportsOption.value;
   const amount = Number(liveSportsAmount.value);
   if (!match || !option || !optionId(option)) {
-    uni.showToast({ title: "请选择投注项", icon: "none" });
+    uni.showToast({ title: t("live.selectBetOption"), icon: "none" });
     return;
   }
   if (!amount || amount < 1) {
-    uni.showToast({ title: "请输入正确金额", icon: "none" });
+    uni.showToast({ title: t("live.enterValidAmount"), icon: "none" });
     return;
   }
   liveGameLoading.value = true;
@@ -1887,10 +1890,10 @@ async function confirmLiveSportsBet() {
       optionId: optionId(option),
       amount
     });
-    uni.showToast({ title: "投注成功", icon: "none" });
+    uni.showToast({ title: t("live.betSuccess"), icon: "none" });
     await openLiveSportsRecords(match, "sportsBet");
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "投注失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("live.betFailed"), icon: "none" });
   } finally {
     liveGameLoading.value = false;
   }
@@ -1980,7 +1983,7 @@ onLoad((query) => {
   cover.value = displayUrl(deepDecode(params.cover || ""));
   liveUid.value = deepDecode(params.liveuid || "");
   stream.value = deepDecode(params.stream || "");
-  anchorName.value = deepDecode(params.anchor || params.title || "主播");
+  anchorName.value = deepDecode(params.anchor || params.title || t("home.host"));
   anchorAvatar.value = displayUrl(deepDecode(params.avatar || ""), "/static/brand/icon-round.webp");
   roomVotes.value = deepDecode(params.votes || params.hotvotes || "0");
   initialNums.value = deepDecode(params.nums || "0");

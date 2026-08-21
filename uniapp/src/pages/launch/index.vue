@@ -1,7 +1,7 @@
 <template>
   <view class="launch-page">
     <image class="launch-icon" src="/static/brand/icon-round.webp" mode="aspectFit" />
-    <text class="launch-name">星域</text>
+    <text class="launch-name">{{ t("misc.common.brand") }}</text>
     <text class="launch-tip">{{ tip }}</text>
   </view>
 </template>
@@ -12,15 +12,16 @@ import { onReady } from "@dcloudio/uni-app";
 import { checkToken, getConfig } from "@/api/services";
 import { isLoggedIn } from "@/utils/session";
 import { sleep } from "@/utils/format";
+import { t } from "@/i18n";
 
-const tip = ref("正在启动");
+const tip = ref(t("misc.launch.starting"));
 
 async function boot() {
   try {
-    tip.value = "正在读取配置";
+    tip.value = t("misc.launch.readingConfig");
     await getConfig().catch(() => undefined);
     if (isLoggedIn()) {
-      tip.value = "正在校验登录";
+      tip.value = t("misc.launch.checkingLogin");
       await checkToken().catch(() => undefined);
     }
   } finally {

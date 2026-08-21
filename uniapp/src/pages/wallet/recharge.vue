@@ -2,18 +2,18 @@
   <view class="safe-page recharge-page">
     <view class="balance-card">
       <view>
-        <text class="label">我的星币</text>
+        <text class="label">{{ t("commerce.recharge.myCoin") }}</text>
         <text class="coin">{{ wallet?.coin || "0" }}</text>
       </view>
       <view class="balance-side">
-        <text>积分 {{ wallet?.score || "0" }}</text>
-        <button class="function-button" :disabled="loading || checkingPending" @tap="refreshAll">刷新</button>
+        <text>{{ t("commerce.recharge.points") }} {{ wallet?.score || "0" }}</text>
+        <button class="function-button" :disabled="loading || checkingPending" @tap="refreshAll">{{ t("commerce.common.refresh") }}</button>
       </view>
     </view>
 
     <view class="section-head">
-      <text class="section-title">充值金额</text>
-      <button class="function-button" @tap="openChargeDetail">充值明细</button>
+      <text class="section-title">{{ t("commerce.recharge.amount") }}</text>
+      <button class="function-button" @tap="openChargeDetail">{{ t("commerce.recharge.details") }}</button>
     </view>
 
     <view v-if="rules.length" class="rule-grid">
@@ -24,16 +24,20 @@
         :class="{ active: selectedRuleIndex === index }"
         @tap="selectedRuleIndex = index"
       >
-        <text class="rule-coin">{{ coinOf(rule) }} 星币</text>
+        <text class="rule-coin">{{ coinOf(rule) }} {{ t("commerce.common.coin") }}</text>
         <text class="rule-money">¥{{ rule.money || "0" }}</text>
-        <text v-if="Number(rule.give || 0) > 0" class="give">赠 {{ rule.give }}</text>
+        <text v-if="Number(rule.give || 0) > 0" class="give">{{ t("commerce.recharge.bonus") }} {{ rule.give }}</text>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载充值档位' : '暂无充值档位'" description="下拉刷新可重新获取支付配置。" />
+    <EmptyState
+      v-else
+      :title="loading ? t('commerce.recharge.loadingTiers') : t('commerce.recharge.noTiers')"
+      :description="t('commerce.recharge.noTiersDescription')"
+    />
 
     <view class="section-head pay-head">
-      <text class="section-head-start">支付方式</text>
-      <button class="agreement-button" @tap="openAgreement">充值协议</button>
+      <text class="section-head-start">{{ t("commerce.recharge.paymentMethod") }}</text>
+      <button class="agreement-button" @tap="openAgreement">{{ t("commerce.recharge.agreement") }}</button>
     </view>
 
     <view v-if="payMethods.length" class="pay-list">
@@ -49,13 +53,13 @@
           <text class="pay-name">{{ pay.name || payName(pay.id) }}</text>
           <text class="pay-description">{{ payDescription(pay) }}</text>
           <text v-if="!paymentAvailable(pay)" class="pay-preview-tag">
-            {{ pay.status_text || "配置中" }}
+            {{ pay.status_text || t("commerce.recharge.configuring") }}
           </text>
         </view>
         <view class="radio" />
       </view>
     </view>
-    <view v-else class="pay-empty">当前没有可用支付方式</view>
+    <view v-else class="pay-empty">{{ t("commerce.recharge.noPaymentMethods") }}</view>
 
     <button class="primary-button charge-button" :disabled="!canTapCharge" @tap="charge">
       {{ chargeButtonText }}
@@ -63,7 +67,7 @@
 
     <view v-if="pending" class="pending-card">
       <view class="pending-copy">
-        <text class="pending-title">待处理充值订单</text>
+        <text class="pending-title">{{ t("commerce.recharge.pendingOrder") }}</text>
         <text class="pending-number">{{ pending.orderNo }}</text>
       </view>
       <view class="pending-actions">
@@ -73,14 +77,14 @@
           :disabled="checkingPending"
           @tap="resumePendingPayment"
         >
-          继续支付
+          {{ t("commerce.recharge.continuePayment") }}
         </button>
         <button
           class="pending-refresh-button"
           :disabled="checkingPending"
           @tap="checkPendingOrder(false)"
         >
-          {{ checkingPending ? "查询中" : "刷新状态" }}
+          {{ checkingPending ? t("commerce.common.checking") : t("commerce.common.refreshStatus") }}
         </button>
       </view>
     </view>
@@ -112,11 +116,13 @@ import {
   rechargeIsPaid,
   rechargeIsTerminal,
   rechargePaymentUrl,
-  rechargeStatusText,
   savePaymentCreateAttempt,
   savePendingPayment,
   type PendingPayment
 } from "@/utils/payment";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const wallet = ref<WalletBalance>();
 const selectedRuleIndex = ref(0);
@@ -144,19 +150,21 @@ const canTapCharge = computed(
 );
 const chargeButtonText = computed(() => {
   if (pending.value) {
-    return "请先完成待支付订单";
+    return t("commerce.recharge.completePendingFirst");
   }
   if (selectedPay.value && !paymentAvailable(selectedPay.value)) {
-    return "支付通道暂不可用";
+    return t("commerce.recharge.channelUnavailable");
   }
   if (selectedRule.value && !ruleAvailable(selectedRule.value)) {
-    return "充值档位暂不可用";
+    return t("commerce.recharge.tierUnavailable");
   }
   if (!selectedRule.value) {
-    return "请选择充值金额";
+    return t("commerce.recharge.selectAmount");
   }
   const coin = coinOf(selectedRule.value);
-  return submitting.value ? "正在创建订单" : `立即充值 ${coin} 星币`;
+  return submitting.value
+    ? t("commerce.recharge.creatingOrder")
+    : t("commerce.recharge.rechargeNow").replace("{coin}", coin);
 });
 
 function parseList<T>(value: unknown): T[] {
@@ -230,13 +238,13 @@ function ruleAvailable(rule?: WalletRule) {
 
 function payName(id?: string) {
   const map: Record<string, string> = {
-    ali: "支付宝",
-    wx: "微信支付",
+    ali: t("commerce.recharge.alipay"),
+    wx: t("commerce.recharge.wechatPay"),
     paypal: "PayPal",
     usdt: "USDT",
-    bank: "银行卡转账"
+    bank: t("commerce.recharge.bankTransfer")
   };
-  return map[String(id || "")] || "支付方式";
+  return map[String(id || "")] || t("commerce.recharge.paymentMethod");
 }
 
 function payDescription(pay: WalletPayMethod) {
@@ -248,7 +256,7 @@ function payDescription(pay: WalletPayMethod) {
   const network = String(pay.network || "").toLowerCase();
   const descriptor = `${provider} ${mode} ${custom}`.toLowerCase();
   if (id === "bank" || provider === "manual_bank") {
-    return custom || "后台分配收款卡 · 上传转账凭证";
+    return custom || t("commerce.recharge.bankDescription");
   }
   if (
     id === "usdt" ||
@@ -264,15 +272,17 @@ function payDescription(pay: WalletPayMethod) {
           : tradeType.includes("bep20") || network === "bsc"
             ? "BEP20"
             : String(pay.network || "TRC20").toUpperCase();
-    return `USDT · ${networkLabel} 链上收银台`;
+    return t("commerce.recharge.cryptoCashier").replace("{network}", networkLabel);
   }
   if (custom) {
     return custom;
   }
   if (["cashier", "web", "h5", "external"].includes(mode)) {
-    return "安全外部收银台";
+    return t("commerce.recharge.secureExternalCashier");
   }
-  return provider ? `${String(pay.provider)} 在线收银台` : "安全在线支付";
+  return provider
+    ? t("commerce.recharge.providerCashier").replace("{provider}", String(pay.provider))
+    : t("commerce.recharge.secureOnlinePayment");
 }
 
 function coinOf(rule: WalletRule) {
@@ -301,13 +311,13 @@ function currentUID() {
   return String(getSession().uid || "");
 }
 
-function openPaymentUrl(url: string, title = "支付") {
-  if (openPaymentCashier(url, title)) {
+function openPaymentUrl(url: string, title = "") {
+  if (openPaymentCashier(url, title || t("commerce.recharge.payment"))) {
     return true;
   }
   uni.showModal({
-    title: "支付链接无效",
-    content: "支付通道没有返回本站安全收银台地址，请稍后重试。",
+    title: t("commerce.recharge.invalidPaymentLink"),
+    content: t("commerce.recharge.invalidPaymentLinkDescription"),
     showCancel: false,
     confirmColor: "#ff5878"
   });
@@ -342,7 +352,7 @@ async function load() {
     );
   } catch (error: any) {
     if (currentUID() === uid && requestSequence === walletRequestSequence) {
-      uni.showToast({ title: error?.message || "充值配置加载失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("commerce.recharge.configLoadFailed"), icon: "none" });
     }
   } finally {
     if (requestSequence === walletRequestSequence) {
@@ -368,6 +378,23 @@ function mergedPendingOrder(order: RechargeOrder, stored: PendingPayment): Recha
   };
 }
 
+function localizedRechargeStatus(order: RechargeOrder) {
+  const provided = firstText(order.status_text);
+  const knownProvided = ["订单已创建", "等待支付", "已到账", "支付失败", "已关闭", "已退款", "未知状态"];
+  if (provided && !knownProvided.includes(provided)) return provided;
+  const statusKey = ({
+    0: "created",
+    1: "waiting",
+    2: "received",
+    3: "failed",
+    4: "closed",
+    5: "refunded"
+  } as Record<number, string>)[Number(order.status)];
+  return statusKey
+    ? t(`commerce.recharge.status.${statusKey}`)
+    : t("commerce.recharge.status.unknown");
+}
+
 async function checkPendingOrder(silent = true) {
   const uid = currentUID();
   const requestSequence = ++pendingRequestSequence;
@@ -385,14 +412,14 @@ async function checkPendingOrder(silent = true) {
       return;
     }
     if (!result) {
-      throw new Error("充值订单不存在");
+      throw new Error(t("commerce.recharge.orderMissing"));
     }
     const order = mergedPendingOrder(result, stored);
     if (rechargeIsPaid(order)) {
       clearPendingPayment(uid);
       pending.value = undefined;
       await load();
-      uni.showToast({ title: "充值已到账", icon: "success" });
+      uni.showToast({ title: t("commerce.recharge.received"), icon: "success" });
       return;
     }
     if (rechargeIsTerminal(order) || rechargeIsExpired(order)) {
@@ -400,7 +427,7 @@ async function checkPendingOrder(silent = true) {
       pending.value = undefined;
       if (!silent) {
         uni.showToast({
-          title: rechargeIsExpired(order) ? "充值订单已过期" : rechargeStatusText(order),
+          title: rechargeIsExpired(order) ? t("commerce.recharge.orderExpired") : localizedRechargeStatus(order),
           icon: "none"
         });
       }
@@ -408,11 +435,11 @@ async function checkPendingOrder(silent = true) {
     }
     pending.value = savePendingPayment(uid, order);
     if (!silent) {
-      uni.showToast({ title: rechargeStatusText(order), icon: "none" });
+      uni.showToast({ title: localizedRechargeStatus(order), icon: "none" });
     }
   } catch (error: any) {
     if (!silent && currentUID() === uid && requestSequence === pendingRequestSequence) {
-      uni.showToast({ title: error?.message || "支付状态查询失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("commerce.recharge.statusCheckFailed"), icon: "none" });
     }
   } finally {
     if (requestSequence === pendingRequestSequence) {
@@ -434,7 +461,7 @@ async function charge() {
   // local storage writes, or any payment-order request. Production never
   // presents fake payment methods or non-ordering preview tiers.
   if (!paymentAvailable(pay) || !ruleAvailable(rule)) {
-    uni.showToast({ title: "支付配置不可用，请联系管理员", icon: "none" });
+    uni.showToast({ title: t("commerce.recharge.invalidConfiguration"), icon: "none" });
     return;
   }
   const uid = currentUID();
@@ -462,10 +489,10 @@ async function charge() {
       clientTraceId
     );
     if (currentUID() !== uid) {
-      throw new Error("账号已切换，请在当前账号重新发起充值");
+      throw new Error(t("commerce.recharge.accountChanged"));
     }
     if (!result) {
-      throw new Error("支付通道未返回充值订单");
+      throw new Error(t("commerce.recharge.noOrderReturned"));
     }
     const order: RechargeOrder = {
       ...result,
@@ -473,7 +500,7 @@ async function charge() {
     };
     const saved = savePendingPayment(uid, order);
     if (!saved) {
-      throw new Error("支付通道返回的订单号无效");
+      throw new Error(t("commerce.recharge.invalidOrderNumber"));
     }
     clearPaymentCreateAttempt(uid, clientTraceId);
     pending.value = saved;
@@ -481,14 +508,14 @@ async function charge() {
       clearPendingPayment(uid);
       pending.value = undefined;
       await load();
-      uni.showToast({ title: "充值已到账", icon: "success" });
+      uni.showToast({ title: t("commerce.recharge.received"), icon: "success" });
       return;
     }
     if (rechargeIsTerminal(order) || rechargeIsExpired(order)) {
       clearPendingPayment(uid);
       pending.value = undefined;
       throw new Error(
-        rechargeIsExpired(order) ? "充值订单已过期，请重新发起" : rechargeStatusText(order)
+        rechargeIsExpired(order) ? t("commerce.recharge.expiredRetry") : localizedRechargeStatus(order)
       );
     }
     if (String(order.channel || "").toLowerCase() === "bank") {
@@ -498,17 +525,17 @@ async function charge() {
       return;
     }
     const paymentUrl = normalizePaymentUrl(rechargePaymentUrl(order));
-    if (paymentUrl && openPaymentUrl(paymentUrl, pay.name || "支付")) {
+    if (paymentUrl && openPaymentUrl(paymentUrl, pay.name || t("commerce.recharge.payment"))) {
       return;
     }
     uni.showModal({
-      title: "支付暂不可用",
-      content: "订单已经创建，但支付通道未返回可用收银台。可在充值明细中刷新或继续支付。",
+      title: t("commerce.recharge.paymentUnavailable"),
+      content: t("commerce.recharge.paymentUnavailableDescription"),
       showCancel: false,
       confirmColor: "#ff5878"
     });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "创建订单失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("commerce.recharge.createOrderFailed"), icon: "none" });
   } finally {
     submitting.value = false;
   }
@@ -523,7 +550,7 @@ function resumePendingPayment() {
     });
     return;
   }
-  if (!stored || stored.uid !== uid || !openPaymentUrl(stored.paymentUrl, "支付")) {
+  if (!stored || stored.uid !== uid || !openPaymentUrl(stored.paymentUrl, t("commerce.recharge.payment"))) {
     void checkPendingOrder(false);
   }
 }
@@ -563,6 +590,7 @@ onBeforeUnmount(() => {
 });
 
 onShow(() => {
+  uni.setNavigationBarTitle({ title: t("commerce.recharge.navigationTitle") });
   const uid = currentUID();
   if (walletUID.value !== uid) {
     resetAccountState();

@@ -1,8 +1,9 @@
-import { ACTIVE_TYPES, API_BASE, API_HOST, DEFAULT_LANGUAGE, SIGN_SALT, STORAGE_KEYS } from "@/constants/config";
+import { ACTIVE_TYPES, API_BASE, API_HOST, SIGN_SALT, STORAGE_KEYS } from "@/constants/config";
 import { firstInfo, infoList, request } from "@/api/client";
 import { getSession, saveSession, saveUser } from "@/utils/session";
 import { clearPendingInvite, getPendingInvite } from "@/utils/invite";
 import { md5 } from "@/utils/md5";
+import { getApiLanguage, t } from "@/i18n";
 import {
   openIMBlackList,
   openIMChangeGroupMute,
@@ -438,7 +439,7 @@ export function createCoinOrder(
 ) {
   const service = payServiceOf(String(pay.id || ""));
   if (!service) {
-    throw new Error("请选择可用支付方式");
+    throw new Error(t("core.selectPayment"));
   }
   return firstInfo<RechargeOrder>(service, {
     money: rule.money || "",
@@ -451,7 +452,7 @@ export function createCoinOrder(
 export function getRechargeOrderStatus(orderNo: string) {
   const normalized = String(orderNo || "").trim();
   if (!normalized) {
-    throw new Error("充值订单号无效");
+    throw new Error(t("core.invalidRechargeOrder"));
   }
   return firstInfo<RechargeOrder>("Charge.orderStatus", { order_no: normalized });
 }
@@ -459,7 +460,7 @@ export function getRechargeOrderStatus(orderNo: string) {
 export function submitBankPaymentProof(orderNo: string, filePath: string) {
   const normalizedOrderNo = String(orderNo || "").trim();
   if (!normalizedOrderNo || !filePath) {
-    throw new Error("请选择付款凭证图片");
+    throw new Error(t("core.selectPaymentProof"));
   }
   const session = getSession();
   const uploadUrl = proxyApiUrlForPreview(
@@ -475,12 +476,12 @@ export function submitBankPaymentProof(orderNo: string, filePath: string) {
         uid: session.uid,
         token: session.token,
         order_no: normalizedOrderNo,
-        language: DEFAULT_LANGUAGE
+        language: getApiLanguage()
       },
       success: (response) => {
         try {
           if (Number(response.statusCode || 0) < 200 || Number(response.statusCode || 0) >= 300) {
-            throw new Error(`上传服务器响应异常（${response.statusCode || 0}）`);
+            throw new Error(t("core.uploadServerError", { code: response.statusCode || 0 }));
           }
           const payload = typeof response.data === "string"
             ? JSON.parse(response.data.slice(Math.max(0, response.data.indexOf("{"))))
@@ -489,18 +490,18 @@ export function submitBankPaymentProof(orderNo: string, filePath: string) {
             ? JSON.parse((payload as any).data)
             : (payload as any)?.data;
           if (Number(inner?.code ?? 0) !== 0) {
-            throw new Error(String(inner?.msg || "付款凭证提交失败"));
+            throw new Error(String(inner?.msg || t("core.paymentProofFailed")));
           }
           const result = Array.isArray(inner?.info) ? inner.info[0] : undefined;
           if (!result) {
-            throw new Error("付款凭证提交结果无效");
+            throw new Error(t("core.invalidPaymentProofResult"));
           }
           resolve(result as RechargeOrder);
         } catch (error) {
           reject(error);
         }
       },
-      fail: (error) => reject(new Error(error.errMsg || "付款凭证提交失败"))
+      fail: (error) => reject(new Error(error.errMsg || t("core.paymentProofFailed")))
     });
   });
 }
@@ -780,28 +781,28 @@ const unifiedNotificationSources: Array<{
   label: string;
   load: (page: number) => Promise<Record<string, unknown>[]>;
 }> = [
-  { type: "system", label: "平台通知", load: getSystemMessages },
+  { type: "system", get label() { return t("core.platformNotices"); }, load: getSystemMessages },
   {
     type: "group",
-    label: "群聊申请",
+    get label() { return t("core.groupApplications"); },
     load: async (page) => {
       const applications = await openIMGroupApplications((page - 1) * 20, 20);
       return applications
         .filter((application) => Number(application.handleResult || 0) === 0)
         .map((application) => ({
           ...application,
-          title: `${application.nickname || `用户${application.userID}`}申请加入${application.groupName || "群聊"}`,
-          content: application.reqMsg || "申请加入群聊",
+          title: t("core.joinGroupTitle", { user: application.nickname || t("core.userWithId", { id: application.userID }), group: application.groupName || t("core.groupChat") }),
+          content: application.reqMsg || t("core.requestJoinGroup"),
           addtime: application.reqTime || 0,
           uid: application.userID,
           group_id: application.groupID
         }));
     }
   },
-  { type: "at", label: "提及通知", load: (page) => getNotifyMessages("at", page) },
-  { type: "like", label: "点赞通知", load: (page) => getNotifyMessages("like", page) },
-  { type: "comment", label: "评论通知", load: (page) => getNotifyMessages("comment", page) },
-  { type: "fans", label: "关注通知", load: (page) => getNotifyMessages("fans", page) }
+  { type: "at", get label() { return t("core.mentionNotices"); }, load: (page) => getNotifyMessages("at", page) },
+  { type: "like", get label() { return t("core.likeNotices"); }, load: (page) => getNotifyMessages("like", page) },
+  { type: "comment", get label() { return t("core.commentNotices"); }, load: (page) => getNotifyMessages("comment", page) },
+  { type: "fans", get label() { return t("core.followNotices"); }, load: (page) => getNotifyMessages("fans", page) }
 ];
 
 function notificationTimestamp(item: Record<string, unknown>) {
@@ -831,7 +832,7 @@ export async function getUnifiedNotifications(page = 1) {
   const fulfilled = results.filter((result) => result.status === "fulfilled");
   if (!fulfilled.length) {
     const failed = results.find((result) => result.status === "rejected");
-    throw failed && failed.status === "rejected" ? failed.reason : new Error("系统通知加载失败");
+    throw failed && failed.status === "rejected" ? failed.reason : new Error(t("core.noticeLoadFailed"));
   }
 
   return results
@@ -945,11 +946,11 @@ function parseUploadResponse(data: unknown) {
   const inner = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
   const info = Array.isArray(inner?.info) ? inner.info : [];
   if (Number(inner?.code ?? 0) !== 0) {
-    throw new Error(String(inner?.msg || "上传失败"));
+    throw new Error(String(inner?.msg || t("core.uploadFailed")));
   }
   const result = info[0] as UploadResult | undefined;
   if (!result) {
-    throw new Error("上传服务器未返回文件信息");
+    throw new Error(t("core.uploadNoFile"));
   }
   return result;
 }
@@ -980,21 +981,21 @@ export async function uploadOne(filePath: string) {
       filePath,
       name: field,
       formData: {
-        language: DEFAULT_LANGUAGE,
+        language: getApiLanguage(),
         uid: session.uid,
         token: session.token
       },
       success: (res) => {
         try {
           if (Number(res.statusCode || 0) < 200 || Number(res.statusCode || 0) >= 300) {
-            throw new Error(`上传服务器响应异常（${res.statusCode || 0}）`);
+            throw new Error(t("core.uploadServerError", { code: res.statusCode || 0 }));
           }
           resolve(parseUploadResponse(res.data));
         } catch (error) {
           reject(error);
         }
       },
-      fail: (error) => reject(new Error(error.errMsg || "上传失败"))
+      fail: (error) => reject(new Error(error.errMsg || t("core.uploadFailed")))
     });
   });
 }
@@ -1094,7 +1095,7 @@ export function sendRedPack(args: {
     type_grant: args.typeGrant,
     coin: args.coin,
     nums: args.nums,
-    des: args.des || "恭喜发财，大吉大利"
+    des: args.des || t("core.redPacketGreeting")
   });
 }
 

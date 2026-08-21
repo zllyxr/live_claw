@@ -1,26 +1,26 @@
 <template>
   <view class="safe-page detail-hub">
     <view v-if="contentMode" class="content-page">
-      <text class="content-title">{{ contentPage?.title || (loading ? "正在加载" : "页面内容") }}</text>
+      <text class="content-title">{{ contentPage?.title || (loading ? t("misc.common.loading") : t("misc.detail.pageContent")) }}</text>
       <text class="content-body">{{ contentPage?.content || "" }}</text>
     </view>
 
     <view v-else-if="authMode" class="auth-status-card">
       <view class="auth-icon">{{ authIcon }}</view>
-      <text class="auth-title">{{ textOf(authStatus, "status_text", loading ? "正在读取" : "未认证") }}</text>
+      <text class="auth-title">{{ textOf(authStatus, "status_text", loading ? t("misc.detail.reading") : t("misc.detail.notVerified")) }}</text>
       <text class="auth-desc">{{ authDescription }}</text>
       <text v-if="textOf(authStatus, 'reject_reason')" class="reject-reason">
         {{ textOf(authStatus, "reject_reason") }}
       </text>
       <button v-if="String(authStatus?.verified || '0') !== '1'" class="primary-button" @tap="openVerify">
-        {{ String(authStatus?.status || "-1") === "0" ? "查看认证资料" : "提交认证" }}
+        {{ String(authStatus?.status || "-1") === "0" ? t("misc.detail.viewVerification") : t("misc.detail.submitVerification") }}
       </button>
     </view>
 
     <template v-else>
     <view class="hub-head">
-      <text>详情中心</text>
-      <text>资金记录与认证状态均由 Go API 实时提供</text>
+      <text>{{ t("misc.detail.center") }}</text>
+      <text>{{ t("misc.detail.centerDescription") }}</text>
     </view>
     <view class="hub-list">
       <view v-for="item in hubItems" :key="item.type" class="hub-row" @tap="openType(item.type)">
@@ -40,6 +40,7 @@
 import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { getContentPage, getVerificationStatus } from "@/api/services";
+import { t } from "@/i18n";
 
 const authMode = ref(false);
 const contentMode = ref(false);
@@ -47,12 +48,12 @@ const loading = ref(false);
 const authStatus = ref<Record<string, unknown>>();
 const contentPage = ref<{ title: string; content: string }>();
 
-const hubItems = [
-  { type: "detail", icon: "明", title: "我的明细", desc: "查看账户收支与直播明细" },
-  { type: "charge", icon: "充", title: "充值明细", desc: "查看星币充值记录" },
-  { type: "cash", icon: "提", title: "提现记录", desc: "查看收益提现记录" },
-  { type: "auth", icon: "认", title: "认证详情", desc: "查看实名认证审核状态" }
-];
+const hubItems = computed(() => [
+  { type: "detail", icon: "≡", title: t("misc.detail.myDetails"), desc: t("misc.detail.myDetailsDesc") },
+  { type: "charge", icon: "+", title: t("misc.detail.topUpDetails"), desc: t("misc.detail.topUpDetailsDesc") },
+  { type: "cash", icon: "↑", title: t("misc.detail.withdrawals"), desc: t("misc.detail.withdrawalsDesc") },
+  { type: "auth", icon: "✓", title: t("misc.detail.verificationDetails"), desc: t("misc.detail.verificationDetailsDesc") }
+]);
 
 const authIcon = computed(() => {
   if (String(authStatus.value?.verified || "0") === "1") {
@@ -61,21 +62,21 @@ const authIcon = computed(() => {
   if (String(authStatus.value?.status || "") === "2") {
     return "!";
   }
-  return "认";
+  return "✓";
 });
 
 const authDescription = computed(() => {
   const status = String(authStatus.value?.status || "-1");
   if (status === "1") {
-    return "实名认证已通过，认证资料已加密保存。";
+    return t("misc.detail.verifiedDescription");
   }
   if (status === "0") {
-    return "认证资料已提交，正在等待后台审核。";
+    return t("misc.detail.pendingDescription");
   }
   if (status === "2") {
-    return "认证未通过，请根据原因修改后重新提交。";
+    return t("misc.detail.rejectedDescription");
   }
-  return "尚未提交实名认证资料。";
+  return t("misc.detail.notSubmittedDescription");
 });
 
 function textOf(source: Record<string, unknown> | undefined, key: string, fallback = "") {
@@ -86,11 +87,11 @@ function textOf(source: Record<string, unknown> | undefined, key: string, fallba
 async function loadAuthStatus() {
   authMode.value = true;
   loading.value = true;
-  uni.setNavigationBarTitle({ title: "认证详情" });
+  uni.setNavigationBarTitle({ title: t("misc.detail.verificationDetails") });
   try {
     authStatus.value = await getVerificationStatus();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "认证状态加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.detail.verificationLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }
@@ -99,14 +100,14 @@ async function loadAuthStatus() {
 async function loadContentPage() {
   contentMode.value = true;
   loading.value = true;
-  uni.setNavigationBarTitle({ title: "充值协议" });
+  uni.setNavigationBarTitle({ title: t("misc.detail.rechargeAgreement") });
   try {
     contentPage.value = await getContentPage("recharge_agreement");
     if (contentPage.value?.title) {
       uni.setNavigationBarTitle({ title: contentPage.value.title });
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "页面内容加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.detail.contentLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }
@@ -136,7 +137,7 @@ onLoad((query) => {
     openType(type);
     return;
   }
-  uni.setNavigationBarTitle({ title: "详情中心" });
+  uni.setNavigationBarTitle({ title: t("misc.detail.center") });
 });
 </script>
 

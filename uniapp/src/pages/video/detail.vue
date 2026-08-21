@@ -11,12 +11,12 @@
     />
     <view v-else class="poster-wrap">
       <image :src="cover || '/static/brand/icon.webp'" mode="aspectFill" />
-      <text>{{ loading ? "正在加载视频" : "暂无可播放视频" }}</text>
+      <text>{{ loading ? t("misc.video.loading") : t("misc.video.notPlayable") }}</text>
     </view>
 
     <view class="detail-card">
       <text class="title">{{ title }}</text>
-      <text class="meta">{{ detail?.datetime || "" }} · {{ detail?.likes || 0 }} 赞 · {{ detail?.comments || 0 }} 评论</text>
+      <text class="meta">{{ detail?.datetime || "" }} · {{ detail?.likes || 0 }} {{ t("misc.common.likes") }} · {{ detail?.comments || 0 }} {{ t("misc.common.comments") }}</text>
       <view v-if="authorName" class="author" @tap="openAuthor">
         <image :src="authorAvatar" mode="aspectFill" />
         <text>{{ authorName }}</text>
@@ -32,12 +32,13 @@ import { onLoad } from "@dcloudio/uni-app";
 import { getVideoDetail } from "@/api/services";
 import type { VideoItem } from "@/types/api";
 import { absolutizeUrl, firstText } from "@/utils/url";
+import { t } from "@/i18n";
 
 const id = ref("");
 const detail = ref<VideoItem>();
 const loading = ref(false);
 
-const title = computed(() => firstText(detail.value?.title, detail.value?.des, detail.value?.content, "星域视频"));
+const title = computed(() => firstText(detail.value?.title, detail.value?.des, detail.value?.content, t("misc.video.defaultTitle")));
 const videoSrc = computed(() => absolutizeUrl(firstText(detail.value?.href, detail.value?.video_url, detail.value?.video, detail.value?.url)));
 const cover = computed(() => absolutizeUrl(firstText(detail.value?.video_thumb, detail.value?.thumb, detail.value?.thumb_s)));
 const author = computed(() => detail.value?.userinfo || {});
@@ -54,7 +55,7 @@ async function load() {
     detail.value = await getVideoDetail(id.value);
     uni.setNavigationBarTitle({ title: title.value });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "视频加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.video.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }

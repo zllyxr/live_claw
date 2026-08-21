@@ -2,6 +2,7 @@ import { firstInfo } from "@/api/client";
 import { API_HOST } from "@/constants/config";
 import type { SessionState } from "@/types/api";
 import { getSession, onSessionChange } from "@/utils/session";
+import { t } from "@/i18n";
 
 type JoinInfo = {
   conversation_id?: string;
@@ -296,7 +297,7 @@ function dispatch(message: ServerMessage) {
     clearTimeout(item.timer);
     pending.delete(message.client_message_id);
     if (Number(message.code || 0) !== 0) {
-      item.reject(new Error(message.message || "直播消息发送失败"));
+      item.reject(new Error(message.message || t("core.liveMessageFailed")));
       return;
     }
     item.resolve({ payload: {} });
@@ -321,7 +322,7 @@ function historyRequest(
     !session.uid ||
     !session.token
   ) {
-    return Promise.reject(new Error("帐号已切换"));
+    return Promise.reject(new Error(t("core.accountChanged")));
   }
   const query =
     `limit=${encodeURIComponent(String(limit))}` +
@@ -342,7 +343,7 @@ function historyRequest(
           lifecycleGeneration !== expectedLifecycle ||
           !currentAccountMatches(expectedAccount)
         ) {
-          reject(new Error("帐号已切换"));
+          reject(new Error(t("core.accountChanged")));
           return;
         }
         const body = parseRecord(response.data);
@@ -352,12 +353,12 @@ function historyRequest(
           Number(response.statusCode || 0) >= 300 ||
           Number(body.code || 0) !== 0
         ) {
-          reject(new Error(String(body.message || "直播历史加载失败")));
+          reject(new Error(String(body.message || t("core.liveHistoryFailed"))));
           return;
         }
         resolve(Array.isArray(data.items) ? data.items : []);
       },
-      fail: (error) => reject(new Error(error.errMsg || "直播历史加载失败"))
+      fail: (error) => reject(new Error(error.errMsg || t("core.liveHistoryFailed")))
     });
   });
 }
@@ -444,7 +445,7 @@ function scheduleReconnect(expectedLifecycle: number) {
       }
       const nextConversationID = String(info?.conversation_id || "");
       if (!nextConversationID) {
-        throw new Error("直播群组恢复失败");
+        throw new Error(t("core.liveGroupRestoreFailed"));
       }
       const previousConversationID = activeConversationID;
       if (
@@ -479,7 +480,7 @@ function openSocket(
   const session = getSession();
   const cancelPreviousConnect = cancelActiveConnect;
   cancelActiveConnect = undefined;
-  cancelPreviousConnect?.(new Error("直播聊天连接已替换"));
+  cancelPreviousConnect?.(new Error(t("core.liveChatReplaced")));
   const previous = socket;
   socket = undefined;
   previous?.close({});
@@ -516,9 +517,9 @@ function openSocket(
       historySyncGeneration = 0;
       liveMessagesDuringHistory = [];
       task.close({});
-      rejectPending("直播聊天连接已断开");
+      rejectPending(t("core.liveChatDisconnected"));
       setConnectionState("offline");
-      cancelThisConnect?.(new Error("直播聊天连接超时"));
+      cancelThisConnect?.(new Error(t("core.liveChatTimeout")));
       scheduleReconnect(expectedLifecycle);
     }, 12000);
     cancelThisConnect = (reason: Error) => {
@@ -540,7 +541,7 @@ function openSocket(
       ready = false;
       historySyncGeneration = 0;
       liveMessagesDuringHistory = [];
-      rejectPending("直播聊天连接已断开");
+      rejectPending(t("core.liveChatDisconnected"));
       cancelThisConnect?.(new Error(message));
       setConnectionState("offline");
       scheduleReconnect(expectedLifecycle);
@@ -617,7 +618,7 @@ function openSocket(
         return;
       }
       if (message.type === "error" && !ready) {
-        fail(message.message || "直播聊天认证失败");
+        fail(message.message || t("core.liveChatAuthFailed"));
         return;
       }
       if (
@@ -630,8 +631,8 @@ function openSocket(
       dispatch(message);
     });
 
-    task.onError(() => fail("直播聊天连接失败"));
-    task.onClose(() => fail("直播聊天连接已断开"));
+    task.onError(() => fail(t("core.liveChatConnectFailed")));
+    task.onClose(() => fail(t("core.liveChatDisconnected")));
   });
 }
 
@@ -653,11 +654,11 @@ export async function connectNativeLive(liveUid: string, stream: string) {
       lifecycleGeneration !== expectedLifecycle ||
       !currentAccountMatches()
     ) {
-      throw new Error("帐号已切换");
+      throw new Error(t("core.accountChanged"));
     }
     const conversationID = String(info?.conversation_id || "");
     if (!conversationID) {
-      throw new Error("直播群组创建失败");
+      throw new Error(t("core.liveGroupCreateFailed"));
     }
     activeConversationID = conversationID;
     activeWebsocketPath = String(info?.websocket || "/ws/im");
@@ -713,7 +714,7 @@ export function sendNativeLiveMessage(payload: Record<string, unknown>) {
     !activeConversationID ||
     !currentAccountMatches()
   ) {
-    return Promise.reject(new Error("直播聊天尚未连接"));
+    return Promise.reject(new Error(t("core.liveChatNotConnected")));
   }
   const activeSocket = socket;
   serial += 1;
@@ -721,7 +722,7 @@ export function sendNativeLiveMessage(payload: Record<string, unknown>) {
   return new Promise<{ payload: Record<string, unknown> }>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(clientMessageID);
-      reject(new Error("直播消息发送超时"));
+      reject(new Error(t("core.liveMessageTimeout")));
     }, 10000);
     pending.set(clientMessageID, { resolve, reject, timer });
     activeSocket.send({
@@ -738,7 +739,7 @@ export function sendNativeLiveMessage(payload: Record<string, unknown>) {
         if (item) {
           clearTimeout(item.timer);
           pending.delete(clientMessageID);
-          item.reject(new Error("直播消息发送失败"));
+          item.reject(new Error(t("core.liveMessageFailed")));
         }
       }
     });
@@ -750,7 +751,7 @@ export function disconnectNativeLive() {
   reconnectEnabled = false;
   lifecycleGeneration += 1;
   clearReconnectTimer();
-  invalidateSocket("直播聊天连接已断开");
+  invalidateSocket(t("core.liveChatDisconnected"));
   activeConversationID = "";
   activeLiveUID = "";
   activeStream = "";
@@ -770,7 +771,7 @@ onSessionChange((session) => {
   reconnectEnabled = false;
   lifecycleGeneration += 1;
   clearReconnectTimer();
-  invalidateSocket("帐号已切换，直播聊天已断开");
+  invalidateSocket(t("core.accountChangedLiveDisconnected"));
   activeConversationID = "";
   activeLiveUID = "";
   activeStream = "";

@@ -1,6 +1,7 @@
 import type { UserProfile } from "@/types/api";
 import { getSession } from "@/utils/session";
 import { displayUrl } from "@/utils/url";
+import { t } from "@/i18n";
 import {
   connectNativeLive,
   disconnectNativeLive,
@@ -122,7 +123,7 @@ function ctText(message: Record<string, unknown>) {
 }
 
 function userNiceName(user?: UserProfile) {
-  return asText(user?.user_nicename || user?.user_nickname || user?.userNiceName || "我");
+  return asText(user?.user_nicename || user?.user_nickname || user?.userNiceName || t("core.me"));
 }
 
 function userVipType(user?: UserProfile) {
@@ -150,7 +151,7 @@ function createPayload(message: Record<string, unknown>) {
 function createChatMessage(message: Record<string, unknown>, type: LiveChatType, content?: string): LiveSocketChat {
   const uid = asText(message.uid || message.id);
   const userType = asNumber(message.usertype, 30);
-  const name = asText(message.uname || message.user_nickname || message.user_nicename || "星域用户");
+  const name = asText(message.uname || message.user_nickname || message.user_nicename || t("me.defaultUser"));
   const messageID = asText(message.message_id);
   const eventID = asText(message.event_id);
   return {
@@ -160,10 +161,10 @@ function createChatMessage(message: Record<string, unknown>, type: LiveChatType,
     sequence: asNumber(message.sequence, 0) || undefined,
     createdAt: asNumber(message.created_at, 0) || undefined,
     uid,
-    name: type === "system" ? "系统" : name,
+    name: type === "system" ? t("live.system") : name,
     content: content ?? ctText(message),
     type,
-    badge: type === "system" ? "系统" : userType === 40 ? "房管" : asNumber(message.isAnchor, 0) === 1 ? "主播" : undefined,
+    badge: type === "system" ? t("live.system") : userType === 40 ? t("live.admin") : asNumber(message.isAnchor, 0) === 1 ? t("home.host") : undefined,
     level: asNumber(message.level, 0),
     vipType: asNumber(message.vip_type, 0),
     guardType: asNumber(message.guard_type, 0),
@@ -177,8 +178,8 @@ function createEnterUser(ct: Record<string, unknown>) {
   return {
     id: asText(ct.id),
     uid: asText(ct.id),
-    user_nicename: asText(ct.user_nickname || ct.user_nicename || "星域用户"),
-    user_nickname: asText(ct.user_nickname || ct.user_nicename || "星域用户"),
+    user_nicename: asText(ct.user_nickname || ct.user_nicename || t("me.defaultUser")),
+    user_nickname: asText(ct.user_nickname || ct.user_nicename || t("me.defaultUser")),
     avatar: asText(ct.avatar),
     avatar_thumb: asText(ct.avatar_thumb || ct.avatar),
     level: asText(ct.level),
@@ -229,7 +230,7 @@ export class LiveSocketClient {
         return;
       }
       this.connected = false;
-      this.options.onError?.(error?.message || "直播群组连接失败");
+      this.options.onError?.(error?.message || t("core.liveGroupConnectFailed"));
     }
   }
 
@@ -306,7 +307,7 @@ export class LiveSocketClient {
       uid: getSession().uid,
       touid: toUid,
       toname: toName,
-      ct: `${toName}被踢出房间`,
+      ct: t("core.userRemovedRoom", { user: toName }),
       ct_en: `${toName} was kicked out of the room`
     })).catch(() => undefined);
   }
@@ -322,7 +323,7 @@ export class LiveSocketClient {
       uid: getSession().uid,
       touid: toUid,
       toname: toName,
-      ct: `${toName}${type === 0 ? "被永久禁言" : "被本场禁言"}`,
+      ct: type === 0 ? t("core.userMutedForever", { user: toName }) : t("core.userMutedSession", { user: toName }),
       ct_en: `${toName}${type === 0 ? " is permanently banned" : " has been banned from this site"}`
     })).catch(() => undefined);
   }
@@ -337,7 +338,7 @@ export class LiveSocketClient {
       uid: getSession().uid,
       touid: toUid,
       toname: toName,
-      ct: `${toName}${action === 1 ? "被设为管理员" : "被取消管理员"}`,
+      ct: action === 1 ? t("core.userMadeAdmin", { user: toName }) : t("core.userRemovedAdmin", { user: toName }),
       ct_en: `${toName}${action === 1 ? " is set as administrator" : " was removed as administrator"}`
     })).catch(() => undefined);
   }
@@ -366,7 +367,7 @@ export class LiveSocketClient {
 
   private async emitBroadcast(payload: Record<string, unknown>): Promise<void> {
     if (!this.groupID || !this.connected) {
-      const error = new Error("聊天服务器未连接，请稍后重试");
+      const error = new Error(t("live.chatServerDisconnected"));
       this.options.onError?.(error.message);
       throw error;
     }
@@ -376,7 +377,7 @@ export class LiveSocketClient {
     } catch (error: any) {
       const normalized = error instanceof Error
         ? error
-        : new Error(error?.message || "直播消息发送失败");
+        : new Error(error?.message || t("core.liveMessageFailed"));
       this.options.onError?.(normalized.message);
       throw normalized;
     }
@@ -409,7 +410,7 @@ export class LiveSocketClient {
     const list = Array.isArray(payload) ? payload : [payload];
     list.forEach((item) => {
       if (item === "stopplay") {
-        this.options.onLiveEnd?.("直播间已被关闭");
+        this.options.onLiveEnd?.(t("core.liveRoomClosed"));
         return;
       }
       this.handlePayload(item);
@@ -467,7 +468,7 @@ export class LiveSocketClient {
       return;
     }
     if (method === "StartEndLive") {
-      this.options.onLiveEnd?.(ctText(message) || "直播已结束");
+      this.options.onLiveEnd?.(ctText(message) || t("live.liveEnded"));
       return;
     }
     if (method === "disconnect") {
@@ -480,12 +481,12 @@ export class LiveSocketClient {
       return;
     }
     if (method === "BuyGuard") {
-      this.options.onChat?.(createChatMessage(message, "system", `${asText(message.uname)} 开通了守护`));
+      this.options.onChat?.(createChatMessage(message, "system", t("core.guardActivated", { user: asText(message.uname) })));
       this.options.onVotes?.(asText(message.votestotal));
       return;
     }
     if (method === "SendRed") {
-      this.options.onChat?.(createChatMessage(message, "redpack", `${asText(message.uname || "主播")}${ctText(message)}`));
+      this.options.onChat?.(createChatMessage(message, "redpack", `${asText(message.uname || t("home.host"))}${ctText(message)}`));
       return;
     }
     if (method === "SendMsg") {
@@ -500,7 +501,7 @@ export class LiveSocketClient {
   private handleSendMsg(root: Record<string, unknown>, message: Record<string, unknown>) {
     const retcode = asText(root.retcode);
     if (retcode === "409002") {
-      this.options.onError?.("你已被禁言");
+      this.options.onError?.(t("live.youWereMuted"));
       return;
     }
     const msgtype = asText(message.msgtype);
@@ -512,7 +513,7 @@ export class LiveSocketClient {
         uid: ct.id,
         uname: ct.user_nickname,
         isAnchor: "0"
-      }, "enter", "进入直播间");
+      }, "enter", t("core.enteredLiveRoom"));
       this.options.onEnter?.({ user, chat });
       return;
     }
@@ -525,9 +526,9 @@ export class LiveSocketClient {
   private handleSendGift(message: Record<string, unknown>) {
     const gift = parseRecord(message.ct);
     const giftCount = asNumber(gift.giftcount, 1);
-    const giftName = asText(gift.giftname || "礼物");
-    const name = asText(message.uname || "星域用户");
-    const chat = createChatMessage(message, "gift", `送出 ${giftCount} 个 ${giftName}`);
+    const giftName = asText(gift.giftname || t("live.gift"));
+    const name = asText(message.uname || t("me.defaultUser"));
+    const chat = createChatMessage(message, "gift", t("core.sentGifts", { count: giftCount, gift: giftName }));
     const event: LiveSocketGift = {
       uid: asText(message.uid),
       name,

@@ -1,22 +1,22 @@
 <template>
   <view class="safe-page cancel-page">
     <view class="notice card">
-      <text class="notice-title">账号注销</text>
-      <text class="notice-desc">注销后账号资料、动态、视频等内容将按服务端规则处理，且无法恢复。</text>
+      <text class="notice-title">{{ t("misc.cancel.title") }}</text>
+      <text class="notice-desc">{{ t("misc.cancel.description") }}</text>
     </view>
 
     <view class="conditions card">
       <view v-for="item in list" :key="String(item.title)" class="condition">
         <view class="status" :class="{ ok: Number(item.is_ok || 0) === 1 }">{{ Number(item.is_ok || 0) === 1 ? "✓" : "!" }}</view>
         <view class="condition-main">
-          <text class="condition-title">{{ item.title || "注销条件" }}</text>
+          <text class="condition-title">{{ item.title || t("misc.cancel.condition") }}</text>
           <text class="condition-content">{{ item.content || "" }}</text>
         </view>
       </view>
     </view>
 
     <button class="primary-button submit" :disabled="!canCancel || submitting" @tap="confirmCancel">
-      {{ canCancel ? "确认注销账号" : "暂不满足注销条件" }}
+      {{ canCancel ? t("misc.cancel.confirmAccount") : t("misc.cancel.conditionsNotMet") }}
     </button>
   </view>
 </template>
@@ -28,6 +28,7 @@ import { cancelAccount, getCancelCondition } from "@/api/services";
 import { clearSession, requireLogin } from "@/utils/session";
 import { getRemoteInstallId, stopRemoteNative } from "@/utils/remote-assistance";
 import { unbindRemoteDevice } from "@/api/remote";
+import { t } from "@/i18n";
 
 interface CancelCondition {
   title?: string;
@@ -50,7 +51,7 @@ async function load() {
     list.value = rawList as CancelCondition[];
     canCancelRaw.value = String(data?.can_cancel || "0");
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "注销条件加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.cancel.loadFailed"), icon: "none" });
   }
 }
 
@@ -59,9 +60,9 @@ function confirmCancel() {
     return;
   }
   uni.showModal({
-    title: "确认注销",
-    content: "注销后不可恢复，确认继续？",
-    confirmText: "注销",
+    title: t("misc.cancel.confirmTitle"),
+    content: t("misc.cancel.confirmDescription"),
+    confirmText: t("misc.cancel.cancelAction"),
     confirmColor: "#ff4f62",
     success: ({ confirm }) => {
       if (!confirm) {
@@ -79,10 +80,10 @@ async function submitCancel() {
     await unbindRemoteDevice(getRemoteInstallId()).catch(() => undefined);
     await cancelAccount();
     clearSession();
-    uni.showToast({ title: "账号已注销", icon: "none" });
+    uni.showToast({ title: t("misc.cancel.success"), icon: "none" });
     setTimeout(() => uni.switchTab({ url: "/pages/tabbar/me/index" }), 350);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "注销失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.cancel.failed"), icon: "none" });
   } finally {
     submitting.value = false;
   }

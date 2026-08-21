@@ -8,11 +8,11 @@
           <text class="desc">{{ item.signature || `ID：${item.id || item.uid || ''}` }}</text>
         </view>
         <button v-if="!isSelf(item)" class="ghost-button follow" @tap.stop="follow(item)">
-          {{ Number(item.isattention || item.isattent || 0) ? "已关注" : "关注" }}
+          {{ Number(item.isattention || item.isattent || 0) ? t("misc.common.followed") : t("misc.common.follow") }}
         </button>
       </view>
     </view>
-    <EmptyState v-else :title="loading ? '正在加载用户' : '暂无用户'" description="下拉页面可刷新列表。" />
+    <EmptyState v-else :title="loading ? t('misc.user.loadingUsers') : t('misc.user.noUsers')" :description="t('misc.user.pullRefresh')" />
   </view>
 </template>
 
@@ -24,6 +24,7 @@ import { getFansList, getFollowList, setAttention } from "@/api/services";
 import type { UserProfile } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { getSession, requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 type ListType = "follow" | "fans";
 
@@ -39,7 +40,7 @@ function uidOf(item: UserProfile) {
 }
 
 function nameOf(item: UserProfile) {
-  return item.user_nicename || item.user_nickname || "星域用户";
+  return item.user_nicename || item.user_nickname || t("misc.common.defaultUser");
 }
 
 function avatarOf(item: UserProfile) {
@@ -69,7 +70,7 @@ async function load(reset = false) {
       page.value += 1;
     }
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "列表加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.user.listLoadFailed"), icon: "none" });
   } finally {
     loading.value = false;
     uni.stopPullDownRefresh();
@@ -84,9 +85,9 @@ async function follow(item: UserProfile) {
     const res = await setAttention(uidOf(item));
     item.isattention = res?.isattent ?? (Number(item.isattention || item.isattent || 0) ? 0 : 1);
     item.isattent = item.isattention;
-    uni.showToast({ title: Number(item.isattention) ? "已关注" : "已取消关注", icon: "none" });
+    uni.showToast({ title: Number(item.isattention) ? t("misc.common.followed") : t("misc.common.unfollowed"), icon: "none" });
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "操作失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.common.operationFailed"), icon: "none" });
   }
 }
 
@@ -100,7 +101,7 @@ function openHome(item: UserProfile) {
 onLoad((query) => {
   type.value = String(query?.type || "follow") === "fans" ? "fans" : "follow";
   uid.value = String(query?.uid || getSession().uid || "");
-  const title = type.value === "fans" ? "粉丝" : "关注";
+  const title = type.value === "fans" ? t("misc.common.fans") : t("misc.common.following");
   uni.setNavigationBarTitle({ title });
   void load(true);
 });

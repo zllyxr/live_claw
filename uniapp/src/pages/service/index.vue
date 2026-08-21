@@ -4,49 +4,49 @@
       <view class="hero-icon">
         <image src="/static/native/me_service_support.svg" mode="aspectFit" />
       </view>
-      <text class="hero-title">在线客服</text>
-      <text class="hero-desc">平台客服可处理充值、账号、游戏体育、直播间相关问题。</text>
+      <text class="hero-title">{{ t("misc.service.onlineSupport") }}</text>
+      <text class="hero-desc">{{ t("misc.service.description") }}</text>
     </view>
 
     <view class="service-card">
       <view class="service-main">
-        <text class="service-label">平台客服</text>
-        <text class="service-url">{{ serviceUrl || (loading ? "正在获取客服配置" : "平台原生客服") }}</text>
+        <text class="service-label">{{ t("misc.service.platformSupport") }}</text>
+        <text class="service-url">{{ serviceUrl || (loading ? t("misc.service.loadingConfig") : t("misc.service.nativeSupport")) }}</text>
       </view>
       <button class="service-button" :disabled="loading" @tap="openCustomerService">
-        {{ loading ? "加载中" : "联系在线客服" }}
+        {{ loading ? t("misc.common.loading") : t("misc.service.contact") }}
       </button>
     </view>
 
     <view class="action-list card">
       <view class="action-row" @tap="openMessages">
         <view>
-          <text>消息中心</text>
-          <text>查看系统通知与私信</text>
+          <text>{{ t("misc.service.messageCenter") }}</text>
+          <text>{{ t("misc.service.messageCenterDesc") }}</text>
         </view>
         <text>›</text>
       </view>
       <view class="action-row" @tap="openRecharge">
         <view>
-          <text>充值与支付</text>
-          <text>查看充值档位、支付方式和明细</text>
+          <text>{{ t("misc.service.rechargePayment") }}</text>
+          <text>{{ t("misc.service.rechargePaymentDesc") }}</text>
         </view>
         <text>›</text>
       </view>
       <view class="action-row" @tap="openInvite">
         <view>
-          <text>邀请奖励</text>
-          <text>查看邀请码与绑定入口</text>
+          <text>{{ t("misc.service.inviteRewards") }}</text>
+          <text>{{ t("misc.service.inviteRewardsDesc") }}</text>
         </view>
         <text>›</text>
       </view>
     </view>
 
     <view class="tips card">
-      <text>联系客服前</text>
-      <text>支付未到账：准备订单时间、支付金额和支付方式。</text>
-      <text>账号异常：准备账号 ID、手机号和异常截图。</text>
-      <text>投注问题：先进入对应投注记录页，带上期号和投注内容。</text>
+      <text>{{ t("misc.service.beforeContact") }}</text>
+      <text>{{ t("misc.service.paymentTip") }}</text>
+      <text>{{ t("misc.service.accountTip") }}</text>
+      <text>{{ t("misc.service.betTip") }}</text>
     </view>
   </view>
 </template>
@@ -57,6 +57,7 @@ import { onLoad, onPullDownRefresh } from "@dcloudio/uni-app";
 import { getCachedConfig, getConfig } from "@/api/services";
 import { normalizePageUrl, openWebView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const config = ref<Record<string, unknown>>();
 const loading = ref(false);
@@ -81,7 +82,7 @@ async function refreshConfig(silent = false) {
     applyConfig(await getConfig());
   } catch (error: any) {
     if (!silent) {
-      uni.showToast({ title: error?.message || "客服配置获取失败", icon: "none" });
+      uni.showToast({ title: error?.message || t("misc.service.configFailed"), icon: "none" });
     }
   } finally {
     loading.value = false;
@@ -94,7 +95,7 @@ async function openCustomerService() {
     return;
   }
   if (serviceUrl.value) {
-    openWebView(serviceUrl.value, "在线客服");
+    openWebView(serviceUrl.value, t("misc.service.onlineSupport"));
     return;
   }
   uni.navigateTo({ url: "/pages/service/chat" });

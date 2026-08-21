@@ -8,15 +8,15 @@
         <view class="nav-btn" @tap="goBack">
           <text class="nav-arrow">‹</text>
         </view>
-        <text class="nav-title">小游戏</text>
+        <text class="nav-title">{{ t("misc.minigame.title") }}</text>
         <view class="nav-spacer" />
       </view>
-      <text class="hero-sub">电子 · 休闲 · 对战，随时开一局</text>
+      <text class="hero-sub">{{ t("misc.minigame.subtitle") }}</text>
     </view>
 
     <!-- 分类筛选 -->
     <scroll-view v-if="categories.length > 1" scroll-x class="cat-strip" :show-scrollbar="false">
-      <view class="cat-chip" :class="{ on: activeCat === '' }" @tap="activeCat = ''">全部</view>
+      <view class="cat-chip" :class="{ on: activeCat === '' }" @tap="activeCat = ''">{{ t("misc.common.all") }}</view>
       <view
         v-for="cat in categories"
         :key="cat.key"
@@ -61,10 +61,10 @@
           </view>
         </view>
       </view>
-      <text class="mg-foot">共 {{ shownGames.length }} 款游戏 · 更多陆续上线</text>
+      <text class="mg-foot">{{ t("misc.minigame.totalPrefix") }} {{ shownGames.length }} {{ t("misc.minigame.totalSuffix") }}</text>
     </template>
 
-    <EmptyState v-else kind="bet" title="暂无可玩游戏" description="游戏正在准备中，敬请期待。" />
+    <EmptyState v-else kind="bet" :title="t('misc.minigame.empty')" :description="t('misc.minigame.emptyDescription')" />
 
     <FishingVenuePicker
       :visible="venuePickerVisible"
@@ -91,6 +91,7 @@ import type {
 import { absolutizeUrl, localAssetUrl } from "@/utils/url";
 import { openGameView } from "@/utils/navigation";
 import { requireLogin } from "@/utils/session";
+import { t } from "@/i18n";
 
 const bundle = ref<MiniGameBundle>();
 const activeCat = ref("");
@@ -137,16 +138,15 @@ function fallbackCover(game: MiniGameItem) {
   return CATEGORY_COVER[String(game.category || "")] || "/static/art/category/board.webp";
 }
 
-const MODE_TEXT: Record<string, string> = {
-  realtime: "实时联机",
-  single: "单人",
-  "local-keyboard": "同屏对战",
-  "local-turn-based": "回合制",
-  webrtc: "联机对战"
-};
-
 function modeText(game: MiniGameItem) {
-  return MODE_TEXT[String(game.play_mode || "")] || "休闲";
+  const modeKey: Record<string, string> = {
+    realtime: "realtime",
+    single: "single",
+    "local-keyboard": "localKeyboard",
+    "local-turn-based": "turnBased",
+    webrtc: "onlineBattle"
+  };
+  return t(`misc.minigame.${modeKey[String(game.play_mode || "")] || "casual"}`);
 }
 
 async function load() {
@@ -154,7 +154,7 @@ async function load() {
   try {
     bundle.value = await getMiniGames();
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "游戏列表加载失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.minigame.loadFailed"), icon: "none" });
   } finally {
     loading.value = false;
   }
@@ -184,17 +184,17 @@ async function launchFishingVenue(venue: FishingVenue) {
 
 async function launchGame(game: MiniGameItem, room = "") {
   launching.value = true;
-  uni.showLoading({ title: "进入游戏", mask: true });
+  uni.showLoading({ title: t("misc.minigame.entering"), mask: true });
   try {
     const info = await enterMiniGame(String(game.code || ""), room);
     const url = String(info?.launch_url || "");
     if (!url) {
-      throw new Error("游戏地址无效");
+      throw new Error(t("misc.minigame.invalidUrl"));
     }
     // 方向以 enter 的服务端结果为准；麻将、斗地主、捕鱼均会锁定横屏。
     openGameView(absolutizeUrl(url) || url);
   } catch (error: any) {
-    uni.showToast({ title: error?.message || "进入游戏失败", icon: "none" });
+    uni.showToast({ title: error?.message || t("misc.minigame.enterFailed"), icon: "none" });
   } finally {
     uni.hideLoading();
     launching.value = false;
