@@ -54,6 +54,15 @@ type liveSourceProber interface {
 	ProbeDouyin(context.Context, string) (live.Source, error)
 }
 
+func noStoreAdminStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
+}
+
 type contextAdminKey struct{}
 
 func New(
@@ -89,11 +98,13 @@ func New(
 		return nil, err
 	}
 	return &Handler{
-		db:                db,
-		auth:              authService,
-		loginTemplate:     template.Must(template.New("login").Parse(string(loginBody))),
-		appTemplate:       template.Must(template.New("app").Parse(string(appBody))),
-		static:            http.StripPrefix("/admin/static/", http.FileServer(http.FS(staticFS))),
+		db:            db,
+		auth:          authService,
+		loginTemplate: template.Must(template.New("login").Parse(string(loginBody))),
+		appTemplate:   template.Must(template.New("app").Parse(string(appBody))),
+		static: noStoreAdminStatic(
+			http.StripPrefix("/admin/static/", http.FileServer(http.FS(staticFS))),
+		),
 		storage:           storageService,
 		wallet:            walletService,
 		liveProbe:         liveProbe,
