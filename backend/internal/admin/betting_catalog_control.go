@@ -23,6 +23,57 @@ func parseControlIntFilter(r *http.Request, key string, minimum, maximum int64) 
 	return value, true, nil
 }
 
+func lotteryIssueWhereClause(
+	gameID int64,
+	hasGameID bool,
+	status int64,
+	hasStatus bool,
+	keyword string,
+) (string, []any) {
+	conditions := make([]string, 0, 3)
+	arguments := make([]any, 0, 6)
+	if hasGameID {
+		conditions = append(conditions, "issue.game_id=?")
+		arguments = append(arguments, gameID)
+	}
+	if hasStatus {
+		conditions = append(conditions, "issue.status=?")
+		arguments = append(arguments, status)
+	}
+	if keyword != "" {
+		like := "%" + escapeLike(keyword) + "%"
+		conditions = append(conditions, `(issue.issue_no LIKE ? OR game.game_code LIKE ?
+			OR game.name LIKE ? OR issue.result_source LIKE ?)`)
+		arguments = append(arguments, like, like, like, like)
+	}
+	if len(conditions) == 0 {
+		return "", arguments
+	}
+	return " WHERE " + strings.Join(conditions, " AND "), arguments
+}
+
+type lotteryIssueListRow struct {
+	id           int64
+	gameID       int64
+	gameCode     string
+	gameName     string
+	issueNo      string
+	saleOpenAt   time.Time
+	saleCloseAt  time.Time
+	drawAt       time.Time
+	drawResult   []byte
+	resultSource string
+	status       int
+	createdAt    time.Time
+	updatedAt    time.Time
+}
+
+type lotteryIssueOrderStats struct {
+	orderCount  int64
+	totalBet    int64
+	totalPayout int64
+}
+
 func (h *Handler) listLotteryIssues(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := pageParams(r)
 	gameID, hasGameID, err := parseControlIntFilter(r, "game_id", 1, int64(^uint64(0)>>1))
@@ -36,83 +87,115 @@ func (h *Handler) listLotteryIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keyword := strings.TrimSpace(r.URL.Query().Get("q"))
-	like := "%" + escapeLike(keyword) + "%"
-	filterArguments := []any{
-		hasGameID, gameID,
-		hasStatus, status,
-		keyword, like, like, like, like,
+	whereClause, filterArguments := lotteryIssueWhereClause(
+		gameID, hasGameID, status, hasStatus, keyword,
+	)
+	countJoin := ""
+	if keyword != "" {
+		countJoin = " JOIN lottery_games game ON game.id=issue.game_id"
 	}
 	var total int64
-	if err = h.db.QueryRowContext(r.Context(), `
-		SELECT COUNT(*)
-		FROM lottery_issues issue
-		JOIN lottery_games game ON game.id=issue.game_id
-		WHERE (?=FALSE OR issue.game_id=?)
-		  AND (?=FALSE OR issue.status=?)
-		  AND (?='' OR issue.issue_no LIKE ? OR game.game_code LIKE ?
-		       OR game.name LIKE ? OR issue.result_source LIKE ?)`,
+	if err = h.db.QueryRowContext(r.Context(),
+		"SELECT COUNT(*) FROM lottery_issues issue"+countJoin+whereClause,
 		filterArguments...,
 	).Scan(&total); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
 		return
 	}
-	rows, err := h.db.QueryContext(r.Context(), `
+	listQuery := `
 		SELECT issue.id,issue.game_id,game.game_code,game.name,issue.issue_no,
 		       issue.sale_open_at,issue.sale_close_at,issue.draw_at,issue.draw_result,
-		       issue.result_source,issue.status,
-		       (SELECT COUNT(*) FROM lottery_bet_orders bet_order WHERE bet_order.issue_id=issue.id),
-		       (SELECT COALESCE(SUM(bet_order.total_bet),0)
-		        FROM lottery_bet_orders bet_order WHERE bet_order.issue_id=issue.id),
-		       (SELECT COALESCE(SUM(bet_order.total_payout),0)
-		        FROM lottery_bet_orders bet_order WHERE bet_order.issue_id=issue.id),
-		       issue.created_at,issue.updated_at
+		       issue.result_source,issue.status,issue.created_at,issue.updated_at
 		FROM lottery_issues issue
-		JOIN lottery_games game ON game.id=issue.game_id
-		WHERE (?=FALSE OR issue.game_id=?)
-		  AND (?=FALSE OR issue.status=?)
-		  AND (?='' OR issue.issue_no LIKE ? OR game.game_code LIKE ?
-		       OR game.name LIKE ? OR issue.result_source LIKE ?)
+		JOIN lottery_games game ON game.id=issue.game_id` + whereClause + `
 		ORDER BY issue.draw_at DESC,issue.id DESC
-		LIMIT ? OFFSET ?`,
-		append(filterArguments, pageSize, (page-1)*pageSize)...,
+		LIMIT ? OFFSET ?`
+	listArguments := append(append([]any{}, filterArguments...), pageSize, (page-1)*pageSize)
+	rows, err := h.db.QueryContext(r.Context(),
+		listQuery,
+		listArguments...,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
 		return
 	}
-	defer rows.Close()
-	items := make([]map[string]any, 0, pageSize)
+	issueRows := make([]lotteryIssueListRow, 0, pageSize)
 	for rows.Next() {
-		var (
-			id, rowGameID, orderCount, totalBet, totalPayout int64
-			gameCode, gameName, issueNo, resultSource        string
-			saleOpenAt, saleCloseAt, drawAt                  time.Time
-			createdAt, updatedAt                             time.Time
-			drawResult                                       []byte
-			rowStatus                                        int
-		)
+		var row lotteryIssueListRow
 		if err = rows.Scan(
-			&id, &rowGameID, &gameCode, &gameName, &issueNo,
-			&saleOpenAt, &saleCloseAt, &drawAt, &drawResult,
-			&resultSource, &rowStatus, &orderCount, &totalBet, &totalPayout,
-			&createdAt, &updatedAt,
+			&row.id, &row.gameID, &row.gameCode, &row.gameName, &row.issueNo,
+			&row.saleOpenAt, &row.saleCloseAt, &row.drawAt, &row.drawResult,
+			&row.resultSource, &row.status, &row.createdAt, &row.updatedAt,
 		); err != nil {
+			_ = rows.Close()
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
 			return
 		}
-		items = append(items, map[string]any{
-			"id": apiDecimalID(id), "game_id": apiDecimalID(rowGameID),
-			"game_code": gameCode, "game_name": gameName,
-			"issue_no": issueNo, "sale_open_at": saleOpenAt.Unix(),
-			"sale_close_at": saleCloseAt.Unix(), "draw_at": drawAt.Unix(),
-			"draw_result": jsonOrNil(drawResult), "result_source": resultSource, "status": rowStatus,
-			"order_count": orderCount, "total_bet": totalBet, "total_payout": totalPayout,
-			"created_at": createdAt.Unix(), "updated_at": updatedAt.Unix(),
-		})
+		issueRows = append(issueRows, row)
 	}
 	if err = rows.Err(); err != nil {
+		_ = rows.Close()
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
 		return
+	}
+	if err = rows.Close(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
+		return
+	}
+
+	statsByIssueID := make(map[int64]lotteryIssueOrderStats, len(issueRows))
+	if len(issueRows) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(issueRows)), ",")
+		statsArguments := make([]any, 0, len(issueRows))
+		for _, row := range issueRows {
+			statsArguments = append(statsArguments, row.id)
+		}
+		statsRows, statsErr := h.db.QueryContext(r.Context(), `
+			SELECT issue_id,COUNT(*),COALESCE(SUM(total_bet),0),COALESCE(SUM(total_payout),0)
+			FROM lottery_bet_orders
+			WHERE issue_id IN (`+placeholders+`)
+			GROUP BY issue_id`,
+			statsArguments...,
+		)
+		if statsErr != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
+			return
+		}
+		for statsRows.Next() {
+			var issueID int64
+			var stats lotteryIssueOrderStats
+			if statsErr = statsRows.Scan(
+				&issueID, &stats.orderCount, &stats.totalBet, &stats.totalPayout,
+			); statsErr != nil {
+				_ = statsRows.Close()
+				httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
+				return
+			}
+			statsByIssueID[issueID] = stats
+		}
+		if statsErr = statsRows.Err(); statsErr != nil {
+			_ = statsRows.Close()
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
+			return
+		}
+		if statsErr = statsRows.Close(); statsErr != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取彩票期号失败")
+			return
+		}
+	}
+
+	items := make([]map[string]any, 0, len(issueRows))
+	for _, row := range issueRows {
+		stats := statsByIssueID[row.id]
+		items = append(items, map[string]any{
+			"id": apiDecimalID(row.id), "game_id": apiDecimalID(row.gameID),
+			"game_code": row.gameCode, "game_name": row.gameName,
+			"issue_no": row.issueNo, "sale_open_at": row.saleOpenAt.Unix(),
+			"sale_close_at": row.saleCloseAt.Unix(), "draw_at": row.drawAt.Unix(),
+			"draw_result": jsonOrNil(row.drawResult), "result_source": row.resultSource, "status": row.status,
+			"order_count": stats.orderCount, "total_bet": stats.totalBet, "total_payout": stats.totalPayout,
+			"created_at": row.createdAt.Unix(), "updated_at": row.updatedAt.Unix(),
+		})
 	}
 	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
 		"page": page, "page_size": pageSize, "total": total,

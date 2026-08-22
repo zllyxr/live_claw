@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -30,6 +31,54 @@ func TestParseControlIntFilter(t *testing.T) {
 			}
 			if value != test.wantValue || set != test.wantSet {
 				t.Fatalf("unexpected result: value=%d set=%t", value, set)
+			}
+		})
+	}
+}
+
+func TestLotteryIssueWhereClause(t *testing.T) {
+	tests := []struct {
+		name          string
+		gameID        int64
+		hasGameID     bool
+		status        int64
+		hasStatus     bool
+		keyword       string
+		wantClause    string
+		wantArguments []any
+	}{
+		{name: "unfiltered"},
+		{
+			name: "indexed identifiers", gameID: 73, hasGameID: true,
+			status: 1, hasStatus: true,
+			wantClause:    " WHERE issue.game_id=? AND issue.status=?",
+			wantArguments: []any{int64(73), int64(1)},
+		},
+		{
+			name: "keyword", keyword: "HN%_",
+			wantClause: " WHERE (issue.issue_no LIKE ? OR game.game_code LIKE ?\n" +
+				"\t\t\tOR game.name LIKE ? OR issue.result_source LIKE ?)",
+			wantArguments: []any{"%HN\\%\\_%", "%HN\\%\\_%", "%HN\\%\\_%", "%HN\\%\\_%"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clause, arguments := lotteryIssueWhereClause(
+				test.gameID, test.hasGameID, test.status, test.hasStatus, test.keyword,
+			)
+			if clause != test.wantClause {
+				t.Fatalf("unexpected clause %q", clause)
+			}
+			if len(arguments) != len(test.wantArguments) {
+				t.Fatalf("unexpected arguments: %#v", arguments)
+			}
+			for index := range arguments {
+				if arguments[index] != test.wantArguments[index] {
+					t.Fatalf("unexpected argument %d: %#v", index, arguments[index])
+				}
+			}
+			if strings.Contains(clause, "?=FALSE") || strings.Contains(clause, "?=''") {
+				t.Fatalf("clause contains an index-blocking optional predicate: %q", clause)
 			}
 		})
 	}
