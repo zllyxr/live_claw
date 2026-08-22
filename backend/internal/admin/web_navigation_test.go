@@ -69,3 +69,52 @@ func TestAdminPaymentActionsExplainUnavailableConditions(t *testing.T) {
 		}
 	}
 }
+
+func TestSystemSettingsUseFriendlyFormsInsteadOfRawJSON(t *testing.T) {
+	application, err := webFiles.ReadFile("web/static/app.js")
+	if err != nil {
+		t.Fatalf("read embedded admin application: %v", err)
+	}
+	source := string(application)
+
+	for _, key := range []string{
+		"platform.brand",
+		"content.pages",
+		"security.session",
+		"invite.policy",
+		"wallet.policy",
+		"game.fishing",
+		"live.provider",
+		"im.policy",
+		"lottery.policy",
+		"app.update",
+	} {
+		if !strings.Contains(source, `"`+key+`": {`) {
+			t.Errorf("system setting %q has no friendly form definition", key)
+		}
+	}
+
+	for _, required := range []string{
+		"function systemSettingCards(items)",
+		"function systemSettingFormFields(row)",
+		"function parseSystemSettingField(field, rawValue)",
+		"按业务含义填写并保存，无需编写 JSON",
+		"场次与倍率",
+		"只允许一台设备登录",
+		"新版本覆盖比例",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("friendly system setting form is missing %q", required)
+		}
+	}
+
+	for _, legacy := range []string{
+		`{ label: "值", render: (row) => '<pre class="json-block">'`,
+		`label: row.is_secret ? "新的 JSON 密钥值" : "JSON 值"`,
+		`{ name: "is_secret", label: "类型"`,
+	} {
+		if strings.Contains(source, legacy) {
+			t.Errorf("legacy raw JSON setting editor is still present: %q", legacy)
+		}
+	}
+}

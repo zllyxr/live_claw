@@ -264,6 +264,32 @@ button > strong,
 .subgrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-top: 20px; }
 .subgrid .panel { min-width: 0; }
 .json-block { max-height: 260px; margin: 0; padding: 12px; overflow: auto; border-radius: 8px; background: #111827; color: #dbeafe; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.system-settings-shell { display: grid; gap: 26px; padding: 22px; background: var(--background); }
+.system-setting-group { min-width: 0; }
+.system-setting-group-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.system-setting-group-title h3 { margin: 0; font-size: 15px; }
+.system-setting-group-title span { min-width: 46px; padding: 4px 9px; border-radius: 999px; color: var(--muted); background: #fff; font-size: 12px; }
+.system-setting-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.system-setting-card { display: flex; flex-direction: column; min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 5px 16px rgba(30,48,83,.035); }
+.system-setting-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.system-setting-card > header > div { min-width: 0; }
+.system-setting-card h3 { margin: 0; font-size: 16px; }
+.system-setting-card header p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.setting-version { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; color: var(--blue); background: var(--blue-soft); font-size: 11px; }
+.setting-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 16px 0; }
+.setting-summary > div { min-width: 0; padding: 10px 11px; border-radius: 9px; background: var(--background); }
+.setting-summary > div.wide { grid-column: 1 / -1; }
+.setting-summary dt { margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+.setting-summary dd { min-width: 0; margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.setting-unit { margin-left: 4px; color: var(--muted); font-size: 11px; }
+.setting-boolean { padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.setting-boolean.on { color: #157347; background: #e9f8f0; }
+.setting-boolean.off { color: #8a6470; background: #f3eef0; }
+.setting-secret-state, .setting-advanced-state { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 16px 0; padding: 14px; border-radius: 9px; color: var(--muted); background: var(--background); font-size: 12px; }
+.setting-secret-state small { color: var(--muted); }
+.system-setting-card > footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-top: auto; padding-top: 13px; border-top: 1px solid var(--line); }
+.system-setting-card > footer > div { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; }
+.system-setting-card footer code { max-width: 100%; color: #98a0af; font-size: 10px; overflow-wrap: anywhere; }
 .modal-form { padding: 20px 22px 6px; }
 .modal-form label { display: block; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
 .modal-form input, .modal-form select, .modal-form textarea { width: 100%; margin-top: 6px; padding: 9px 10px; border: 1px solid #d8deea; border-radius: 8px; color: var(--ink); background: white; }
@@ -271,6 +297,7 @@ button > strong,
 .modal-form textarea { min-height: 86px; resize: vertical; }
 .modal-form .form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 12px; }
 .modal-form .wide { grid-column: 1 / -1; }
+.modal-form .form-help { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .form-check-field { min-width: 0; margin-bottom: 14px; }
 .form-check-label {
   display: flex !important;
@@ -939,6 +966,7 @@ button > strong,
   .table-pagination { grid-template-columns: 1fr; justify-items: center; }
   .table-range, .table-page-status { justify-self: center; }
   .table-detail-modal dl { grid-template-columns: 1fr; }
+  .system-setting-grid { grid-template-columns: 1fr; }
   .remote-console { grid-template-columns: minmax(0,1fr) 210px; }
 }
 
@@ -952,6 +980,10 @@ button > strong,
   .topbar { padding: 0 14px; }
   .modal-form .form-grid { grid-template-columns: 1fr; }
   .form-check-grid { grid-template-columns: 1fr; }
+  .system-settings-shell { padding: 14px; }
+  .setting-summary { grid-template-columns: 1fr; }
+  .setting-summary > div.wide { grid-column: auto; }
+  .system-setting-card > footer { align-items: flex-start; flex-direction: column; }
   .admin-tabs { width: 100%; overflow-x: auto; }
   .admin-tab { min-width: 100px; flex: 1; white-space: nowrap; }
   .permission-notice { align-items: flex-start; flex-direction: column; }

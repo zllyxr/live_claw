@@ -1463,6 +1463,320 @@
     });
   }
 
+  const systemSettingCatalog = {
+    "platform.brand": {
+      title: "平台品牌",
+      group: "基础与内容",
+      description: "设置客户端显示的名称、客服入口和维护状态。",
+      fields: [
+        { path: "name", label: "平台名称", type: "text", required: true, placeholder: "例如：星域" },
+        { path: "support_url", label: "客服地址", type: "url", placeholder: "https://...", help: "可留空；填写后必须是 http 或 https 地址。" },
+        { path: "maintenance", label: "维护模式", type: "boolean", help: "仅在需要暂停普通用户访问时开启。" }
+      ]
+    },
+    "content.pages": {
+      title: "协议与说明",
+      group: "基础与内容",
+      description: "维护客户端向用户展示的协议标题和正文。",
+      fields: [
+        { path: "recharge_agreement.title", label: "充值协议标题", type: "text", required: true },
+        { path: "recharge_agreement.content", label: "充值协议正文", type: "textarea", required: true, wide: true, help: "支持正常换行，不需要添加 HTML 或其他代码。" }
+      ]
+    },
+    "security.session": {
+      title: "登录与会话",
+      group: "账户与资金",
+      description: "控制用户和管理员登录保持时间，以及是否限制单设备登录。",
+      fields: [
+        { path: "user_ttl_seconds", label: "用户登录有效期", type: "number", scale: 86400, unit: "天", min: 1, max: 365, step: 1, integer: true, required: true },
+        { path: "admin_ttl_seconds", label: "管理员登录有效期", type: "number", scale: 3600, unit: "小时", min: 1, max: 168, step: 1, integer: true, required: true },
+        { path: "single_device", label: "只允许一台设备登录", type: "boolean", help: "开启后，新设备登录会使旧设备会话失效。" }
+      ]
+    },
+    "invite.policy": {
+      title: "邀请码规则",
+      group: "账户与资金",
+      description: "设置团队邀请码和个人邀请码的组成及保留时间。",
+      fields: [
+        { path: "alphabet", label: "邀请码可用字符", type: "text", required: true, wide: true, help: "建议只使用不易混淆的数字和小写字母。" },
+        { path: "format", label: "邀请码格式", type: "text", required: true, placeholder: "xxx-xxxx", help: "x 代表一个字符，短横线会原样显示。" },
+        { path: "team_prefix_length", label: "团队前缀长度", type: "number", min: 1, max: 12, step: 1, integer: true, required: true },
+        { path: "personal_code_length", label: "个人码长度", type: "number", min: 1, max: 20, step: 1, integer: true, required: true },
+        { path: "alias_retention_days", label: "旧邀请码保留时间", type: "number", unit: "天", min: 0, max: 3650, step: 1, integer: true, required: true }
+      ]
+    },
+    "wallet.policy": {
+      title: "钱包规则",
+      group: "账户与资金",
+      description: "设置钱包币种、充值提现开关、最低提现金额和手续费。",
+      fields: [
+        { path: "currency", label: "钱包币种代码", type: "text", required: true, placeholder: "COIN" },
+        { path: "recharge_enabled", label: "允许充值", type: "boolean" },
+        { path: "withdraw_enabled", label: "允许提现", type: "boolean" },
+        { path: "min_withdraw_coin", label: "最低提现金额", type: "number", unit: "星币", min: 0, step: 1, required: true },
+        { path: "withdraw_fee_coin", label: "每笔提现手续费", type: "number", unit: "星币", min: 0, step: 1, required: true }
+      ]
+    },
+    "game.fishing": {
+      title: "捕鱼房间规则",
+      group: "业务功能",
+      description: "控制捕鱼房间的分配方式、桌椅数量和场次倍率。",
+      fields: [
+        { path: "allocation", label: "入场分配方式", type: "select", required: true, options: [["random_table_random_seat", "随机分桌并随机座位"]] },
+        { path: "tables_per_venue", label: "每个场次桌数", type: "number", unit: "桌", min: 1, max: 10000, step: 1, integer: true, required: true },
+        { path: "seats_per_table", label: "每桌座位数", type: "number", unit: "座", min: 1, max: 20, step: 1, integer: true, required: true },
+        { path: "venues", label: "场次与倍率", type: "venues", required: true, wide: true, placeholder: "novice: 1\nexpert: 5\nmaster: 10", help: "每行填写“场次代码: 倍率”，例如 novice: 1。" }
+      ]
+    },
+    "live.provider": {
+      title: "直播来源",
+      group: "业务功能",
+      description: "设置允许接入的直播来源和解析结果缓存时间。",
+      fields: [
+        { path: "allowed", label: "允许的直播来源", type: "list", required: true, placeholder: "douyin", help: "多个来源用逗号或换行分隔。" },
+        { path: "resolve_cache_seconds", label: "解析缓存时间", type: "number", unit: "秒", min: 0, max: 3600, step: 1, integer: true, required: true }
+      ]
+    },
+    "im.policy": {
+      title: "聊天功能",
+      group: "业务功能",
+      description: "分别控制私聊、群聊、直播群聊和群成员上限。",
+      fields: [
+        { path: "direct_enabled", label: "允许私聊", type: "boolean" },
+        { path: "group_enabled", label: "允许群聊", type: "boolean" },
+        { path: "live_group_enabled", label: "允许直播群聊", type: "boolean" },
+        { path: "max_group_members", label: "每个群最多人数", type: "number", unit: "人", min: 2, max: 100000, step: 1, integer: true, required: true }
+      ]
+    },
+    "lottery.policy": {
+      title: "彩票总开关",
+      group: "业务功能",
+      description: "控制彩票业务是否开放，以及手动开奖是否必须经过审计。",
+      fields: [
+        { path: "enabled", label: "开放彩票业务", type: "boolean" },
+        { path: "manual_draw_requires_audit", label: "手动开奖必须审计", type: "boolean", help: "建议保持开启，便于追踪所有人工开奖操作。" }
+      ]
+    },
+    "app.update": {
+      title: "客户端更新",
+      group: "客户端",
+      description: "控制强制更新、静默热更新和新版本灰度比例。",
+      fields: [
+        { path: "force_update_enabled", label: "允许强制更新", type: "boolean" },
+        { path: "silent_hot_update_enabled", label: "允许静默热更新", type: "boolean" },
+        { path: "rollout_percent", label: "新版本覆盖比例", type: "number", unit: "%", min: 0, max: 100, step: 1, integer: true, required: true }
+      ]
+    }
+  };
+
+  const systemSettingGroupOrder = ["基础与内容", "账户与资金", "业务功能", "客户端", "其他设置"];
+
+  function systemSettingValueAtPath(value, path) {
+    return String(path || "").split(".").reduce((current, segment) =>
+      current && typeof current === "object" ? current[segment] : undefined, value);
+  }
+
+  function assignSystemSettingValue(target, path, value) {
+    const segments = String(path || "").split(".");
+    let current = target;
+    segments.forEach((segment, index) => {
+      if (index === segments.length - 1) {
+        current[segment] = value;
+        return;
+      }
+      if (!current[segment] || typeof current[segment] !== "object" || Array.isArray(current[segment])) {
+        current[segment] = {};
+      }
+      current = current[segment];
+    });
+  }
+
+  function cloneSystemSettingValue(value) {
+    if (!value || typeof value !== "object") return {};
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function systemSettingInputValue(field, value) {
+    if (field.type === "boolean") return value ? "1" : "0";
+    if (field.type === "list") return Array.isArray(value) ? value.join(", ") : "";
+    if (field.type === "venues") {
+      return Array.isArray(value) ? value.map((venue) =>
+        String(venue.code || "") + ": " + String(venue.multiplier ?? "")).join("\n") : "";
+    }
+    if (field.scale && Number.isFinite(Number(value))) return Number(value) / field.scale;
+    return value ?? "";
+  }
+
+  function systemSettingPreview(field, value) {
+    if (field.type === "boolean") {
+      return '<span class="setting-boolean ' + (value ? "on" : "off") + '">' +
+        (value ? "已开启" : "已关闭") + "</span>";
+    }
+    if (field.type === "list") {
+      const values = Array.isArray(value) ? value : [];
+      return esc(values.length ? values.join("、") : "未设置");
+    }
+    if (field.type === "venues") {
+      const venues = Array.isArray(value) ? value : [];
+      return esc(venues.length ? venues.map((venue) =>
+        String(venue.code || "未命名") + "（" + String(venue.multiplier ?? 0) + " 倍）").join("、") : "未设置");
+    }
+    if (field.type === "select") {
+      const option = (field.options || []).find((item) => String(item[0]) === String(value));
+      return esc(option ? option[1] : (value || "未设置"));
+    }
+    let displayValue = field.scale && Number.isFinite(Number(value)) ? Number(value) / field.scale : value;
+    if (displayValue === undefined || displayValue === null || displayValue === "") return "未设置";
+    displayValue = String(displayValue);
+    if (displayValue.length > 120) displayValue = displayValue.slice(0, 120) + "…";
+    return esc(displayValue) + (field.unit ? '<span class="setting-unit">' + esc(field.unit) + "</span>" : "");
+  }
+
+  function systemSettingCard(row) {
+    const definition = systemSettingCatalog[row.key];
+    const title = definition ? definition.title : row.key;
+    const description = definition ? definition.description :
+      "该配置暂未提供普通表单，请交由熟悉系统的技术人员维护。";
+    let summary;
+    if (row.is_secret) {
+      const configured = Boolean(row.value && row.value.configured);
+      summary = '<div class="setting-secret-state"><span class="setting-boolean ' +
+        (configured ? "on" : "off") + '">' + (configured ? "密钥已配置" : "密钥未配置") +
+        "</span><small>出于安全原因，密钥内容不会在此显示</small></div>";
+    } else if (definition) {
+      summary = '<dl class="setting-summary">' + definition.fields.map((field) =>
+        '<div class="' + (field.wide ? "wide" : "") + '"><dt>' + esc(field.label) +
+        "</dt><dd>" + systemSettingPreview(field, systemSettingValueAtPath(row.value, field.path)) +
+        "</dd></div>").join("") + "</dl>";
+    } else {
+      summary = '<div class="setting-advanced-state">当前配置已加载，但不在页面直接展示代码。</div>';
+    }
+    const action = has("system.write") ? button(definition ? "编辑设置" : "高级编辑", "setting-edit", row.key,
+      definition ? "layui-btn-normal" : "layui-btn-primary") : '<span class="read-only-reason">只读：缺少 system.write 权限</span>';
+    return '<article class="system-setting-card"><header><div><h3>' + esc(title) +
+      "</h3><p>" + esc(description) + '</p></div><span class="setting-version">版本 ' +
+      esc(row.version) + "</span></header>" + summary + '<footer><div><span>最后更新：' +
+      esc(formatTime(row.updated_at)) + '</span><code title="配置编号">' + esc(row.key) +
+      "</code></div>" + action + "</footer></article>";
+  }
+
+  function systemSettingCards(items) {
+    const groups = {};
+    (items || []).forEach((row) => {
+      const group = systemSettingCatalog[row.key]?.group || "其他设置";
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(row);
+    });
+    const body = systemSettingGroupOrder.filter((group) => groups[group]?.length).map((group) =>
+      '<section class="system-setting-group"><div class="system-setting-group-title"><h3>' +
+      esc(group) + "</h3><span>" + esc(groups[group].length) + " 项</span></div>" +
+      '<div class="system-setting-grid">' + groups[group].map(systemSettingCard).join("") +
+      "</div></section>").join("");
+    return '<div class="system-settings-shell">' +
+      (body || '<div class="empty-state">暂无系统设置</div>') + "</div>";
+  }
+
+  function systemSettingFormFields(row) {
+    const definition = systemSettingCatalog[row.key];
+    if (definition) {
+      return definition.fields.map((field, index) => ({
+        name: "setting_field_" + index,
+        label: field.label + (field.unit ? "（" + field.unit + "）" : ""),
+        type: field.type === "boolean" || field.type === "select" ? undefined :
+          ["venues", "list"].includes(field.type) ? "textarea" : field.type,
+        options: field.type === "boolean" ? [[1, "开启"], [0, "关闭"]] : field.options,
+        value: systemSettingInputValue(field, systemSettingValueAtPath(row.value, field.path)),
+        placeholder: field.placeholder || "",
+        help: field.help || "",
+        min: field.min,
+        max: field.max,
+        step: field.step,
+        required: field.required,
+        wide: field.wide
+      }));
+    }
+    if (row.is_secret) {
+      return [{
+        name: "secret_value",
+        label: "新的密钥值",
+        type: "password",
+        required: true,
+        wide: true,
+        help: "保存后不会再次显示，请确认内容正确后再提交。"
+      }];
+    }
+    return [{
+      name: "advanced_value",
+      label: "高级配置内容（JSON）",
+      type: "textarea",
+      value: JSON.stringify(row.value, null, 2),
+      required: true,
+      wide: true,
+      help: "该设置还没有可视化表单，仅建议技术人员修改。"
+    }];
+  }
+
+  function parseSystemSettingField(field, rawValue) {
+    const raw = String(rawValue ?? "");
+    const trimmed = raw.trim();
+    if (field.required && !trimmed) throw new Error("请填写“" + field.label + "”");
+    if (field.type === "boolean") return trimmed === "1";
+    if (field.type === "number") {
+      const value = Number(trimmed);
+      if (!Number.isFinite(value)) throw new Error("“" + field.label + "”必须是有效数字");
+      if (field.integer && !Number.isInteger(value)) throw new Error("“" + field.label + "”必须是整数");
+      if (field.min !== undefined && value < field.min) throw new Error("“" + field.label + "”不能小于 " + field.min);
+      if (field.max !== undefined && value > field.max) throw new Error("“" + field.label + "”不能大于 " + field.max);
+      return field.scale ? value * field.scale : value;
+    }
+    if (field.type === "list") {
+      const values = trimmed.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+      if (field.required && !values.length) throw new Error("请至少填写一个“" + field.label + "”");
+      return Array.from(new Set(values));
+    }
+    if (field.type === "venues") {
+      const venues = trimmed.split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+        const match = line.match(/^([^:：,，\s]+)\s*[:：,，]\s*(\d+(?:\.\d+)?)$/);
+        if (!match || Number(match[2]) <= 0) {
+          throw new Error("场次格式不正确，请按“场次代码: 倍率”每行填写一项");
+        }
+        return { code: match[1], multiplier: Number(match[2]) };
+      });
+      if (field.required && !venues.length) throw new Error("请至少填写一个捕鱼场次");
+      return venues;
+    }
+    if (field.type === "url" && trimmed && !safeHTTPURL(trimmed)) {
+      throw new Error("“" + field.label + "”必须是 http 或 https 地址");
+    }
+    return trimmed;
+  }
+
+  function saveSystemSettingForm(row, values) {
+    const definition = systemSettingCatalog[row.key];
+    let value;
+    if (definition) {
+      value = cloneSystemSettingValue(row.value);
+      definition.fields.forEach((field, index) => {
+        assignSystemSettingValue(value, field.path,
+          parseSystemSettingField(field, values["setting_field_" + index]));
+      });
+    } else if (row.is_secret) {
+      const secret = String(values.secret_value || "").trim();
+      if (!secret) throw new Error("请填写新的密钥值");
+      value = secret;
+    } else {
+      try {
+        value = JSON.parse(values.advanced_value);
+      } catch (_) {
+        throw new Error("高级配置格式不正确，请检查后重试");
+      }
+    }
+    return api("/admin/api/system/settings/" + encodeURIComponent(row.key), {
+      method: "POST",
+      body: { value, is_secret: Boolean(row.is_secret), version: Number(row.version) }
+    });
+  }
+
   async function systemView(loadContext) {
     const result = await Promise.all([
       api("/admin/api/system/settings"),
@@ -1471,12 +1785,7 @@
     if (!isCurrentRouteLoad(loadContext)) return;
     state.cache.settings = result[0].items;
     const activeSection = loadContext.section;
-    const settingTable = table([
-      { label: "设置项", render: (row) => "<strong>" + esc(row.key) + "</strong>" },
-      { label: "值", render: (row) => '<pre class="json-block">' + esc(JSON.stringify(row.value, null, 2)) + "</pre>", className: "wrap" },
-      { label: "版本", key: "version" }, { label: "更新时间", render: (row) => formatTime(row.updated_at) },
-      { label: "操作", render: (row) => has("system.write") ? button("编辑", "setting-edit", row.key) : "—" }
-    ], result[0].items);
+    const settingCards = systemSettingCards(result[0].items);
     const auditTable = table([
       { label: "时间", render: (row) => formatTime(row.created_at) },
       { label: "管理员", render: (row) => esc(row.actor_name || row.actor_id) },
@@ -1491,7 +1800,7 @@
       remote: { path: "/admin/api/system/audit" }
     });
     content.innerHTML = sectionBody("system", activeSection, {
-      settings: panel("系统设置", "密钥只显示是否已配置，不回传明文", settingTable),
+      settings: panel("系统设置", "按业务含义填写并保存，无需编写 JSON；密钥只显示是否已配置", settingCards),
       audit: panel("审计日志", "后台重要操作不可静默执行", auditTable)
     });
   }
@@ -1727,29 +2036,35 @@
       fields.map((field) => {
         const selectedValues = Array.isArray(field.value) ?
           field.value.map(String) : [String(field.value ?? "")];
+        const attributes = (field.required ? " required" : "") +
+          (field.min !== undefined ? ' min="' + esc(field.min) + '"' : "") +
+          (field.max !== undefined ? ' max="' + esc(field.max) + '"' : "") +
+          (field.step !== undefined ? ' step="' + esc(field.step) + '"' : "");
+        const help = field.help ? '<small class="form-help">' + esc(field.help) + "</small>" : "";
         const options = field.type === "checkboxes" ?
           '<div class="form-check-grid">' + (field.options || []).map((item) =>
             '<label class="form-check-option"><input type="checkbox" name="' +
             esc(field.name) + '" value="' + esc(item[0]) + '"' +
             (selectedValues.includes(String(item[0])) ? " checked" : "") +
             '><span>' + esc(item[1]) + "</span></label>").join("") + "</div>" :
-          field.options ? '<select name="' + esc(field.name) + '">' +
+          field.options ? '<select name="' + esc(field.name) + '"' + attributes + ">" +
           field.options.map((item) => '<option value="' + esc(item[0]) + '"' +
             (selectedValues.includes(String(item[0])) ? " selected" : "") + ">" + esc(item[1]) + "</option>").join("") +
           "</select>" : field.type === "textarea" ?
-          '<textarea name="' + esc(field.name) + '">' + esc(field.value || "") + "</textarea>" :
+          '<textarea name="' + esc(field.name) + '" placeholder="' + esc(field.placeholder || "") + '"' +
+          attributes + ">" + esc(field.value ?? "") + "</textarea>" :
           field.type === "file" ?
           '<input name="' + esc(field.name) + '" type="file" accept="' + esc(field.accept || "") + '">' :
           '<input name="' + esc(field.name) + '" type="' + esc(field.type || "text") +
-          '" value="' + esc(field.value || "") + '" placeholder="' + esc(field.placeholder || "") + '"' +
+          '" value="' + esc(field.value ?? "") + '" placeholder="' + esc(field.placeholder || "") + '"' + attributes +
           (field.inputmode ? ' inputmode="' + esc(field.inputmode) + '"' : "") +
           (field.readonly ? " readonly" : "") + ">";
         if (field.type === "checkboxes") {
           return '<div class="form-check-field ' + (field.wide ? "wide" : "") +
-            '"><span class="form-check-label">' + esc(field.label) + "</span>" + options + "</div>";
+            '"><span class="form-check-label">' + esc(field.label) + "</span>" + options + help + "</div>";
         }
         return '<label class="' + (field.wide ? "wide" : "") + '">' +
-          esc(field.label) + options + "</label>";
+          esc(field.label) + options + help + "</label>";
       }).join("") + "</div></form>";
     layer.open({
       type: 1, title: esc(title), area: ["620px", "auto"], content: html, btn: ["保存", "取消"],
@@ -3745,21 +4060,13 @@
     }
     if (action === "setting-edit") {
       const row = cached("settings", id);
-      return openForm("编辑系统设置", [
-        {
-          name: "value",
-          label: row.is_secret ? "新的 JSON 密钥值" : "JSON 值",
-          type: "textarea",
-          value: row.is_secret ? "" : JSON.stringify(row.value, null, 2),
-          wide: true
-        },
-        { name: "is_secret", label: "类型", options: [[0, "普通"], [1, "密钥"]], value: row.is_secret ? 1 : 0 }
-      ], (values) => api("/admin/api/system/settings/" + encodeURIComponent(id), {
-        method: "POST", body: {
-          value: JSON.parse(values.value),
-          is_secret: values.is_secret === "1", version: Number(row.version)
-        }
-      }));
+      if (!row) {
+        notify("设置数据已刷新，请重试", true);
+        return;
+      }
+      const definition = systemSettingCatalog[row.key];
+      return openForm((definition ? "编辑 · " + definition.title : "高级编辑 · " + row.key),
+        systemSettingFormFields(row), (values) => saveSystemSettingForm(row, values));
     }
     if (action === "role-edit") {
       const row = (state.cache.rbac.roles || []).find((item) => String(item.id) === String(id));
