@@ -19,6 +19,7 @@ var ErrInvalidCredentials = errors.New("invalid administrator credentials")
 
 const (
 	PortalAdmin   = "admin"
+	PortalAgent   = "agent"
 	PortalSupport = "support"
 )
 
@@ -316,5 +317,5 @@ func argon2Dummy(_ string) {
 }
 
 func validPortal(portal string) bool {
-	return portal == PortalAdmin || portal == PortalSupport
+	return portal == PortalAdmin || portal == PortalAgent || portal == PortalSupport
 }

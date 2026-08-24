@@ -32,22 +32,24 @@ const (
 var webFiles embed.FS
 
 type Handler struct {
-	db                *sql.DB
-	auth              *adminauth.Service
-	loginTemplate     *template.Template
-	appTemplate       *template.Template
-	static            http.Handler
-	storage           *storage.Service
-	wallet            *wallet.Service
-	liveProbe         liveSourceProber
-	paymentCipher     *paymentconfig.Cipher
-	bankPaymentCipher *bankpayment.Cipher
-	paymentHTTPClient *http.Client
-	mediaBaseURL      string
-	publicURL         string
-	environment       string
-	secureCookies     bool
-	remote            *remoteassist.Service
+	db                 *sql.DB
+	auth               *adminauth.Service
+	loginTemplate      *template.Template
+	appTemplate        *template.Template
+	agentLoginTemplate *template.Template
+	agentAppTemplate   *template.Template
+	static             http.Handler
+	storage            *storage.Service
+	wallet             *wallet.Service
+	liveProbe          liveSourceProber
+	paymentCipher      *paymentconfig.Cipher
+	bankPaymentCipher  *bankpayment.Cipher
+	paymentHTTPClient  *http.Client
+	mediaBaseURL       string
+	publicURL          string
+	environment        string
+	secureCookies      bool
+	remote             *remoteassist.Service
 }
 
 type liveSourceProber interface {
@@ -85,6 +87,14 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	agentLoginBody, err := webFiles.ReadFile("web/agent-login.html")
+	if err != nil {
+		return nil, err
+	}
+	agentAppBody, err := webFiles.ReadFile("web/agent-app.html")
+	if err != nil {
+		return nil, err
+	}
 	staticFS, err := fs.Sub(webFiles, "web/static")
 	if err != nil {
 		return nil, err
@@ -98,10 +108,12 @@ func New(
 		return nil, err
 	}
 	return &Handler{
-		db:            db,
-		auth:          authService,
-		loginTemplate: template.Must(template.New("login").Parse(string(loginBody))),
-		appTemplate:   template.Must(template.New("app").Parse(string(appBody))),
+		db:                 db,
+		auth:               authService,
+		loginTemplate:      template.Must(template.New("login").Parse(string(loginBody))),
+		appTemplate:        template.Must(template.New("app").Parse(string(appBody))),
+		agentLoginTemplate: template.Must(template.New("agent-login").Parse(string(agentLoginBody))),
+		agentAppTemplate:   template.Must(template.New("agent-app").Parse(string(agentAppBody))),
 		static: noStoreAdminStatic(
 			http.StripPrefix("/admin/static/", http.FileServer(http.FS(staticFS))),
 		),
@@ -148,6 +160,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/teams", h.requireAPI("users.read", false, h.listTeams))
 	mux.HandleFunc("POST /admin/api/teams", h.requireAPI("users.write", true, h.createTeam))
 	mux.HandleFunc("POST /admin/api/teams/{id}", h.requireAPI("users.write", true, h.updateTeam))
+	mux.HandleFunc("GET /admin/api/agents", h.requireAPI("agents.read", false, h.listPlatformAgents))
+	mux.HandleFunc("POST /admin/api/agents", h.requireAPI("agents.write", true, h.createPlatformAgent))
+	mux.HandleFunc("POST /admin/api/agents/{id}", h.requireAPI("agents.write", true, h.updatePlatformAgent))
+	mux.HandleFunc("POST /admin/api/agents/{id}/password", h.requireAPI("agents.write", true, h.resetPlatformAgentPassword))
+	mux.HandleFunc("GET /admin/api/agents/{id}/team-prefixes", h.requireAPI("agents.read", false, h.listPlatformAgentTeamPrefixes))
+	mux.HandleFunc("POST /admin/api/agents/{agent_id}/team-prefixes/{team_id}/assign", h.requireAPI("agents.write", true, h.assignPlatformAgentTeamPrefix))
+	mux.HandleFunc("POST /admin/api/agents/{agent_id}/team-prefixes/{team_id}/unassign", h.requireAPI("agents.write", true, h.unassignPlatformAgentTeamPrefix))
 	mux.HandleFunc("GET /admin/api/wallet/ledger", h.requireAPI("wallet.read", false, h.listWalletLedger))
 	mux.HandleFunc("GET /admin/api/wallet/recharges", h.requireAPI("wallet.read", false, h.listRechargeOrders))
 	mux.HandleFunc("GET /admin/api/wallet/withdrawals", h.requireAPI("wallet.read", false, h.listWithdrawOrders))
@@ -235,6 +254,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/control", h.requireAPI("remote.control", true, h.remoteControl))
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/sessions/end", h.requireAPI("remote.control", true, h.endRemoteControl))
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/revoke", h.requireAPI("remote.revoke", true, h.revokeRemoteDevice))
+	h.registerAgentConsole(mux)
 }
 
 func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
@@ -296,6 +316,17 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if supportOnly == 1 {
 		_ = h.auth.Logout(r.Context(), session.Token)
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusForbidden, 403, "客服账号请从独立座席端登录")
+		return
+	}
+	platformAgent, lookupErr := h.platformAgentExists(r.Context(), session.Admin.ID)
+	if lookupErr != nil {
+		_ = h.auth.Logout(r.Context(), session.Token)
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "登录暂不可用")
+		return
+	}
+	if platformAgent {
+		_ = h.auth.Logout(r.Context(), session.Token)
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusForbidden, 403, "代理账号请从独立代理端登录")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -439,6 +470,13 @@ func (h *Handler) currentAdmin(r *http.Request) (adminauth.Admin, error) {
 		return adminauth.Admin{}, err
 	}
 	if supportOnly == 1 {
+		return adminauth.Admin{}, adminauth.ErrInvalidCredentials
+	}
+	platformAgent, lookupErr := h.platformAgentExists(r.Context(), adminUser.ID)
+	if lookupErr != nil {
+		return adminauth.Admin{}, lookupErr
+	}
+	if platformAgent {
 		return adminauth.Admin{}, adminauth.ErrInvalidCredentials
 	}
 	return adminUser, nil

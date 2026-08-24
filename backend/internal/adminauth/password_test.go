@@ -38,3 +38,16 @@ func TestPasswordPolicy(t *testing.T) {
 		t.Fatal("malformed hash was accepted")
 	}
 }
+
+func TestValidPortalIncludesIsolatedAgentPortal(t *testing.T) {
+	for _, portal := range []string{PortalAdmin, PortalAgent, PortalSupport} {
+		if !validPortal(portal) {
+			t.Errorf("portal %q was rejected", portal)
+		}
+	}
+	for _, portal := range []string{"", "administrator", "agents", "support-console"} {
+		if validPortal(portal) {
+			t.Errorf("unknown portal %q was accepted", portal)
+		}
+	}
+}

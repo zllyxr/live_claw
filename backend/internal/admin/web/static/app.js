@@ -5,6 +5,12 @@
   const description = document.getElementById("page-description");
   const topTitle = document.getElementById("top-title");
   const actions = document.getElementById("page-actions");
+  const consoleConfig = {
+    apiBase: document.body.dataset.consoleApiBase || "/admin/api",
+    base: document.body.dataset.consoleBase || "/admin",
+    csrfKey: document.body.dataset.consoleCsrfKey || "claw_admin_csrf",
+    defaultRoute: document.body.dataset.consoleDefaultRoute || "dashboard"
+  };
   const state = {
     me: null,
     route: "",
@@ -19,8 +25,10 @@
   };
 
   const pages = {
+    "agent-teams": ["团队前缀", "团队前缀", "仅显示指定前缀与当前在队人数"],
     dashboard: ["数据统计", "平台概览", "关键业务数据、资金与待处理事项"],
     users: ["用户管理", "用户与团队", "账号状态、团队归属和邀请码体系"],
+    agents: ["代理管理", "代理账号与团队前缀", "独立代理端授权及团队前缀归属"],
     wallet: ["资金管理", "资金审核与流水", "充值、提现、调账及逐场游戏输赢"],
     payments: ["支付管理", "支付通道与充值", "BEpusdt、银行卡收款、充值商品与订单审核"],
     games: ["游戏管理", "游戏与捕鱼场", "固定 300 桌、每桌 4 座，倍率 1 / 5 / 10"],
@@ -127,10 +135,16 @@
     return Boolean(state.me && state.me.permissions && state.me.permissions.includes(permission));
   }
 
+  function apiPath(path) {
+    const value = String(path || "");
+    return value.indexOf("/admin/api") === 0 && consoleConfig.apiBase !== "/admin/api" ?
+      consoleConfig.apiBase + value.slice("/admin/api".length) : value;
+  }
+
   function csrfToken() {
-    const stored = sessionStorage.getItem("claw_admin_csrf") || "";
+    const stored = sessionStorage.getItem(consoleConfig.csrfKey) || "";
     if (stored) return stored;
-    const prefix = "claw_admin_csrf=";
+    const prefix = consoleConfig.csrfKey + "=";
     const cookie = document.cookie.split(";").map((item) => item.trim())
       .find((item) => item.indexOf(prefix) === 0);
     return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : "";
@@ -146,9 +160,9 @@
     if (config.method && config.method !== "GET") {
       config.headers["X-CSRF-Token"] = csrfToken();
     }
-    const response = await fetch(path, config);
+    const response = await fetch(apiPath(path), config);
     if (response.status === 401) {
-      window.location.replace("/admin/login");
+      window.location.replace(consoleConfig.base + "/login");
       throw new Error("登录已失效");
     }
     const result = await response.json();
@@ -621,6 +635,65 @@
     ].map((item) => '<div><span>' + item[0] + "</span><strong>" + item[1] + "</strong></div>")
       .join("").replace(/^/, '<div class="migration-list">').concat("</div>"));
     content.innerHTML = metrics + architecture;
+  }
+
+  async function agentTeams(loadContext) {
+    const data = await remoteTableData("agent-team-prefixes", "/admin/api/team-prefixes");
+    if (!isCurrentRouteLoad(loadContext)) return;
+    actions.insertAdjacentHTML("afterbegin",
+      '<button class="layui-btn" data-action="agent-team-generate">生成团队前缀</button>');
+    const prefixTable = table([
+      { label: "邀请码前缀", render: (row) => "<strong>" + esc(row.code) + "</strong>" },
+      { label: "当前在队人数", render: (row) => formatNumber(row.member_count) }
+    ], data.items, {
+      key: "agent-team-prefixes", page: data.page, pageSize: data.page_size,
+      total: data.total, hasMore: data.has_more,
+      remote: { path: "/admin/api/team-prefixes" }
+    });
+    content.innerHTML = panel("团队前缀", "仅显示已分配的邀请码前三位和当前在队人数", prefixTable);
+  }
+
+  const agentPermissionLabels = {
+    "games.read": "查看游戏", "games.write": "管理游戏",
+    "live.read": "查看直播", "live.write": "管理直播",
+    "lottery.read": "查看彩票", "lottery.write": "管理彩票",
+    "sports.read": "查看体育", "sports.write": "管理体育",
+    "bets.read": "查看投注", "app.read": "查看 App 版本", "app.write": "管理 App 版本"
+  };
+
+  function agentPermissionOptions(keys) {
+    return (keys || []).map((key) => [key, agentPermissionLabels[key] || key]);
+  }
+
+  async function agentsView(loadContext) {
+    const data = await remoteTableData("platform-agents", "/admin/api/agents");
+    if (!isCurrentRouteLoad(loadContext)) return;
+    state.cache.agents = data.items;
+    state.cache.agentAllowedPermissions = data.allowed_permissions || [];
+    if (has("agents.write")) {
+      actions.insertAdjacentHTML("afterbegin",
+        '<button class="layui-btn" data-action="agent-create">新建代理</button>');
+    }
+    const agentTable = table([
+      { label: "代理", render: (row) => "<strong>" + esc(row.display_name || row.username) +
+        "</strong><br><small>" + esc(row.username) + " · " + esc(row.agent_no) + "</small>", className: "wrap" },
+      { label: "授权", render: (row) => esc((row.permissions || []).map((key) =>
+        agentPermissionLabels[key] || key).join("、") || "仅团队前缀"), className: "wrap" },
+      { label: "前缀数", render: (row) => formatNumber(row.prefix_count) },
+      { label: "状态", render: (row) => statusTag(row.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) },
+      { label: "最后登录", render: (row) => formatTime(row.last_login_at) },
+      { label: "操作", render: (row) => has("agents.write") ? '<div class="row-actions">' +
+        button("编辑", "agent-edit", row.id, "layui-btn-normal") +
+        button("重置密码", "agent-password", row.id, "layui-btn-warm") +
+        button("查看前缀", "agent-prefixes", row.id) +
+        button("分配前缀", "agent-prefix-assign", row.id, "layui-btn-primary") + "</div>" :
+        button("查看前缀", "agent-prefixes", row.id) }
+    ], data.items, {
+      key: "platform-agents", page: data.page, pageSize: data.page_size,
+      total: data.total, hasMore: data.has_more,
+      remote: { path: "/admin/api/agents", cacheName: "agents" }
+    });
+    content.innerHTML = panel("代理账号", "代理使用独立入口登录；团队前缀与成员不受账号停用影响", agentTable);
   }
 
   async function users(loadContext) {
@@ -1867,7 +1940,8 @@
   }
 
   const loaders = {
-    dashboard, users, wallet: walletView, payments: paymentsView, games, live: liveView,
+    "agent-teams": agentTeams,
+    dashboard, users, agents: agentsView, wallet: walletView, payments: paymentsView, games, live: liveView,
     lottery: lotteryView, sports: sportsView, bets: betsView,
     im: imView, app: appView, remote: remoteView, rbac: rbacView, system: systemView
   };
@@ -2006,9 +2080,9 @@
   }
 
   async function loadRoute() {
-    const requestedPath = (window.location.hash || "#dashboard").slice(1).split("/");
+    const requestedPath = (window.location.hash || "#" + consoleConfig.defaultRoute).slice(1).split("/");
     const requestedRoute = requestedPath[0];
-    const route = pages[requestedRoute] ? requestedRoute : "dashboard";
+    const route = pages[requestedRoute] && loaders[requestedRoute] ? requestedRoute : consoleConfig.defaultRoute;
     const section = normalizedSection(route, requestedPath[1]);
     const loadContext = { route, section, serial: ++state.routeLoadSerial };
     state.route = route;
@@ -2686,6 +2760,97 @@
       return;
     }
     if (action === "refresh") return loadRoute();
+    if (action === "agent-team-generate") {
+      return mutateAndRefresh("/admin/api/team-prefixes", { method: "POST" }, "团队前缀已生成");
+    }
+    if (action === "agent-create") {
+      const options = agentPermissionOptions(state.cache.agentAllowedPermissions || []);
+      return openForm("新建代理", [
+        { name: "username", label: "登录账号" },
+        { name: "display_name", label: "显示名称" },
+        { name: "password", label: "初始密码（至少 12 位）", type: "password" },
+        { name: "email", label: "邮箱", type: "email", wide: true },
+        { name: "permission_keys", label: "代理业务权限", type: "checkboxes", options, value: [], wide: true,
+          help: "管理权限会自动包含对应查看权限；团队前缀功能始终可用。" }
+      ], (values) => api("/admin/api/agents", {
+        method: "POST", body: {
+          username: values.username, display_name: values.display_name,
+          password: values.password, email: values.email,
+          permission_keys: Array.isArray(values.permission_keys) ? values.permission_keys :
+            (values.permission_keys ? [values.permission_keys] : [])
+        }
+      }));
+    }
+    if (action === "agent-edit") {
+      const row = cached("agents", id);
+      if (!row) throw new Error("代理数据已刷新，请重试");
+      const options = agentPermissionOptions(state.cache.agentAllowedPermissions || []);
+      return openForm("编辑代理 · " + row.username, [
+        { name: "display_name", label: "显示名称", value: row.display_name },
+        { name: "email", label: "邮箱", type: "email", value: row.email || "" },
+        { name: "status", label: "状态", options: [[1, "启用"], [0, "停用"]], value: row.status },
+        { name: "permission_keys", label: "代理业务权限", type: "checkboxes", options,
+          value: row.permissions || [], wide: true, help: "停用后撤销代理端会话，但保留团队前缀归属。" }
+      ], (values) => api("/admin/api/agents/" + encodeURIComponent(id), {
+        method: "POST", body: {
+          display_name: values.display_name, email: values.email, status: Number(values.status),
+          permission_keys: Array.isArray(values.permission_keys) ? values.permission_keys :
+            (values.permission_keys ? [values.permission_keys] : [])
+        }
+      }));
+    }
+    if (action === "agent-password") {
+      const row = cached("agents", id);
+      if (!row) throw new Error("代理数据已刷新，请重试");
+      return openForm("重置代理密码 · " + row.username, [
+        { name: "password", label: "新密码（12 至 128 个字符）", type: "password", wide: true },
+        { name: "reason", label: "重置原因", type: "textarea", wide: true }
+      ], (values) => api("/admin/api/agents/" + encodeURIComponent(id) + "/password", {
+        method: "POST", body: { password: values.password, reason: values.reason }
+      }));
+    }
+    if (action === "agent-prefixes") {
+      const row = cached("agents", id);
+      if (!row) throw new Error("代理数据已刷新，请重试");
+      const data = await api("/admin/api/agents/" + encodeURIComponent(id) + "/team-prefixes");
+      const rows = (data.items || []).map((item) => '<tr><td><strong>' + esc(item.code) +
+        '</strong><br><small>' + esc(item.name) + '</small></td><td>' + formatNumber(item.member_count) +
+        '</td><td>' + statusTag(item.status, { 1: ["启用", "ok"], 0: ["停用", "bad"] }) +
+        '</td><td>' + (has("agents.write") ? '<button class="layui-btn layui-btn-sm layui-btn-danger" ' +
+        'data-action="agent-prefix-unassign" data-id="' + esc(item.team_id) + '" data-agent-id="' +
+        esc(id) + '">解除归属</button>' : "—") + '</td></tr>').join("");
+      layer.open({
+        type: 1, title: "团队前缀 · " + esc(row.display_name || row.username), area: ["720px", "auto"],
+        content: '<div class="modal-form"><table class="data-table"><thead><tr><th>前缀</th><th>当前人数</th>' +
+          '<th>团队状态</th><th>操作</th></tr></thead><tbody>' +
+          (rows || '<tr><td colspan="4">暂未分配团队前缀</td></tr>') + '</tbody></table></div>'
+      });
+      return;
+    }
+    if (action === "agent-prefix-assign") {
+      const row = cached("agents", id);
+      if (!row) throw new Error("代理数据已刷新，请重试");
+      const teams = await fetchAllRemoteItems("/admin/api/teams");
+      const options = teams.filter((team) => team.code !== "sys")
+        .map((team) => [team.id, team.code + " · " + team.name]);
+      if (!options.length) throw new Error("当前没有可分配的非系统团队");
+      return openForm("分配或转交团队前缀 · " + row.display_name, [
+        { name: "team_id", label: "团队前缀", options, wide: true },
+        { name: "reason", label: "分配或转交原因", type: "textarea", wide: true }
+      ], (values) => api("/admin/api/agents/" + encodeURIComponent(id) + "/team-prefixes/" +
+        encodeURIComponent(requireDecimalEntityID(values.team_id, "团队编号")) + "/assign", {
+        method: "POST", body: { reason: values.reason }
+      }));
+    }
+    if (action === "agent-prefix-unassign") {
+      const agentID = target?.dataset.agentId || "";
+      if (!agentID) throw new Error("代理编号无效");
+      if (layer) layer.closeAll();
+      return openForm("解除团队前缀归属", [
+        { name: "reason", label: "解除原因", type: "textarea", wide: true }
+      ], (values) => api("/admin/api/agents/" + encodeURIComponent(agentID) + "/team-prefixes/" +
+        encodeURIComponent(id) + "/unassign", { method: "POST", body: { reason: values.reason } }));
+    }
     if (action === "remote-filter") {
       const online = document.getElementById("remote-filter-online")?.value || "";
       const permission = document.getElementById("remote-filter-permission")?.value || "";
@@ -4300,15 +4465,15 @@
   });
 
   document.getElementById("logout").addEventListener("click", async function () {
-    await fetch("/admin/api/logout", {
+    await fetch(consoleConfig.apiBase + "/logout", {
       method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": csrfToken() }
     });
-    sessionStorage.removeItem("claw_admin_csrf");
-    window.location.replace("/admin/login");
+    sessionStorage.removeItem(consoleConfig.csrfKey);
+    window.location.replace(consoleConfig.base + "/login");
   });
 
   window.addEventListener("hashchange", loadRoute);
-  api("/admin/api/me").then(function (me) {
+  api(consoleConfig.apiBase + "/me").then(function (me) {
     state.me = me;
     document.querySelectorAll("[data-permission]").forEach((item) => {
       item.hidden = !has(item.dataset.permission);

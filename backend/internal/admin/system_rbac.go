@@ -509,6 +509,13 @@ func (h *Handler) updateAdministrator(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "管理员编号无效")
 		return
 	}
+	if isAgent, lookupErr := h.platformAgentExists(r.Context(), targetID); lookupErr != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取管理员失败")
+		return
+	} else if isAgent {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusForbidden, 403, "代理账号只能在代理管理中修改")
+		return
+	}
 	var request struct {
 		DisplayName string             `json:"display_name"`
 		Status      int                `json:"status"`
@@ -611,6 +618,13 @@ func (h *Handler) resetAdministratorPassword(w http.ResponseWriter, r *http.Requ
 	targetID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || targetID < 1 {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "管理员编号无效")
+		return
+	}
+	if isAgent, lookupErr := h.platformAgentExists(r.Context(), targetID); lookupErr != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取管理员失败")
+		return
+	} else if isAgent {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusForbidden, 403, "代理账号只能在代理管理中重置密码")
 		return
 	}
 	var request resetAdministratorPasswordRequest
