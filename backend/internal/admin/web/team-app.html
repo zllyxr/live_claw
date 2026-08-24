@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Claw 团队后台</title>
+  <link rel="stylesheet" href="/admin/static/layui/css/layui.css">
+  <link rel="stylesheet" href="/admin/static/app.css?v=20260824-2">
+</head>
+<body class="admin-body">
+  <aside class="sidebar">
+    <div class="brand"><span>C</span> Claw 团队后台</div>
+    <nav class="layui-nav layui-nav-tree">
+      <div class="menu-group">团队</div>
+      <a class="menu-item active" href="#members">团队成员</a>
+    </nav>
+  </aside>
+  <section class="admin-shell">
+    <header class="topbar">
+      <div>
+        <strong id="team-title">{{.TeamName}}</strong>
+        <span class="environment">{{.TeamCode}}</span>
+      </div>
+      <div class="account">
+        <span>{{.Nickname}}</span>
+        <button class="layui-btn layui-btn-primary layui-btn-sm" id="team-logout">退出</button>
+      </div>
+    </header>
+    <main class="workspace">
+      <div class="page-title">
+        <div>
+          <h1>团队成员</h1>
+          <p>仅显示当前仍在本团队的成员，不包含手机号、邮箱、资金或邀请关系</p>
+        </div>
+        <div>
+          <button class="layui-btn layui-btn-primary" id="team-refresh">刷新数据</button>
+        </div>
+      </div>
+      <section class="metric-grid" id="team-metrics"></section>
+      <section class="panel data-panel">
+        <div class="data-panel-head">
+          <div><h2>当前成员</h2><p>冻结账号仍属于团队；转出成员会立即消失</p></div>
+        </div>
+        <div class="table-toolbar">
+          <label class="table-search"><span>搜索</span>
+            <input id="team-member-search" placeholder="用户 ID 或昵称">
+          </label>
+          <label class="table-page-size"><span>状态</span>
+            <select id="team-member-status">
+              <option value="">全部</option>
+              <option value="1">正常</option>
+              <option value="2">冻结</option>
+              <option value="3">已关闭</option>
+            </select>
+          </label>
+          <span class="table-result-count" id="team-member-total">共 0 人</span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>用户 ID</th><th>昵称</th><th>账号状态</th><th>入队时间</th><th>身份</th></tr></thead>
+            <tbody id="team-member-rows"><tr><td colspan="5" class="table-empty-cell">加载中…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="table-pagination">
+          <span class="table-range" id="team-member-range">第 0–0 条</span>
+          <div>
+            <button class="layui-btn layui-btn-primary layui-btn-sm" id="team-prev">上一页</button>
+            <button class="layui-btn layui-btn-primary layui-btn-sm" id="team-next">下一页</button>
+          </div>
+          <span class="table-page-status" id="team-page-status">第 1 页</span>
+        </div>
+      </section>
+      <div class="login-error" id="team-error" role="alert"></div>
+    </main>
+  </section>
+  <script src="/admin/static/team.js?v=20260824-2"></script>
+</body>
+</html>

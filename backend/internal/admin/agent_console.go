@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	mysqlDriver "github.com/go-sql-driver/mysql"
@@ -31,6 +32,7 @@ func (h *Handler) registerAgentConsole(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+agentConsolePath+"/api/me", h.requireAgentAPI("", false, h.agentMe))
 	mux.HandleFunc("GET "+agentConsolePath+"/api/team-prefixes", h.requireAgentAPI("", false, h.listOwnTeamPrefixes))
 	mux.HandleFunc("POST "+agentConsolePath+"/api/team-prefixes", h.requireAgentAPI("", true, h.createOwnTeamPrefix))
+	mux.HandleFunc("GET "+agentConsolePath+"/api/team-prefixes/{code}/members", h.requireAgentAPI("", false, h.listAgentTeamMembers))
 
 	// Business APIs are deliberately mounted one by one. Sensitive admin APIs
 	// do not exist below /agent-console even when a request is forged manually.
@@ -266,6 +268,31 @@ func (h *Handler) createOwnTeamPrefix(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.Error(w, httpx.RequestID(r.Context()), http.StatusServiceUnavailable, 503, "团队前缀空间暂时不可用")
+}
+
+func (h *Handler) listAgentTeamMembers(w http.ResponseWriter, r *http.Request) {
+	agent, _ := adminFromRequest(r)
+	code := strings.ToLower(strings.TrimSpace(r.PathValue("code")))
+	if !teamCodePattern.MatchString(code) || code == "sys" {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队前缀无效")
+		return
+	}
+	var teamID, ownerUserID int64
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT team.id,team.owner_user_id
+		FROM platform_agent_teams owned
+		JOIN teams team ON team.id=owned.team_id
+		WHERE owned.admin_user_id=? AND team.code=?`, agent.ID, code,
+	).Scan(&teamID, &ownerUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "团队前缀不存在")
+		return
+	}
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取团队成员失败")
+		return
+	}
+	h.listScopedTeamMembers(w, r, teamID, ownerUserID)
 }
 
 func (h *Handler) requireAgentPage(next http.HandlerFunc) http.HandlerFunc {

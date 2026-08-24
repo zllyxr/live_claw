@@ -245,6 +245,15 @@ func (s *Server) compatResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeCompat(w, 500, "重置密码失败", nil)
 		return
 	}
+	if _, err = tx.ExecContext(r.Context(), `
+		UPDATE team_console_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
+		WHERE user_id=(SELECT id FROM users
+		 WHERE country_code=? AND (mobile=? OR username=?) AND LOWER(COALESCE(email,''))=? LIMIT 1)
+		  AND revoked_at IS NULL`, country, login, login, email,
+	); err != nil {
+		writeCompat(w, 500, "重置密码失败", nil)
+		return
+	}
 	if err = tx.Commit(); err != nil {
 		writeCompat(w, 500, "重置密码失败", nil)
 		return
@@ -546,6 +555,11 @@ func (s *Server) compatUpdatePassword(w http.ResponseWriter, r *http.Request) {
 			WHERE user_id=? AND token_hash<>? AND revoked_at IS NULL`,
 			userID, hex.EncodeToString(tokenHash[:]))
 	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `
+			UPDATE team_console_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
+			WHERE user_id=? AND revoked_at IS NULL`, userID)
+	}
 	if err != nil || tx.Commit() != nil {
 		writeCompat(w, 500, "修改密码失败", nil)
 		return
@@ -688,6 +702,11 @@ func (s *Server) compatCancelAccount(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), `
 			UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
+			WHERE user_id=? AND revoked_at IS NULL`, userID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `
+			UPDATE team_console_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
 			WHERE user_id=? AND revoked_at IS NULL`, userID)
 	}
 	if err != nil || tx.Commit() != nil {

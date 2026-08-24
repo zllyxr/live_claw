@@ -170,9 +170,14 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.db.ExecContext(r.Context(), `
 		UPDATE teams SET name=?,owner_user_id=?,status=?
-		WHERE id=? AND (?=0 OR EXISTS(SELECT 1 FROM users WHERE id=? AND status=1))`,
+		WHERE id=? AND (?=0 OR EXISTS(
+			SELECT 1 FROM users user
+			JOIN team_members member ON member.user_id=user.id
+			WHERE user.id=? AND user.status=1 AND user.team_id=?
+			  AND member.team_id=? AND member.status=1
+		))`,
 		request.Name, ownerUserID, request.Status,
-		teamID, ownerUserID, ownerUserID,
+		teamID, ownerUserID, ownerUserID, teamID, teamID,
 	)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新团队失败")
@@ -180,7 +185,7 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	affected, _ := result.RowsAffected()
 	if affected != 1 {
-		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队负责人不存在")
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队负责人必须是当前团队的正常成员")
 		return
 	}
 	if err = auditAdmin(
@@ -225,10 +230,11 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var oldTeamID int64
+	var userStatus int
 	if err = tx.QueryRowContext(r.Context(), `
-		SELECT team_id FROM users WHERE id=? FOR UPDATE`,
+		SELECT team_id,status FROM users WHERE id=? FOR UPDATE`,
 		userID,
-	).Scan(&oldTeamID); errors.Is(err, sql.ErrNoRows) {
+	).Scan(&oldTeamID, &userStatus); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "用户不存在")
 		return
 	} else if err != nil {
@@ -236,10 +242,18 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var teamCode string
+	var teamOwnerID int64
+	var ownerIsActiveMember int
 	if err = tx.QueryRowContext(r.Context(), `
-		SELECT code FROM teams WHERE id=? AND status=1 FOR UPDATE`,
+		SELECT team.code,team.owner_user_id,EXISTS(
+			SELECT 1 FROM users owner
+			JOIN team_members owner_membership ON owner_membership.user_id=owner.id
+			WHERE owner.id=team.owner_user_id AND owner.status=1 AND owner.team_id=team.id
+			  AND owner_membership.team_id=team.id AND owner_membership.status=1
+		)
+		FROM teams team WHERE team.id=? AND team.status=1 FOR UPDATE`,
 		request.TeamID.Int64(),
-	).Scan(&teamCode); errors.Is(err, sql.ErrNoRows) {
+	).Scan(&teamCode, &teamOwnerID, &ownerIsActiveMember); errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "目标团队不存在或已停用")
 		return
 	} else if err != nil {
@@ -293,12 +307,31 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调整用户团队失败")
 		return
 	}
+	if oldTeamID > 0 {
+		if _, err = tx.ExecContext(r.Context(), `
+			UPDATE teams SET owner_user_id=0 WHERE id=? AND owner_user_id=?`,
+			oldTeamID, userID,
+		); err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调整用户团队失败")
+			return
+		}
+	}
+	becameOwner := userStatus == 1 && ownerIsActiveMember == 0 && teamCode != "sys"
+	if becameOwner {
+		if _, err = tx.ExecContext(r.Context(), `
+			UPDATE teams SET owner_user_id=? WHERE id=?`,
+			userID, request.TeamID.Int64(),
+		); err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "调整用户团队失败")
+			return
+		}
+	}
 	if err = auditAdmin(
 		r.Context(), tx, r, "user.team.assign", "user", userID,
 		map[string]any{"team_id": apiDecimalID(oldTeamID), "invite_code": oldInviteCode.String},
 		map[string]any{
-			"team_id":   apiDecimalID(request.TeamID.Int64()),
-			"team_code": teamCode, "reason": request.Reason,
+			"team_id": apiDecimalID(request.TeamID.Int64()), "team_code": teamCode,
+			"became_team_owner": becameOwner, "reason": request.Reason,
 		},
 	); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录团队审计失败")
@@ -312,5 +345,6 @@ func (h *Handler) assignUserTeam(w http.ResponseWriter, r *http.Request) {
 		"user_id": apiDecimalID(userID), "team_id": apiDecimalID(request.TeamID.Int64()),
 		"team_code":               teamCode,
 		"invite_code_regenerated": oldInviteCode.Valid,
+		"became_team_owner":       becameOwner,
 	})
 }

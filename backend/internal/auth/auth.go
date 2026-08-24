@@ -81,17 +81,17 @@ func (s *Service) Authenticate(ctx context.Context, userID int64, token string) 
 	return user, err
 }
 
-func (s *Service) Login(
-	ctx context.Context,
-	countryCode, login, password, deviceID, platform, ip, userAgent string,
-) (Session, error) {
+// VerifyCredentials authenticates a normal user without creating an App
+// session. Independent web portals use it before issuing their own
+// path-scoped session.
+func (s *Service) VerifyCredentials(ctx context.Context, countryCode, login, password string) (User, error) {
 	countryCode = strings.TrimSpace(countryCode)
 	if countryCode == "" {
 		countryCode = "86"
 	}
 	login = strings.TrimSpace(login)
 	if login == "" || password == "" {
-		return Session{}, ErrInvalidCredentials
+		return User{}, ErrInvalidCredentials
 	}
 	var user User
 	var passwordHash, passwordAlgo string
@@ -105,26 +105,37 @@ func (s *Service) Login(
 	).Scan(&user.ID, &user.Nickname, &passwordHash, &passwordAlgo, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		_, _ = adminauth.HashPassword("user-not-found-password")
-		return Session{}, ErrInvalidCredentials
+		return User{}, ErrInvalidCredentials
 	}
 	if err != nil {
-		return Session{}, err
+		return User{}, err
 	}
 	if status != 1 || !s.verifyPassword(passwordAlgo, passwordHash, password) {
-		return Session{}, ErrInvalidCredentials
+		return User{}, ErrInvalidCredentials
 	}
 	if passwordAlgo != "argon2id" {
 		upgraded, hashErr := adminauth.HashMigratedPassword(password)
 		if hashErr != nil {
-			return Session{}, hashErr
+			return User{}, hashErr
 		}
 		if _, hashErr = s.db.ExecContext(ctx, `
 			UPDATE users SET password_hash=?,password_algo='argon2id'
 			WHERE id=? AND password_hash=?`,
 			upgraded, user.ID, passwordHash,
 		); hashErr != nil {
-			return Session{}, fmt.Errorf("upgrade user password: %w", hashErr)
+			return User{}, fmt.Errorf("upgrade user password: %w", hashErr)
 		}
+	}
+	return user, nil
+}
+
+func (s *Service) Login(
+	ctx context.Context,
+	countryCode, login, password, deviceID, platform, ip, userAgent string,
+) (Session, error) {
+	user, err := s.VerifyCredentials(ctx, countryCode, login, password)
+	if err != nil {
+		return Session{}, err
 	}
 
 	sessionID, err := idgen.New()

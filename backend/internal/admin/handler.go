@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
+	"github.com/zllyxr/live_claw/backend/internal/auth"
 	"github.com/zllyxr/live_claw/backend/internal/bankpayment"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/live"
@@ -38,7 +39,10 @@ type Handler struct {
 	appTemplate        *template.Template
 	agentLoginTemplate *template.Template
 	agentAppTemplate   *template.Template
+	teamLoginTemplate  *template.Template
+	teamAppTemplate    *template.Template
 	static             http.Handler
+	userAuth           *auth.Service
 	storage            *storage.Service
 	wallet             *wallet.Service
 	liveProbe          liveSourceProber
@@ -70,6 +74,7 @@ type contextAdminKey struct{}
 func New(
 	db *sql.DB,
 	authService *adminauth.Service,
+	userAuthService *auth.Service,
 	storageService *storage.Service,
 	walletService *wallet.Service,
 	liveProbe liveSourceProber,
@@ -95,6 +100,14 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	teamLoginBody, err := webFiles.ReadFile("web/team-login.html")
+	if err != nil {
+		return nil, err
+	}
+	teamAppBody, err := webFiles.ReadFile("web/team-app.html")
+	if err != nil {
+		return nil, err
+	}
 	staticFS, err := fs.Sub(webFiles, "web/static")
 	if err != nil {
 		return nil, err
@@ -114,6 +127,9 @@ func New(
 		appTemplate:        template.Must(template.New("app").Parse(string(appBody))),
 		agentLoginTemplate: template.Must(template.New("agent-login").Parse(string(agentLoginBody))),
 		agentAppTemplate:   template.Must(template.New("agent-app").Parse(string(agentAppBody))),
+		teamLoginTemplate:  template.Must(template.New("team-login").Parse(string(teamLoginBody))),
+		teamAppTemplate:    template.Must(template.New("team-app").Parse(string(teamAppBody))),
+		userAuth:           userAuthService,
 		static: noStoreAdminStatic(
 			http.StripPrefix("/admin/static/", http.FileServer(http.FS(staticFS))),
 		),
@@ -255,6 +271,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/sessions/end", h.requireAPI("remote.control", true, h.endRemoteControl))
 	mux.HandleFunc("POST /admin/api/remote/devices/{id}/revoke", h.requireAPI("remote.revoke", true, h.revokeRemoteDevice))
 	h.registerAgentConsole(mux)
+	h.registerTeamConsole(mux)
 }
 
 func (h *Handler) root(w http.ResponseWriter, r *http.Request) {

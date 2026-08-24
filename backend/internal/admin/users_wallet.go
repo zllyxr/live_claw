@@ -360,6 +360,14 @@ func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新用户失败")
 			return
 		}
+		if _, err = tx.ExecContext(r.Context(), `
+			UPDATE team_console_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
+			WHERE user_id=? AND revoked_at IS NULL`,
+			userID,
+		); err != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新用户失败")
+			return
+		}
 	}
 	if _, err = tx.ExecContext(r.Context(), `
 		INSERT INTO audit_logs

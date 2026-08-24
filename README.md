@@ -74,6 +74,8 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml up -d --
 - H5：`https://tmpai2.com/h5/`
 - API 健康检查：`https://tmpai2.com/healthz`
 - 管理后台：`https://tmpai2.com/admin/`
+- 代理后台：`https://tmpai2.com/agent-console`
+- 团队后台：`https://tmpai2.com/team-console`
 - 客服桌席：`https://tmpai2.com/support-console`
 
 Nginx 在源站终止 Cloudflare Origin TLS，HTTP 会永久跳转到 HTTPS。Cloudflare 中

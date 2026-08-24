@@ -644,7 +644,8 @@
       '<button class="layui-btn" data-action="agent-team-generate">生成团队前缀</button>');
     const prefixTable = table([
       { label: "邀请码前缀", render: (row) => "<strong>" + esc(row.code) + "</strong>" },
-      { label: "当前在队人数", render: (row) => formatNumber(row.member_count) }
+      { label: "当前在队人数", render: (row) => formatNumber(row.member_count) },
+      { label: "操作", render: (row) => button("查看成员", "agent-team-members", row.code) }
     ], data.items, {
       key: "agent-team-prefixes", page: data.page, pageSize: data.page_size,
       total: data.total, hasMore: data.has_more,
@@ -2763,6 +2764,26 @@
     if (action === "agent-team-generate") {
       return mutateAndRefresh("/admin/api/team-prefixes", { method: "POST" }, "团队前缀已生成");
     }
+    if (action === "agent-team-members") {
+      const code = String(id || "").trim();
+      if (!/^[0-9a-z]{3}$/.test(code) || code === "sys") throw new Error("团队前缀无效");
+      const members = await fetchAllRemoteItems("/admin/api/team-prefixes/" +
+        encodeURIComponent(code) + "/members");
+      const memberRows = members.map((member) => "<tr><td><strong>" + esc(member.id) +
+        "</strong></td><td>" + esc(member.nickname) + "</td><td>" + statusTag(member.status, {
+          1: ["正常", "ok"], 2: ["冻结", "warn"], 3: ["已关闭", "bad"]
+        }) + "</td><td>" + formatTime(member.joined_at) + "</td><td>" +
+        (member.is_owner ? '<span class="tag ok">负责人</span>' : "成员") + "</td></tr>").join("");
+      layer.open({
+        type: 1, title: "团队成员 · " + esc(code), area: ["860px", "min(720px, calc(100vh - 48px))"],
+        content: '<div class="modal-content"><p class="read-only-reason">仅显示当前在队成员，不包含联系方式、资金或邀请关系。</p>' +
+          '<div class="table-wrap"><table class="admin-table"><thead><tr><th>用户 ID</th><th>昵称</th>' +
+          '<th>账号状态</th><th>入队时间</th><th>身份</th></tr></thead><tbody>' +
+          (memberRows || '<tr><td colspan="5" class="table-empty-cell">当前没有成员</td></tr>') +
+          "</tbody></table></div></div>"
+      });
+      return;
+    }
     if (action === "agent-create") {
       const options = agentPermissionOptions(state.cache.agentAllowedPermissions || []);
       return openForm("新建代理", [
@@ -3036,7 +3057,9 @@
     if (action === "team-create") {
       return openForm("新建团队", [
         { name: "code", label: "三位团队代码", placeholder: "0-9 / a-z" },
-        { name: "name", label: "团队名称" }, { name: "owner_user_id", label: "负责人用户 ID", value: "0" }
+        { name: "name", label: "团队名称" },
+        { name: "owner_user_id", label: "负责人用户 ID", value: "0",
+          help: "建议保持为 0；首个转入非系统团队的用户会自动成为负责人。" }
       ], (values) => {
         const ownerUserID = String(values.owner_user_id || "0").trim();
         if (!/^(0|[1-9]\d*)$/.test(ownerUserID)) {
@@ -3058,7 +3081,8 @@
       return openForm("编辑团队 " + row.code, [
         { name: "name", label: "团队名称", value: row.name, wide: true },
         { name: "owner_user_id", label: "负责人用户 ID（0 表示不设置）",
-          value: row.owner_user_id || "0", inputmode: "numeric" },
+          value: row.owner_user_id || "0", inputmode: "numeric",
+          help: "负责人必须是当前团队的正常在队成员，并使用普通用户账号登录团队后台。" },
         { name: "status", label: "状态", options: [[1, "启用"], [0, "停用"]], value: row.status }
       ], (values) => {
         const name = String(values.name || "").trim();

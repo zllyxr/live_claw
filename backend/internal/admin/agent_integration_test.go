@@ -156,6 +156,37 @@ func TestPlatformAgentPrefixIsolationAndCurrentMemberCount(t *testing.T) {
 		t.Fatalf("agent prefix response leaked extra fields: %#v", item)
 	}
 
+	membersRecorder := httptest.NewRecorder()
+	membersRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/agent-console/api/team-prefixes/"+createEnvelope.Data.Code+"/members?page=1&page_size=20",
+		nil,
+	)
+	membersRequest.SetPathValue("code", createEnvelope.Data.Code)
+	httpx.RequestContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.listAgentTeamMembers(w, r.WithContext(withAdmin(r, firstAgent)))
+	})).ServeHTTP(membersRecorder, membersRequest)
+	if membersRecorder.Code != http.StatusOK {
+		t.Fatalf("agent member list status=%d body=%s", membersRecorder.Code, membersRecorder.Body.String())
+	}
+	var membersEnvelope struct {
+		Data struct {
+			Total int64            `json:"total"`
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(membersRecorder.Body.Bytes(), &membersEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if membersEnvelope.Data.Total != 2 || len(membersEnvelope.Data.Items) != 2 {
+		t.Fatalf("unexpected agent team members: %s", membersRecorder.Body.String())
+	}
+	for _, member := range membersEnvelope.Data.Items {
+		if len(member) != 5 {
+			t.Fatalf("agent member response leaked extra fields: %#v", member)
+		}
+	}
+
 	otherRecorder := serveAgentEndpoint(
 		http.MethodGet, "/agent-console/api/team-prefixes?page=1&page_size=20",
 		adminauth.Admin{ID: agentIDs[1]}, handler.listOwnTeamPrefixes,
@@ -173,6 +204,17 @@ func TestPlatformAgentPrefixIsolationAndCurrentMemberCount(t *testing.T) {
 	}
 	if otherEnvelope.Data.Total != 0 {
 		t.Fatalf("other agent could see assigned prefix: %s", otherRecorder.Body.String())
+	}
+	otherMembersRecorder := httptest.NewRecorder()
+	otherMembersRequest := httptest.NewRequest(
+		http.MethodGet, "/agent-console/api/team-prefixes/"+createEnvelope.Data.Code+"/members", nil,
+	)
+	otherMembersRequest.SetPathValue("code", createEnvelope.Data.Code)
+	httpx.RequestContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.listAgentTeamMembers(w, r.WithContext(withAdmin(r, adminauth.Admin{ID: agentIDs[1]})))
+	})).ServeHTTP(otherMembersRecorder, otherMembersRequest)
+	if otherMembersRecorder.Code != http.StatusNotFound {
+		t.Fatalf("other agent member list status=%d body=%s", otherMembersRecorder.Code, otherMembersRecorder.Body.String())
 	}
 }
 

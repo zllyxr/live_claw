@@ -10,6 +10,7 @@ import (
 
 	"github.com/zllyxr/live_claw/backend/internal/admin"
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
+	"github.com/zllyxr/live_claw/backend/internal/auth"
 	"github.com/zllyxr/live_claw/backend/internal/config"
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
@@ -54,7 +55,9 @@ func main() {
 		os.Exit(1)
 	}
 	adminHandler, err := admin.New(
-		dependencies.DB, adminauth.New(dependencies.DB), storageService,
+		dependencies.DB, adminauth.New(dependencies.DB), auth.New(dependencies.DB, auth.Options{
+			LegacyAuthCode: cfg.LegacyAuthCode, LegacyTablePrefix: cfg.LegacyTablePrefix,
+		}), storageService,
 		wallet.New(dependencies.DB), live.New(dependencies.DB, dependencies.Redis),
 		cfg.MediaBaseURL, cfg.PublicURL, cfg.Environment, cfg.DataEncryptionKey, remoteService,
 	)

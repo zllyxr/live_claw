@@ -304,6 +304,18 @@ func (h *Handler) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取会话撤销结果失败")
 		return
 	}
+	teamRevokeResult, err := tx.ExecContext(r.Context(), `
+		UPDATE team_console_sessions
+		SET revoked_at=CURRENT_TIMESTAMP(3)
+		WHERE user_id=? AND revoked_at IS NULL`,
+		userID,
+	)
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "撤销团队后台会话失败")
+		return
+	}
+	revokedTeamSessions, _ := teamRevokeResult.RowsAffected()
+	revokedSessions += revokedTeamSessions
 	auditAfter := map[string]any{
 		"username":         username,
 		"password_algo":    "argon2id",
