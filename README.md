@@ -78,6 +78,10 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml up -d --
 - 团队后台：`https://tmpai2.com/team-console`
 - 客服桌席：`https://tmpai2.com/support-console`
 
+代理可在“团队前缀”中为自己名下的每个前缀创建一个独立团队后台账号，或重置其
+密码。团队账号只可登录对应团队并查看当前在队成员；原团队负责人普通用户登录
+继续兼容。
+
 Nginx 在源站终止 Cloudflare Origin TLS，HTTP 会永久跳转到 HTTPS。Cloudflare 中
 应开启代理并把 SSL/TLS 模式设为 `Full (strict)`；Origin Certificate 不是公共
 浏览器信任的证书，因此不应关闭 Cloudflare 代理后让用户直连源站。服务器防火墙

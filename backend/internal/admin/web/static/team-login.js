@@ -15,7 +15,7 @@
         headers: {"Content-Type": "application/json"},
         credentials: "same-origin",
         body: JSON.stringify({
-          country_code: fields.get("country_code"),
+          country_code: "86",
           login: fields.get("login"),
           password: fields.get("password")
         })

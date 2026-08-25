@@ -84,7 +84,7 @@ func TestTeamConsoleWebContract(t *testing.T) {
 	pageSource := string(appPage)
 	applicationSource := string(application)
 	for _, required := range []string{
-		`name="country_code"`, `name="login"`, `name="password"`,
+		`name="login"`, `name="password"`, `placeholder="团队后台账号"`,
 		`/admin/static/team-login.js`,
 	} {
 		if !strings.Contains(loginSource, required) {
@@ -105,7 +105,7 @@ func TestTeamConsoleWebContract(t *testing.T) {
 	}
 	for _, required := range []string{
 		`api("/team-console/api/me")`, `api("/team-console/api/members?"`,
-		`sessionStorage.removeItem("claw_team_csrf")`,
+		`sessionStorage.removeItem("claw_team_csrf")`, `state.me.username`,
 	} {
 		if !strings.Contains(applicationSource, required) {
 			t.Errorf("team application is missing %q", required)

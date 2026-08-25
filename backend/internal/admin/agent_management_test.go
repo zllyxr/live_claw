@@ -51,6 +51,8 @@ func TestAgentConsoleOnlyMountsAllowlistedBusinessRoutes(t *testing.T) {
 		{http.MethodPost, "/agent-console/api/live/rooms", true},
 		{http.MethodGet, "/agent-console/api/team-prefixes", true},
 		{http.MethodGet, "/agent-console/api/team-prefixes/abc/members", true},
+		{http.MethodPost, "/agent-console/api/team-prefixes/abc/account", true},
+		{http.MethodPost, "/agent-console/api/team-prefixes/abc/account/password", true},
 		{http.MethodGet, "/agent-console/api/users", false},
 		{http.MethodGet, "/agent-console/api/wallet/ledger", false},
 		{http.MethodGet, "/agent-console/api/rbac", false},
@@ -130,6 +132,8 @@ func TestAgentConsoleWebContract(t *testing.T) {
 		"function apiPath(path)",
 		`"agent-teams": agentTeams`,
 		`"agent-team-members"`,
+		`"agent-team-account-create"`,
+		`"agent-team-account-password"`,
 		`consoleConfig.apiBase + "/logout"`,
 		`sessionStorage.removeItem(consoleConfig.csrfKey)`,
 	} {

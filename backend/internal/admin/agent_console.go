@@ -33,6 +33,8 @@ func (h *Handler) registerAgentConsole(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+agentConsolePath+"/api/team-prefixes", h.requireAgentAPI("", false, h.listOwnTeamPrefixes))
 	mux.HandleFunc("POST "+agentConsolePath+"/api/team-prefixes", h.requireAgentAPI("", true, h.createOwnTeamPrefix))
 	mux.HandleFunc("GET "+agentConsolePath+"/api/team-prefixes/{code}/members", h.requireAgentAPI("", false, h.listAgentTeamMembers))
+	mux.HandleFunc("POST "+agentConsolePath+"/api/team-prefixes/{code}/account", h.requireAgentAPI("", true, h.createAgentTeamAccount))
+	mux.HandleFunc("POST "+agentConsolePath+"/api/team-prefixes/{code}/account/password", h.requireAgentAPI("", true, h.resetAgentTeamAccountPassword))
 
 	// Business APIs are deliberately mounted one by one. Sensitive admin APIs
 	// do not exist below /agent-console even when a request is forged manually.
@@ -189,9 +191,11 @@ func (h *Handler) listOwnTeamPrefixes(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT team.code,
-		       COALESCE((SELECT COUNT(*) FROM team_members member WHERE member.team_id=team.id AND member.status=1),0)
+		       COALESCE((SELECT COUNT(*) FROM team_members member WHERE member.team_id=team.id AND member.status=1),0),
+		       account.username,account.status
 		FROM platform_agent_teams owned
 		JOIN teams team ON team.id=owned.team_id
+		LEFT JOIN team_console_accounts account ON account.team_id=team.id
 		WHERE owned.admin_user_id=?
 		ORDER BY team.code LIMIT ? OFFSET ?`, agent.ID, pageSize, (page-1)*pageSize)
 	if err != nil {
@@ -203,11 +207,18 @@ func (h *Handler) listOwnTeamPrefixes(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var code string
 		var count int64
-		if err = rows.Scan(&code, &count); err != nil {
+		var accountUsername sql.NullString
+		var accountStatus sql.NullInt64
+		if err = rows.Scan(&code, &count, &accountUsername, &accountStatus); err != nil {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取团队前缀失败")
 			return
 		}
-		items = append(items, map[string]any{"code": code, "member_count": count})
+		items = append(items, map[string]any{
+			"code": code, "member_count": count,
+			"has_team_account":      accountUsername.Valid,
+			"team_account_username": accountUsername.String,
+			"team_account_status":   nullableTeamAccountStatus(accountStatus),
+		})
 	}
 	if err = rows.Err(); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取团队前缀失败")
@@ -217,6 +228,197 @@ func (h *Handler) listOwnTeamPrefixes(w http.ResponseWriter, r *http.Request) {
 		"page": page, "page_size": pageSize, "total": total,
 		"has_more": int64(page)*int64(pageSize) < total, "items": items,
 	})
+}
+
+type createAgentTeamAccountRequest struct {
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
+}
+
+func (h *Handler) createAgentTeamAccount(w http.ResponseWriter, r *http.Request) {
+	agent, _ := adminFromRequest(r)
+	code := normalizedTeamCode(r.PathValue("code"))
+	if code == "" {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队前缀无效")
+		return
+	}
+	var request createAgentTeamAccountRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	request.Username = strings.ToLower(strings.TrimSpace(request.Username))
+	request.DisplayName = strings.TrimSpace(request.DisplayName)
+	if request.DisplayName == "" {
+		request.DisplayName = "团队 " + code
+	}
+	if !adminNamePattern.MatchString(request.Username) || !validManagedPassword(request.Password) ||
+		len(request.DisplayName) > 100 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队账号参数无效；账号需为 3 至 80 位，密码需为 12 至 128 个字符")
+		return
+	}
+	passwordHash, err := adminauth.HashPassword(request.Password)
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队账号密码不符合安全要求")
+		return
+	}
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建团队账号失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var teamID int64
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT team.id
+		FROM platform_agent_teams owned
+		JOIN teams team ON team.id=owned.team_id
+		WHERE owned.admin_user_id=? AND team.code=? AND team.code<>'sys'
+		FOR UPDATE`, agent.ID, code).Scan(&teamID); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "团队前缀不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建团队账号失败")
+		return
+	}
+	var existingCount int
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT (SELECT COUNT(*) FROM team_console_accounts WHERE team_id=?) +
+		       (SELECT COUNT(*) FROM users WHERE username=? OR mobile=? OR email=?)`,
+		teamID, request.Username, request.Username, request.Username,
+	).Scan(&existingCount); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建团队账号失败")
+		return
+	}
+	if existingCount != 0 {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "该团队已有后台账号，或登录账号已被占用")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `
+		INSERT INTO team_console_accounts
+			(team_id,username,password_hash,display_name,status,created_by)
+		VALUES(?,?,?,?,1,?)`, teamID, request.Username, passwordHash, request.DisplayName, agent.ID)
+	if err != nil {
+		var mysqlErr *mysqlDriver.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "该团队已有后台账号，或登录账号已被占用")
+			return
+		}
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建团队账号失败")
+		return
+	}
+	accountID, _ := result.LastInsertId()
+	if err = auditAdmin(r.Context(), tx, r, "agent.team.account.create", "team_console_account", accountID, nil, map[string]any{
+		"team_id": apiDecimalID(teamID), "team_code": code,
+		"username": request.Username, "display_name": request.DisplayName,
+	}); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录团队账号审计失败")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "创建团队账号失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"id": apiDecimalID(accountID), "team_code": code,
+		"username": request.Username, "display_name": request.DisplayName,
+	})
+}
+
+type resetAgentTeamAccountPasswordRequest struct {
+	Password string `json:"password"`
+}
+
+func (h *Handler) resetAgentTeamAccountPassword(w http.ResponseWriter, r *http.Request) {
+	agent, _ := adminFromRequest(r)
+	code := normalizedTeamCode(r.PathValue("code"))
+	if code == "" {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队前缀无效")
+		return
+	}
+	var request resetAgentTeamAccountPasswordRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	if !validManagedPassword(request.Password) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队账号密码需为 12 至 128 个字符")
+		return
+	}
+	passwordHash, err := adminauth.HashPassword(request.Password)
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "团队账号密码不符合安全要求")
+		return
+	}
+	tx, err := h.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置团队账号密码失败")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var accountID, teamID int64
+	var username, previousHash string
+	if err = tx.QueryRowContext(r.Context(), `
+		SELECT account.id,team.id,account.username,account.password_hash
+		FROM platform_agent_teams owned
+		JOIN teams team ON team.id=owned.team_id
+		JOIN team_console_accounts account ON account.team_id=team.id
+		WHERE owned.admin_user_id=? AND team.code=? AND team.code<>'sys'
+		FOR UPDATE`, agent.ID, code).Scan(&accountID, &teamID, &username, &previousHash); errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "团队后台账号不存在")
+		return
+	} else if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置团队账号密码失败")
+		return
+	}
+	if adminauth.VerifyPassword(previousHash, request.Password) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "新密码不能与当前密码相同")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `
+		UPDATE team_console_accounts
+		SET password_hash=?,password_changed_at=CURRENT_TIMESTAMP(3)
+		WHERE id=?`, passwordHash, accountID); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置团队账号密码失败")
+		return
+	}
+	revokeResult, err := tx.ExecContext(r.Context(), `
+		UPDATE team_console_sessions SET revoked_at=CURRENT_TIMESTAMP(3)
+		WHERE account_id=? AND revoked_at IS NULL`, accountID)
+	if err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "撤销团队后台会话失败")
+		return
+	}
+	revokedSessions, _ := revokeResult.RowsAffected()
+	if err = auditAdmin(r.Context(), tx, r, "agent.team.account.password.reset", "team_console_account", accountID, nil, map[string]any{
+		"team_id": apiDecimalID(teamID), "team_code": code, "username": username,
+		"password_changed": true, "revoked_sessions": revokedSessions,
+	}); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录团队账号审计失败")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "重置团队账号密码失败")
+		return
+	}
+	httpx.OK(w, httpx.RequestID(r.Context()), map[string]any{
+		"team_code": code, "username": username, "password_reset": true,
+		"revoked_sessions": revokedSessions,
+	})
+}
+
+func normalizedTeamCode(value string) string {
+	code := strings.ToLower(strings.TrimSpace(value))
+	if !teamCodePattern.MatchString(code) || code == "sys" {
+		return ""
+	}
+	return code
+}
+
+func nullableTeamAccountStatus(value sql.NullInt64) any {
+	if !value.Valid {
+		return nil
+	}
+	return value.Int64
 }
 
 func (h *Handler) createOwnTeamPrefix(w http.ResponseWriter, r *http.Request) {

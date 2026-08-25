@@ -25,7 +25,7 @@
   };
 
   const pages = {
-    "agent-teams": ["团队前缀", "团队前缀", "仅显示指定前缀与当前在队人数"],
+    "agent-teams": ["团队前缀", "团队前缀", "管理团队前缀、成员与独立团队后台账号"],
     dashboard: ["数据统计", "平台概览", "关键业务数据、资金与待处理事项"],
     users: ["用户管理", "用户与团队", "账号状态、团队归属和邀请码体系"],
     agents: ["代理管理", "代理账号与团队前缀", "独立代理端授权及团队前缀归属"],
@@ -645,13 +645,22 @@
     const prefixTable = table([
       { label: "邀请码前缀", render: (row) => "<strong>" + esc(row.code) + "</strong>" },
       { label: "当前在队人数", render: (row) => formatNumber(row.member_count) },
-      { label: "操作", render: (row) => button("查看成员", "agent-team-members", row.code) }
+      { label: "团队后台账号", render: (row) => row.has_team_account ?
+        "<strong>" + esc(row.team_account_username) + "</strong><br>" +
+          statusTag(row.team_account_status, {1: ["可登录", "ok"], 0: ["已停用", "bad"]}) :
+        '<span class="tag warn">未创建</span>' },
+      { label: "操作", render: (row) => '<div class="row-actions">' +
+        button("查看成员", "agent-team-members", row.code) +
+        (row.has_team_account ?
+          button("重置团队密码", "agent-team-account-password", row.code, "layui-btn-warm") :
+          button("添加团队账号", "agent-team-account-create", row.code, "layui-btn-normal")) +
+        "</div>" }
     ], data.items, {
       key: "agent-team-prefixes", page: data.page, pageSize: data.page_size,
       total: data.total, hasMore: data.has_more,
       remote: { path: "/admin/api/team-prefixes" }
     });
-    content.innerHTML = panel("团队前缀", "仅显示已分配的邀请码前三位和当前在队人数", prefixTable);
+    content.innerHTML = panel("团队前缀", "每个前缀可创建一个独立团队后台账号；登录入口 /team-console，登录后仅能查看本团队成员", prefixTable);
   }
 
   const agentPermissionLabels = {
@@ -2783,6 +2792,55 @@
           "</tbody></table></div></div>"
       });
       return;
+    }
+    if (action === "agent-team-account-create") {
+      const code = String(id || "").trim();
+      if (!/^[0-9a-z]{3}$/.test(code) || code === "sys") throw new Error("团队前缀无效");
+      return openForm("添加团队后台账号 · " + code, [
+        { name: "username", label: "团队登录账号", required: true,
+          help: "3 至 80 位字母、数字、点、下划线或短横线；创建后不可修改。" },
+        { name: "display_name", label: "显示名称", value: "团队 " + code,
+          help: "显示在团队后台顶部。" },
+        { name: "password", label: "初始密码（12 至 128 个字符）", type: "password", required: true },
+        { name: "password_confirm", label: "确认初始密码", type: "password", required: true }
+      ], (values) => {
+        const username = String(values.username || "").trim().toLowerCase();
+        const password = String(values.password || "");
+        if (!/^[0-9a-z][0-9a-z_.-]{2,79}$/.test(username)) {
+          throw new Error("团队账号格式无效");
+        }
+        if ([...password].length < 12 || [...password].length > 128 || utf8ByteLength(password) > 512) {
+          throw new Error("团队账号密码需为 12 至 128 个字符");
+        }
+        if (password !== String(values.password_confirm || "")) {
+          throw new Error("两次输入的密码不一致");
+        }
+        return api("/admin/api/team-prefixes/" + encodeURIComponent(code) + "/account", {
+          method: "POST", body: {
+            username, password, display_name: String(values.display_name || "").trim()
+          }
+        });
+      });
+    }
+    if (action === "agent-team-account-password") {
+      const code = String(id || "").trim();
+      if (!/^[0-9a-z]{3}$/.test(code) || code === "sys") throw new Error("团队前缀无效");
+      return openForm("重置团队后台密码 · " + code, [
+        { name: "password", label: "新密码（12 至 128 个字符）", type: "password", required: true,
+          help: "保存后会立即撤销该团队后台的全部登录会话。" },
+        { name: "password_confirm", label: "确认新密码", type: "password", required: true }
+      ], (values) => {
+        const password = String(values.password || "");
+        if ([...password].length < 12 || [...password].length > 128 || utf8ByteLength(password) > 512) {
+          throw new Error("团队账号密码需为 12 至 128 个字符");
+        }
+        if (password !== String(values.password_confirm || "")) {
+          throw new Error("两次输入的密码不一致");
+        }
+        return api("/admin/api/team-prefixes/" + encodeURIComponent(code) + "/account/password", {
+          method: "POST", body: {password}
+        });
+      });
     }
     if (action === "agent-create") {
       const options = agentPermissionOptions(state.cache.agentAllowedPermissions || []);

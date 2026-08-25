@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,6 +120,9 @@ func TestPlatformAgentPrefixIsolationAndCurrentMemberCount(t *testing.T) {
 	defer func() {
 		cleanupCtx := context.Background()
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM audit_logs WHERE actor_id IN (?,?)", agentIDs[0], agentIDs[1])
+		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM audit_logs WHERE resource_type='team' AND resource_id=?", teamID)
+		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM team_console_sessions WHERE account_id IN (SELECT id FROM team_console_accounts WHERE team_id=?)", teamID)
+		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM team_console_accounts WHERE team_id=?", teamID)
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM team_members WHERE user_id IN (?,?,?)", userIDs[0], userIDs[1], userIDs[2])
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM users WHERE id IN (?,?,?)", userIDs[0], userIDs[1], userIDs[2])
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM platform_agent_teams WHERE team_id=?", teamID)
@@ -152,8 +156,104 @@ func TestPlatformAgentPrefixIsolationAndCurrentMemberCount(t *testing.T) {
 	if item["code"] != createEnvelope.Data.Code || item["member_count"] != float64(2) {
 		t.Fatalf("unexpected prefix statistics: %#v", item)
 	}
-	if len(item) != 2 {
+	if len(item) != 5 || item["has_team_account"] != false || item["team_account_username"] != "" ||
+		item["team_account_status"] != nil {
 		t.Fatalf("agent prefix response leaked extra fields: %#v", item)
+	}
+
+	accountUsername := "team_account_" + suffix
+	accountPassword := "TeamAccountLogin!2026"
+	createAccountRecorder := httptest.NewRecorder()
+	createAccountRequest := httptest.NewRequest(
+		http.MethodPost, "/agent-console/api/team-prefixes/"+createEnvelope.Data.Code+"/account",
+		strings.NewReader(`{"username":"`+accountUsername+`","password":"`+accountPassword+`","display_name":"团队账号测试"}`),
+	)
+	createAccountRequest.Header.Set("Content-Type", "application/json")
+	createAccountRequest.SetPathValue("code", createEnvelope.Data.Code)
+	httpx.RequestContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.createAgentTeamAccount(w, r.WithContext(withAdmin(r, firstAgent)))
+	})).ServeHTTP(createAccountRecorder, createAccountRequest)
+	if createAccountRecorder.Code != http.StatusOK {
+		t.Fatalf("create team account status=%d body=%s", createAccountRecorder.Code, createAccountRecorder.Body.String())
+	}
+
+	teamLoginRecorder := httptest.NewRecorder()
+	teamLoginRequest := httptest.NewRequest(
+		http.MethodPost, "/team-console/api/login",
+		strings.NewReader(`{"login":"`+accountUsername+`","password":"`+accountPassword+`"}`),
+	)
+	teamLoginRequest.Header.Set("Content-Type", "application/json")
+	httpx.RequestContext(http.HandlerFunc(handler.teamLogin)).ServeHTTP(teamLoginRecorder, teamLoginRequest)
+	if teamLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("independent team account login status=%d body=%s", teamLoginRecorder.Code, teamLoginRecorder.Body.String())
+	}
+	var issuedTeamSessionCookie *http.Cookie
+	for _, cookie := range teamLoginRecorder.Result().Cookies() {
+		if cookie.Name == teamSessionCookie {
+			issuedTeamSessionCookie = cookie
+		}
+	}
+	if issuedTeamSessionCookie == nil {
+		t.Fatal("team account login did not issue an isolated session")
+	}
+	authenticatedTeamRequest := httptest.NewRequest(http.MethodGet, "/team-console/api/me", nil)
+	authenticatedTeamRequest.AddCookie(issuedTeamSessionCookie)
+	teamPrincipal, principalErr := handler.currentTeamPrincipal(authenticatedTeamRequest)
+	if principalErr != nil || teamPrincipal.AccountID == 0 || teamPrincipal.UserID != 0 || teamPrincipal.TeamID != teamID {
+		t.Fatalf("unexpected team account principal=%#v err=%v", teamPrincipal, principalErr)
+	}
+
+	otherResetRecorder := httptest.NewRecorder()
+	otherResetRequest := httptest.NewRequest(
+		http.MethodPost, "/agent-console/api/team-prefixes/"+createEnvelope.Data.Code+"/account/password",
+		strings.NewReader(`{"password":"OtherAgentReset!2026"}`),
+	)
+	otherResetRequest.Header.Set("Content-Type", "application/json")
+	otherResetRequest.SetPathValue("code", createEnvelope.Data.Code)
+	httpx.RequestContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.resetAgentTeamAccountPassword(w, r.WithContext(withAdmin(r, adminauth.Admin{ID: agentIDs[1]})))
+	})).ServeHTTP(otherResetRecorder, otherResetRequest)
+	if otherResetRecorder.Code != http.StatusNotFound {
+		t.Fatalf("other agent reset team account status=%d body=%s", otherResetRecorder.Code, otherResetRecorder.Body.String())
+	}
+
+	resetRecorder := httptest.NewRecorder()
+	resetRequest := httptest.NewRequest(
+		http.MethodPost, "/agent-console/api/team-prefixes/"+createEnvelope.Data.Code+"/account/password",
+		strings.NewReader(`{"password":"TeamAccountReset!2026"}`),
+	)
+	resetRequest.Header.Set("Content-Type", "application/json")
+	resetRequest.SetPathValue("code", createEnvelope.Data.Code)
+	httpx.RequestContext(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.resetAgentTeamAccountPassword(w, r.WithContext(withAdmin(r, firstAgent)))
+	})).ServeHTTP(resetRecorder, resetRequest)
+	if resetRecorder.Code != http.StatusOK {
+		t.Fatalf("reset team account status=%d body=%s", resetRecorder.Code, resetRecorder.Body.String())
+	}
+	if _, principalErr = handler.currentTeamPrincipal(authenticatedTeamRequest); principalErr == nil {
+		t.Fatal("team account session remained valid after password reset")
+	}
+
+	accountListRecorder := serveAgentEndpoint(
+		http.MethodGet, "/agent-console/api/team-prefixes?page=1&page_size=20",
+		firstAgent, handler.listOwnTeamPrefixes,
+	)
+	if accountListRecorder.Code != http.StatusOK {
+		t.Fatalf("list prefix with account status=%d body=%s", accountListRecorder.Code, accountListRecorder.Body.String())
+	}
+	var accountListEnvelope struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(accountListRecorder.Body.Bytes(), &accountListEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(accountListEnvelope.Data.Items) != 1 ||
+		accountListEnvelope.Data.Items[0]["has_team_account"] != true ||
+		accountListEnvelope.Data.Items[0]["team_account_username"] != accountUsername ||
+		accountListEnvelope.Data.Items[0]["team_account_status"] != float64(1) {
+		t.Fatalf("team account metadata missing from prefix list: %s", accountListRecorder.Body.String())
 	}
 
 	membersRecorder := httptest.NewRecorder()

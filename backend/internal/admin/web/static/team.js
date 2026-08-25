@@ -58,8 +58,9 @@
       '</strong><small>邀请码前三位</small></article>' +
       '<article class="metric-card"><span>当前在队人数</span><strong>' + esc(team.member_count) +
       '</strong><small>人</small></article>' +
-      '<article class="metric-card"><span>团队负责人</span><strong>' + esc(state.me.nickname) +
-      '</strong><small>ID ' + esc(state.me.user_id) + "</small></article>";
+      '<article class="metric-card"><span>团队后台账号</span><strong>' + esc(state.me.nickname) +
+      '</strong><small>' + esc(state.me.username || (state.me.user_id ? "用户 ID " + state.me.user_id : "—")) +
+      "</small></article>";
   }
 
   async function loadMembers() {
