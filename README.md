@@ -60,10 +60,10 @@ test -f uniapp/dist/build/h5/index.html
 cp backend/deploy/production/env.example .env
 chmod 600 .env
 # 把 Cloudflare Origin Certificate 和私钥分别保存到：
-# /opt/claw-secrets/tls/tmpai2.com-origin.crt
-# /opt/claw-secrets/tls/tmpai2.com-origin.key
-chmod 600 /opt/claw-secrets/tls/tmpai2.com-origin.crt \
-  /opt/claw-secrets/tls/tmpai2.com-origin.key
+# /opt/claw-secrets/tls/travelig.vip-origin.crt
+# /opt/claw-secrets/tls/travelig.vip-origin.key
+chmod 600 /opt/claw-secrets/tls/travelig.vip-origin.crt \
+  /opt/claw-secrets/tls/travelig.vip-origin.key
 # 填写 .env 中所有必填空值后再继续；证书和私钥不得放进 Git 仓库
 docker compose --env-file .env -f backend/deploy/production/compose.yml config --quiet
 docker compose --env-file .env -f backend/deploy/production/compose.yml up -d --build
@@ -71,12 +71,12 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml up -d --
 
 默认入口：
 
-- H5：`https://tmpai2.com/h5/`
-- API 健康检查：`https://tmpai2.com/healthz`
-- 管理后台：`https://tmpai2.com/admin/`
-- 代理后台：`https://tmpai2.com/agent-console`
-- 团队后台：`https://tmpai2.com/team-console`
-- 客服桌席：`https://tmpai2.com/support-console`
+- H5：`https://travelig.vip/h5/`
+- API 健康检查：`https://travelig.vip/healthz`
+- 管理后台：`https://travelig.vip/admin/`
+- 代理后台：`https://travelig.vip/agent-console`
+- 团队后台：`https://travelig.vip/team-console`
+- 客服桌席：`https://travelig.vip/support-console`
 
 代理可在“团队前缀”中为自己名下的每个前缀创建一个独立团队后台账号，或重置其
 密码。团队账号只可登录对应团队并查看当前在队成员；原团队负责人普通用户登录
@@ -114,7 +114,7 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml \
 
 MinIO 预签名依赖公开地址，`V2_PUBLIC_URL`、`V2_MINIO_PUBLIC_ENDPOINT` 与
 `V2_MINIO_PUBLIC_USE_TLS` 必须和用户实际访问的协议、域名及端口一致；本配置固定
-为 `https://tmpai2.com`、`tmpai2.com` 和 `true`。原生 App 也默认访问该域名。
+为 `https://travelig.vip`、`travelig.vip` 和 `true`。原生 App 也默认访问该域名。
 
 MySQL、Redis 和 MinIO 使用固定名称的数据卷。正常更新只执行 `up -d --build`，
 不要执行 `docker compose down -v`。容器日志已限制为每个文件 `10 MB`、保留

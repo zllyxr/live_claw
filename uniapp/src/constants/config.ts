@@ -15,7 +15,7 @@ const isLocalHost =
 export const IS_LOCAL_PREVIEW = Boolean(
   isLocalHost || env.VITE_USE_LOCAL_API === "true"
 );
-const configuredApiHost = String(env.VITE_API_HOST || "https://tmpai2.com").replace(/\/$/, "");
+const configuredApiHost = String(env.VITE_API_HOST || "https://travelig.vip").replace(/\/$/, "");
 export const API_HOST = browserOrigin || configuredApiHost;
 export const PUBLIC_WEB_URL = String(
   env.VITE_PUBLIC_WEB_URL || (browserOrigin ? `${browserOrigin}/` : `${configuredApiHost}/h5/`)
