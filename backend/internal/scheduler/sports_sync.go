@@ -59,9 +59,7 @@ func (r *Runner) runSportsSync(ctx context.Context) error {
 	now := r.now()
 	failures := make([]error, 0, 3)
 	if r.sports.nextLive.IsZero() || !now.Before(r.sports.nextLive) {
-		count, err := r.syncSportsFixtures(ctx, url.Values{
-			"live": {"all"}, "timezone": {"Asia/Shanghai"},
-		}, false, nil)
+		count, err := r.syncSportsTrackedFixtures(ctx)
 		r.recordSportsSync(ctx, "api-football", "live", count, err)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("live fixtures: %w", err))
@@ -175,6 +173,58 @@ type apiFootballFixture struct {
 	} `json:"goals"`
 }
 
+// Follow imported fixtures until they finish. The upstream live feed drops
+// finished fixtures, so polling it alone can miss the final score and status.
+func (r *Runner) syncSportsTrackedFixtures(ctx context.Context) (int, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT source_match_id FROM sports_matches
+		WHERE source='api-football' AND settle_status=0
+		  AND match_status NOT IN ('FT','CANCELLED') AND kickoff_at<=?
+		ORDER BY id`, r.now())
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close() //nolint:errcheck
+	ids := make([]string, 0, 64)
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return 0, err
+		}
+		parsed, parseErr := strconv.ParseInt(id, 10, 64)
+		if parseErr != nil || parsed < 1 {
+			return 0, fmt.Errorf("invalid tracked sports fixture ID %q", id)
+		}
+		ids = append(ids, strconv.FormatInt(parsed, 10))
+	}
+	if err = rows.Err(); err != nil {
+		return 0, err
+	}
+	if err = rows.Close(); err != nil {
+		return 0, err
+	}
+	// API-FOOTBALL accepts at most 20 hyphen-separated IDs per fixtures request.
+	// https://www.api-football.com/documentation_v3#tag/Fixtures/operation/get-fixtures
+	const batchSize = 20
+	total := 0
+	for start := 0; start < len(ids); start += batchSize {
+		batch := ids[start:min(start+batchSize, len(ids))]
+		allowed := make(map[int64]struct{}, len(batch))
+		for _, id := range batch {
+			parsed, _ := strconv.ParseInt(id, 10, 64)
+			allowed[parsed] = struct{}{}
+		}
+		count, syncErr := r.syncSportsFixtures(ctx, url.Values{
+			"ids": {strings.Join(batch, "-")}, "timezone": {"Asia/Shanghai"},
+		}, false, allowed)
+		total += count
+		if syncErr != nil {
+			return total, syncErr
+		}
+	}
+	return total, nil
+}
+
 func (r *Runner) syncSportsFixtures(
 	ctx context.Context,
 	query url.Values,
@@ -193,7 +243,7 @@ func (r *Runner) syncSportsFixtures(
 		if fixture.Fixture.ID < 1 || fixture.Fixture.Timestamp < 1 {
 			continue
 		}
-		if allowInsert && allowedIDs != nil {
+		if allowedIDs != nil {
 			if _, allowed := allowedIDs[fixture.Fixture.ID]; !allowed {
 				continue
 			}
