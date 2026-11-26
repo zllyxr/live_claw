@@ -112,6 +112,10 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml \
 生产服务默认使用 Secure Cookie，`V2_ADMIN_RUNTIME_ENV` 和
 `V2_SUPPORT_RUNTIME_ENV` 必须保持为 `production`。
 
+生产 MinIO 镜像由 `backend/deploy/production/minio.Dockerfile` 从官方仓库的固定
+提交构建，版本仍为 `RELEASE.2025-04-22T22-12-26Z`。该版本的上游容器镜像已无法
+拉取；首次部署需要下载 Go 依赖并编译，后续构建使用 Docker 缓存。
+
 MinIO 预签名依赖公开地址，`V2_PUBLIC_URL`、`V2_MINIO_PUBLIC_ENDPOINT` 与
 `V2_MINIO_PUBLIC_USE_TLS` 必须和用户实际访问的协议、域名及端口一致；本配置固定
 为 `https://travelig.vip`、`travelig.vip` 和 `true`。原生 App 也默认访问该域名。
