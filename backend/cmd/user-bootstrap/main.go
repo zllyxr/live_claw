@@ -28,11 +28,12 @@ var (
 )
 
 type appUserInput struct {
-	Username    string
-	Password    string
-	Nickname    string
-	Email       string
-	CountryCode string
+	Username          string
+	Password          string
+	Nickname          string
+	Email             string
+	CountryCode       string
+	AllowUnboundEmail bool
 }
 
 type preparedAppUser struct {
@@ -100,11 +101,12 @@ func main() {
 
 func loadAppUserInput(getenv func(string) string) (appUserInput, error) {
 	input := appUserInput{
-		Username:    strings.TrimSpace(getenv("V2_APP_USER_USERNAME")),
-		Password:    getenv("V2_APP_USER_PASSWORD"),
-		Nickname:    strings.TrimSpace(getenv("V2_APP_USER_NICKNAME")),
-		Email:       strings.ToLower(strings.TrimSpace(getenv("V2_APP_USER_EMAIL"))),
-		CountryCode: strings.TrimSpace(getenv("V2_APP_USER_COUNTRY_CODE")),
+		Username:          strings.TrimSpace(getenv("V2_APP_USER_USERNAME")),
+		Password:          getenv("V2_APP_USER_PASSWORD"),
+		Nickname:          strings.TrimSpace(getenv("V2_APP_USER_NICKNAME")),
+		Email:             strings.ToLower(strings.TrimSpace(getenv("V2_APP_USER_EMAIL"))),
+		CountryCode:       strings.TrimSpace(getenv("V2_APP_USER_COUNTRY_CODE")),
+		AllowUnboundEmail: getenv("V2_APP_USER_ALLOW_UNBOUND_EMAIL") == "1",
 	}
 	if input.CountryCode == "" {
 		input.CountryCode = "86"
@@ -123,11 +125,11 @@ func loadAppUserInput(getenv func(string) string) (appUserInput, error) {
 		return appUserInput{}, errors.New("V2_APP_USER_NICKNAME must not exceed 100 characters")
 	case containsControl(input.Nickname):
 		return appUserInput{}, errors.New("V2_APP_USER_NICKNAME must not contain control characters")
-	case input.Email == "":
+	case input.Email == "" && !input.AllowUnboundEmail:
 		return appUserInput{}, errors.New("V2_APP_USER_EMAIL is required")
 	case len(input.Email) > 190:
 		return appUserInput{}, errors.New("V2_APP_USER_EMAIL must not exceed 190 characters")
-	case !validEmail(input.Email):
+	case input.Email != "" && !validEmail(input.Email):
 		return appUserInput{}, errors.New("V2_APP_USER_EMAIL is invalid")
 	case !countryCodeRE.MatchString(input.CountryCode):
 		return appUserInput{}, errors.New("V2_APP_USER_COUNTRY_CODE must contain 1 to 8 digits")
@@ -218,7 +220,7 @@ func createAppUser(
 		input.Username,
 		input.CountryCode,
 		input.Username,
-		input.Email,
+		sql.NullString{String: input.Email, Valid: input.Email != ""},
 		input.PasswordHash,
 		input.Nickname,
 		systemTeamID,

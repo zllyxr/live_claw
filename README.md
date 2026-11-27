@@ -101,6 +101,9 @@ docker compose --env-file .env -f backend/deploy/production/compose.yml \
 
 普通用户账号用于 H5 登录，`V2_APP_USER_USERNAME` 必须填写 5–20 位手机号数字；
 初始化会同时创建零余额星币钱包、系统团队关系和邀请码。重复执行不会覆盖已有密码。
+默认必须提供 `V2_APP_USER_EMAIL`。后台批量准备暂未绑定邮箱的普通账号时，可显式设置
+`V2_APP_USER_ALLOW_UNBOUND_EMAIL=1` 并留空邮箱；数据库保存为 NULL，账号仍可使用密码
+登录，但绑定邮箱前不能通过邮件找回密码。此选项仅用于一次性初始化，不改变前台注册校验。
 
 需要从 `女生` 目录初始化虚拟直播用户时：
 

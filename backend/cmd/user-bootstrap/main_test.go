@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
+	"github.com/zllyxr/live_claw/backend/internal/auth"
 	"github.com/zllyxr/live_claw/backend/internal/database"
 	"github.com/zllyxr/live_claw/backend/internal/invite"
 )
@@ -59,6 +60,7 @@ func TestLoadAppUserInputRejectsInvalidValues(t *testing.T) {
 		{name: "missing username", key: "V2_APP_USER_USERNAME", value: ""},
 		{name: "username is not mobile digits", key: "V2_APP_USER_USERNAME", value: "bootstrap_user"},
 		{name: "invalid email", key: "V2_APP_USER_EMAIL", value: "not-an-email"},
+		{name: "missing email requires opt in", key: "V2_APP_USER_EMAIL", value: ""},
 		{name: "invalid country", key: "V2_APP_USER_COUNTRY_CODE", value: "+86"},
 		{name: "nickname control", key: "V2_APP_USER_NICKNAME", value: "name\nvalue"},
 	}
@@ -73,6 +75,66 @@ func TestLoadAppUserInputRejectsInvalidValues(t *testing.T) {
 				t.Fatal("expected invalid input to be rejected")
 			}
 		})
+	}
+}
+
+func TestUnboundEmailRequiresExplicitOptIn(t *testing.T) {
+	values := map[string]string{
+		"V2_APP_USER_USERNAME":            "13800138000",
+		"V2_APP_USER_PASSWORD":            "Bootstrap-2026!",
+		"V2_APP_USER_ALLOW_UNBOUND_EMAIL": "1",
+	}
+	input, err := loadAppUserInput(func(key string) string { return values[key] })
+	if err != nil || input.Email != "" || !input.AllowUnboundEmail {
+		t.Fatalf("unbound email opt-in rejected: %v", err)
+	}
+	values["V2_APP_USER_EMAIL"] = "invalid-address"
+	if _, err := loadAppUserInput(func(key string) string { return values[key] }); err == nil {
+		t.Fatal("opt-in must not permit invalid non-empty email addresses")
+	}
+}
+
+func TestCreateUnboundAppUsersIntegration(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CLAW_TEST_MYSQL_DSN"))
+	if dsn == "" {
+		t.Skip("CLAW_TEST_MYSQL_DSN is not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	db, err := database.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	base := time.Now().UnixNano()%9_000_000_000 + 20_000_000_000
+	for index := int64(0); index < 2; index++ {
+		input, err := prepareAppUser(appUserInput{
+			Username: strconv.FormatInt(base+index, 10), Password: "Bootstrap-2026!",
+			Nickname: "未绑定邮箱用户", CountryCode: "86", AllowUnboundEmail: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := createAppUser(ctx, db, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanupAppUserTest(db, result.ID)
+		var email sql.NullString
+		var isVirtual int
+		if err := db.QueryRowContext(ctx, "SELECT email,is_virtual FROM users WHERE id=?", result.ID).Scan(&email, &isVirtual); err != nil {
+			t.Fatal(err)
+		}
+		if email.Valid || isVirtual != 0 {
+			t.Fatal("unbound ordinary account must have NULL email and is_virtual=0")
+		}
+		user, err := auth.New(db).VerifyCredentials(ctx, "86", input.Username, input.Password)
+		if err != nil || user.ID != result.ID {
+			t.Fatalf("unbound account cannot log in: %v", err)
+		}
+		if _, err := createAppUser(ctx, db, input); !errors.Is(err, errAppUserExists) {
+			t.Fatalf("duplicate account not rejected: %v", err)
+		}
 	}
 }
 

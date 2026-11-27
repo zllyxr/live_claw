@@ -428,6 +428,8 @@ services:
       V2_APP_USER_PASSWORD: ${V2_APP_USER_PASSWORD:-}
       V2_APP_USER_NICKNAME: ${V2_APP_USER_NICKNAME:-}
       V2_APP_USER_EMAIL: ${V2_APP_USER_EMAIL:-}
+      # Explicit opt-in for operator-created accounts without an email binding.
+      V2_APP_USER_ALLOW_UNBOUND_EMAIL: ${V2_APP_USER_ALLOW_UNBOUND_EMAIL:-0}
       V2_APP_USER_COUNTRY_CODE: ${V2_APP_USER_COUNTRY_CODE:-86}
     depends_on:
       db-runtime-users:
