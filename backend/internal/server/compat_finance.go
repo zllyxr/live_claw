@@ -624,12 +624,13 @@ func (s *Server) compatClaimDailyTask(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback() //nolint:errcheck
 	var reward, target, progress int64
 	var claimedAt sql.NullTime
+	// Claim state is mutable, while task definitions are read-only for the API.
 	err = tx.QueryRowContext(r.Context(), `
 		SELECT task.reward_coin,task.target_count,progress.progress,progress.claimed_at
 		FROM daily_tasks task
 		JOIN user_task_progress progress
 		  ON progress.task_id=task.id AND progress.user_id=? AND progress.task_date=CURRENT_DATE
-		WHERE task.id=? AND task.status=1 FOR UPDATE`,
+		WHERE task.id=? AND task.status=1 FOR UPDATE OF progress FOR SHARE OF task`,
 		userID, taskID,
 	).Scan(&reward, &target, &progress, &claimedAt)
 	if errors.Is(err, sql.ErrNoRows) || progress < target {
