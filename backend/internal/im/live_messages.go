@@ -56,6 +56,9 @@ func (s *Service) AppendTrustedLiveGiftTx(
 	var conversationType, conversationStatus int
 	var senderRole, senderStatus, receiverRole, receiverStatus int
 	var senderName, senderAvatar, receiverName string
+	// Keep conversation, membership and user-state locks through the gift
+	// transaction. Avatar metadata is read-only and must not require write
+	// privileges on media_assets from the API runtime account.
 	err := tx.QueryRowContext(ctx, `
 		SELECT conversation.message_seq,conversation.conversation_type,conversation.status,
 		       sender_member.role,sender_member.member_status,
@@ -75,7 +78,7 @@ func (s *Service) AppendTrustedLiveGiftTx(
 		LEFT JOIN media_assets sender_asset
 		  ON sender_asset.id=sender.avatar_asset_id AND sender_asset.status=1
 		WHERE conversation.id=?
-		FOR UPDATE`,
+		FOR UPDATE OF conversation,sender_member,receiver_member,sender,receiver`,
 		request.SenderUserID, request.ReceiverUserID, request.ConversationID,
 	).Scan(
 		&sequence, &conversationType, &conversationStatus,

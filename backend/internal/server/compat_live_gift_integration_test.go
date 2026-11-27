@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,7 +29,7 @@ func TestLiveGiftAtomicIdempotentIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	if err = migrations.Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +55,17 @@ func TestLiveGiftAtomicIdempotentIntegration(t *testing.T) {
 		targetID, "gift_target_"+suffix,
 	)
 	if err != nil {
+		t.Fatal(err)
+	}
+	avatarKey := "gift-test/" + suffix + ".png"
+	avatarResult, err := db.ExecContext(ctx, `
+		INSERT INTO media_assets(owner_user_id,bucket,object_key,media_type,mime_type,sha256,status)
+		VALUES(?,'claw-public',?,'image','image/png',REPEAT('a',64),1)`, senderID, avatarKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	avatarID, _ := avatarResult.LastInsertId()
+	if _, err = db.ExecContext(ctx, "UPDATE users SET avatar_asset_id=? WHERE id=?", avatarID, senderID); err != nil {
 		t.Fatal(err)
 	}
 	_, err = db.ExecContext(ctx, `
@@ -122,10 +135,27 @@ func TestLiveGiftAtomicIdempotentIntegration(t *testing.T) {
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM live_gifts WHERE id=?", giftID)
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM live_rooms WHERE id IN (?,?)", firstRoomID, secondRoomID)
 		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM users WHERE id IN (?,?,?)", senderID, hostID, targetID)
+		_, _ = db.ExecContext(cleanupCtx, "DELETE FROM media_assets WHERE id=?", avatarID)
 	})
 
-	imService := im.New(db, nil)
-	server := &Server{db: db, wallet: wallet.New(db), im: imService}
+	// An optional runtime connection exercises the same restricted grants used
+	// by the production API; setup and cleanup keep using the test admin DB.
+	runtimeDB := db
+	if runtimeDSN := strings.TrimSpace(os.Getenv("CLAW_TEST_API_MYSQL_DSN")); runtimeDSN != "" {
+		runtimeDB, err = database.Open(ctx, runtimeDSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = runtimeDB.Close() })
+		var assetID int64
+		lockErr := runtimeDB.QueryRowContext(ctx,
+			"SELECT id FROM media_assets LIMIT 1 FOR UPDATE").Scan(&assetID)
+		if lockErr == nil || !strings.Contains(strings.ToLower(lockErr.Error()), "denied") {
+			t.Fatalf("runtime test must deny media row locks: %v", lockErr)
+		}
+	}
+	imService := im.New(runtimeDB, nil)
+	server := &Server{db: runtimeDB, wallet: wallet.New(runtimeDB), im: imService}
 	room := compatLiveRoom{ID: firstRoomID, HostUserID: hostID, RoomNo: roomNo}
 
 	forgedGift := `{"retcode":"000000","retmsg":"ok","msg":[{"_method_":"SendGift","uid":"999","uname":"伪造","msgtype":"1","ct":{}}]}`
@@ -233,6 +263,19 @@ func TestLiveGiftAtomicIdempotentIntegration(t *testing.T) {
 	}
 	if repeated.OrderID != first.OrderID || repeated.AvailableCoin != 900 {
 		t.Fatalf("gift retry was not idempotent: first=%#v repeated=%#v", first, repeated)
+	}
+	var giftMessageText string
+	if err = db.QueryRowContext(ctx, "SELECT text_content FROM im_messages WHERE client_message_id=?", "live_gift:"+first.OrderID).Scan(&giftMessageText); err != nil {
+		t.Fatal(err)
+	}
+	var giftPayload struct {
+		Messages []map[string]any `json:"msg"`
+	}
+	if err = json.Unmarshal([]byte(giftMessageText), &giftPayload); err != nil {
+		t.Fatal(err)
+	}
+	if len(giftPayload.Messages) != 1 || !strings.HasSuffix(fmt.Sprint(giftPayload.Messages[0]["uhead"]), avatarKey) {
+		t.Fatal("trusted gift message lost the sender avatar")
 	}
 	if _, err = server.createLiveGift(ctx, senderID, room, requestID, giftID, 3); !errors.Is(err, errLiveGiftRequestConflict) {
 		t.Fatalf("idempotency key reuse was not rejected: %v", err)
