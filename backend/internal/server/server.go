@@ -182,7 +182,12 @@ func (s *Server) compat(w http.ResponseWriter, r *http.Request) {
 			"list": items, "slide": []any{}, "title": "热门直播", "des": "抖音直播",
 		})
 	case "Login.getCountrys":
-		writeCompat(w, 0, "", compatCountries(r.FormValue("field")))
+		countries := compatCountries(r.FormValue("field"))
+		items := make([]any, len(countries))
+		for i, country := range countries {
+			items[i] = country
+		}
+		writeCompatList(w, items)
 	case "Login.userLogin":
 		session, err := s.auth.Login(
 			r.Context(), r.FormValue("country_code"), r.FormValue("user_login"), r.FormValue("user_pass"),
