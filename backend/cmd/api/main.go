@@ -16,6 +16,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/invite"
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/lottery"
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 	"github.com/zllyxr/live_claw/backend/internal/payment"
 	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/server"
@@ -86,6 +87,14 @@ func main() {
 		storageService, walletService, paymentService, imService, cfg.MediaBaseURL, cfg.PublicURL,
 		cfg.Environment, cfg.DataEncryptionKey, remoteService, logger,
 	)
+	verificationMailer, err := mailer.New(cfg.SMTP)
+	if err != nil {
+		logger.Error("initialize verification mailer", "error", err)
+		os.Exit(1)
+	}
+	if verificationMailer != nil {
+		apiServer.SetVerificationMailer(verificationMailer)
+	}
 	err = servicehost.Serve(
 		ctx, "api", servicehost.Address("V2_API_LISTEN_ADDR", cfg.ListenAddress),
 		apiServer.Handler(), cfg.ShutdownGrace, logger,

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 )
 
 type Config struct {
@@ -35,6 +37,7 @@ type Config struct {
 	LegacyAuthCode                 string
 	LegacyTablePrefix              string
 	ShutdownGrace                  time.Duration
+	SMTP                           mailer.Config
 }
 
 func Load() (Config, error) {
@@ -115,6 +118,14 @@ func Load() (Config, error) {
 		LegacyAuthCode:                 os.Getenv("V2_LEGACY_AUTHCODE"),
 		LegacyTablePrefix:              env("V2_LEGACY_TABLE_PREFIX", "cmf_"),
 		ShutdownGrace:                  time.Duration(graceSeconds) * time.Second,
+		SMTP: mailer.Config{
+			Host:     strings.TrimSpace(os.Getenv("V2_SMTP_HOST")),
+			Port:     env("V2_SMTP_PORT", "587"),
+			Username: strings.TrimSpace(os.Getenv("V2_SMTP_USERNAME")),
+			Password: os.Getenv("V2_SMTP_PASSWORD"),
+			From:     strings.TrimSpace(os.Getenv("V2_SMTP_FROM")),
+			TLSMode:  env("V2_SMTP_TLS_MODE", "starttls"),
+		},
 	}
 	if cfg.MySQLDSN == "" {
 		return Config{}, fmt.Errorf("V2_MYSQL_DSN is required")

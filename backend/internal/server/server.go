@@ -51,6 +51,8 @@ type Server struct {
 	dataKey      string
 	bankCipher   *bankpayment.Cipher
 	remote       *remoteassist.Service
+
+	verificationMailer verificationMailer
 }
 
 func New(

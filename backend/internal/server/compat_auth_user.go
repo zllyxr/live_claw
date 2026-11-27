@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
 	"github.com/zllyxr/live_claw/backend/internal/auth"
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 )
 
 func (s *Server) compatAuthUser(w http.ResponseWriter, r *http.Request, service string) bool {
@@ -62,14 +64,26 @@ func verificationTarget(r *http.Request) string {
 	if country == "" {
 		country = "86"
 	}
-	return country + ":" + strings.TrimSpace(r.FormValue("mobile")) + "|" +
+	mobile := strings.TrimSpace(r.FormValue("user_login"))
+	if mobile == "" {
+		mobile = strings.TrimSpace(r.FormValue("mobile"))
+	}
+	return country + ":" + mobile + "|" +
 		strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 }
 
 func (s *Server) compatSendCode(w http.ResponseWriter, r *http.Request, purpose string) {
 	target := verificationTarget(r)
-	if strings.HasSuffix(target, ":|") || !strings.Contains(target, "@") {
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	country := strings.SplitN(target, ":", 2)[0]
+	mobile := strings.TrimSpace(r.FormValue("mobile"))
+	target = country + ":" + mobile + "|" + email
+	if !numericFormValue(mobile, 6, 20) || !numericFormValue(country, 1, 4) || !mailer.ValidAddress(email) {
 		writeCompat(w, 400, "请输入有效手机号和邮箱", nil)
+		return
+	}
+	if !s.debugVerification() && s.verificationMailer == nil {
+		writeCompat(w, 503, "验证码发送通道尚未配置", nil)
 		return
 	}
 	if purpose == "reset" {
@@ -79,30 +93,34 @@ func (s *Server) compatSendCode(w http.ResponseWriter, r *http.Request, purpose 
 				SELECT 1 FROM users
 			 WHERE country_code=? AND (mobile=? OR username=?) AND LOWER(COALESCE(email,''))=?
 			)`,
-			strings.SplitN(target, ":", 2)[0], r.FormValue("mobile"), r.FormValue("mobile"),
-			strings.ToLower(strings.TrimSpace(r.FormValue("email"))),
+			country, mobile, mobile, email,
 		).Scan(&exists)
 		if err != nil || exists == 0 {
 			writeCompat(w, 404, "未找到匹配的账号", nil)
 			return
 		}
 	}
-	code := "123456"
-	sum := sha256.Sum256([]byte(code))
-	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO auth_verification_codes(purpose,target,code_hash,expires_at)
-		VALUES(?,?,?,DATE_ADD(CURRENT_TIMESTAMP(3),INTERVAL 10 MINUTE))`,
-		purpose, target, hex.EncodeToString(sum[:]),
-	); err != nil {
-		s.logger.Error("create verification code", "error", err)
+	allowed, err := s.allowVerification(r.Context(), email, requestIP(r))
+	if err != nil {
+		s.logger.Error("verification rate limiter", "error", err)
+		writeCompat(w, 503, "验证码服务暂不可用", nil)
+		return
+	}
+	if !allowed {
+		writeCompat(w, 429, "发送过于频繁，请稍后重试", nil)
+		return
+	}
+	code, err := s.issueVerification(r.Context(), purpose, target, email)
+	if err != nil {
+		s.logger.Error("send verification email", "error", err)
 		writeCompat(w, 500, "验证码服务暂不可用", nil)
 		return
 	}
-	if s.environment == "local" || s.environment == "development" || s.environment == "test" {
+	if s.debugVerification() {
 		writeCompat(w, 0, "本地验证码：123456", map[string]string{"debug_code": code, "expires_in": "600"})
 		return
 	}
-	writeCompat(w, 503, "验证码发送通道尚未配置", nil)
+	writeCompat(w, 0, "验证码已发送至邮箱", map[string]string{"expires_in": "600"})
 }
 
 func (s *Server) consumeVerificationCode(
@@ -110,15 +128,29 @@ func (s *Server) consumeVerificationCode(
 ) error {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(code)))
 	var id int64
+	var expected string
+	var attempts int
 	err := tx.QueryRowContext(ctx, `
-		SELECT id FROM auth_verification_codes
-		WHERE purpose=? AND target=? AND code_hash=? AND consumed_at IS NULL
-		  AND expires_at>CURRENT_TIMESTAMP(3) AND attempts<5
+		SELECT id,code_hash,attempts FROM auth_verification_codes
+		WHERE purpose=? AND target=? AND consumed_at IS NULL
+		  AND expires_at>CURRENT_TIMESTAMP(3)
 		ORDER BY id DESC LIMIT 1 FOR UPDATE`,
-		purpose, target, hex.EncodeToString(sum[:]),
-	).Scan(&id)
+		purpose, target,
+	).Scan(&id, &expected, &attempts)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errInvalidVerificationCode
+	}
 	if err != nil {
 		return err
+	}
+	if attempts >= 5 {
+		return errInvalidVerificationCode
+	}
+	if subtle.ConstantTimeCompare([]byte(expected), []byte(hex.EncodeToString(sum[:]))) != 1 {
+		if _, err = tx.ExecContext(ctx, `UPDATE auth_verification_codes SET attempts=attempts+1 WHERE id=?`, id); err != nil {
+			return err
+		}
+		return errInvalidVerificationCode
 	}
 	_, err = tx.ExecContext(ctx,
 		`UPDATE auth_verification_codes SET consumed_at=CURRENT_TIMESTAMP(3) WHERE id=?`, id)
@@ -149,6 +181,10 @@ func (s *Server) compatRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	if err = s.consumeVerificationCode(r.Context(), tx, "register", verificationTarget(r), r.FormValue("code")); err != nil {
+		// Persist failed attempts; successful consumption still commits with the account.
+		if errors.Is(err, errInvalidVerificationCode) {
+			_ = tx.Commit()
+		}
 		writeCompat(w, 400, "验证码错误或已过期", nil)
 		return
 	}
@@ -219,6 +255,10 @@ func (s *Server) compatResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	if err = s.consumeVerificationCode(r.Context(), tx, "reset", verificationTarget(r), r.FormValue("code")); err != nil {
+		// Persist failed attempts; successful consumption still commits with the password.
+		if errors.Is(err, errInvalidVerificationCode) {
+			_ = tx.Commit()
+		}
 		writeCompat(w, 400, "验证码错误或已过期", nil)
 		return
 	}

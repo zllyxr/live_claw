@@ -123,3 +123,31 @@ go run ./cmd/support-agent-bootstrap
 
 主管角色使用 `support_supervisor`。纯客服账号不能登录主后台；座席端使用独立
 Cookie、CSRF 与 `portal=support` 会话，无法与主后台会话互换。
+
+## 注册与找回密码邮件
+
+生产 API 通过 SMTP 发送 6 位随机验证码，10 分钟内有效，只保存哈希。
+成功重发后旧码失效；每个码最多允许 5 次错误尝试，成功验证只能使用一次。
+Redis 限制同一邮箱 60 秒一次、每小时 5 次，同一 IP 每小时 20 次，注册和找回密码共用额度。
+生产未配置 SMTP 或发送失败时返回错误，不回显验证码；只有明确的
+`local/development/test` 环境且未配置 SMTP 时保留本地测试码。
+
+在服务器受保护的 `.env` 配置下列变量，仅 API 容器接收邮件凭证：
+
+```dotenv
+V2_SMTP_HOST=smtp.gmail.com
+V2_SMTP_PORT=587
+V2_SMTP_TLS_MODE=starttls
+V2_SMTP_USERNAME=your-sender@gmail.com
+V2_SMTP_PASSWORD=your-google-app-password
+V2_SMTP_FROM=your-sender@gmail.com
+```
+
+Gmail 使用专用密码；不要填 Google 登录密码，不要将真实值提交 Git。
+支持 `starttls`（通常 587）或 `tls`（通常 465），始终验证 TLS 证书。
+配置后按正常 GitHub 拉取流程构建并更新 API。验收需确认真实收件箱收到邮件，
+API 成功只代表 SMTP 服务已接受投递。
+
+邮件生命周期与限频集成测试使用隔离 MySQL 和 Redis：设置
+`CLAW_TEST_MYSQL_DSN` 与 `CLAW_TEST_REDIS_SOCKET`，运行
+`go test -race ./internal/mailer ./internal/server -run 'Test(SMTP|ProductionVerification|Verification)'`。
