@@ -465,7 +465,7 @@ func orderByNumberTx(
 		WHERE recharge.user_id=? AND recharge.order_no=?
 		  AND channel.channel_key='usdt'`
 	if forUpdate {
-		query += " FOR UPDATE"
+		query += " FOR UPDATE OF recharge"
 	}
 	return scanOrder(tx.QueryRowContext(ctx, query, userID, orderNo))
 }

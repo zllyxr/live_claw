@@ -425,7 +425,7 @@ func orderByCallbackTx(
 	orderNo string,
 ) (Order, bool, error) {
 	return scanOrder(tx.QueryRowContext(ctx, orderSelect+`
-		WHERE recharge.order_no=? AND channel.channel_key='usdt' FOR UPDATE`,
+		WHERE recharge.order_no=? AND channel.channel_key='usdt' FOR UPDATE OF recharge`,
 		orderNo,
 	))
 }

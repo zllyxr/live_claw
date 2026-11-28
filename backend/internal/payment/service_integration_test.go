@@ -104,8 +104,16 @@ func TestBEpusdtPaymentIntegration(t *testing.T) {
 		TimeoutSeconds: 1200,
 	}
 	fixture.configureChannel(t, ctx, db, originalConfig)
+	runtimeDB := db
+	if runtimeDSN := strings.TrimSpace(os.Getenv("CLAW_TEST_API_MYSQL_DSN")); runtimeDSN != "" {
+		runtimeDB, err = database.Open(ctx, runtimeDSN)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = runtimeDB.Close() })
+	}
 	service, err := New(
-		db, wallet.New(db), masterKey, "https://app.example.com",
+		runtimeDB, wallet.New(runtimeDB), masterKey, "https://app.example.com",
 		Options{HTTPClient: provider.Client()},
 	)
 	if err != nil {
