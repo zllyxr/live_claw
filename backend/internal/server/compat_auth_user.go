@@ -370,13 +370,6 @@ func (s *Server) compatRelationshipProfile(
 	if err != nil {
 		return nil, err
 	}
-	var backgroundKey string
-	_ = s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(asset.object_key,'')
-		FROM users user
-		LEFT JOIN media_assets asset ON asset.id=user.background_asset_id AND asset.status=1
-		WHERE user.id=?`, targetUserID,
-	).Scan(&backgroundKey)
 	var following, blocked int
 	if currentUserID > 0 {
 		_ = s.db.QueryRowContext(ctx, `
@@ -385,7 +378,6 @@ func (s *Server) compatRelationshipProfile(
 			currentUserID, targetUserID, currentUserID, targetUserID,
 		).Scan(&following, &blocked)
 	}
-	profile["bg_img"] = s.mediaURL(backgroundKey)
 	profile["isattention"] = strconv.Itoa(following)
 	profile["isattent"] = strconv.Itoa(following)
 	profile["isblack"] = strconv.Itoa(blocked)

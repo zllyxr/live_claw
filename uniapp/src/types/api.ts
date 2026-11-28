@@ -21,6 +21,7 @@ export interface UserProfile {
   userNiceName?: string;
   avatar?: string;
   avatar_thumb?: string;
+  bg_img?: string;
   sex?: string | number;
   signature?: string;
   coin?: string;
@@ -592,6 +593,7 @@ export interface ChatGroupApplication {
 }
 
 export interface UploadResult {
+  asset_id?: string | number;
   file?: string;
   file_name?: string;
   filepath?: string;

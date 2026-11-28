@@ -771,6 +771,12 @@ const messages = {
       "newMismatch": "Mật khẩu mới không khớp"
     },
     "profile": {
+      "cropAvatar": "Cắt ảnh đại diện",
+      "cropBackground": "Cắt ảnh nền",
+      "cropHint": "Kéo để chỉnh vị trí. Dùng thanh trượt để thu phóng.",
+      "zoom": "Thu phóng",
+      "useCrop": "Dùng ảnh",
+      "cropFailed": "Không thể cắt ảnh. Vui lòng chọn lại.",
       "avatarUpdated": "Đã cập nhật ảnh hồ sơ",
       "avatarUploadFailed": "Không thể tải ảnh hồ sơ lên",
       "backgroundUpdated": "Đã cập nhật nền",

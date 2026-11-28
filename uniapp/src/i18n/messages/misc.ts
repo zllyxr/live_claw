@@ -77,6 +77,12 @@ const zhCN = {
     fillAll: "请完整填写密码", newMismatch: "两次新密码不一致"
   },
   profile: {
+    cropAvatar: "裁剪头像",
+    cropBackground: "裁剪背景",
+    cropHint: "拖动图片调整位置，滑动下方滑块缩放。",
+    zoom: "缩放",
+    useCrop: "使用此图",
+    cropFailed: "无法裁剪，请重新选择图片",
     avatarUpdated: "头像已更新", avatarUploadFailed: "头像上传失败", backgroundUpdated: "背景已更新",
     backgroundUploadFailed: "背景上传失败", changeBackground: "换背景", editProfile: "编辑资料", enterNickname: "请输入昵称",
     female: "女生", gender: "性别", loadFailed: "资料加载失败", male: "男生", nickname: "昵称",
@@ -217,6 +223,12 @@ const en = {
     current: "Current password", fillAll: "Complete all password fields", newMismatch: "New passwords do not match"
   },
   profile: {
+    cropAvatar: "Crop profile photo",
+    cropBackground: "Crop background",
+    cropHint: "Drag to reposition. Use the slider to zoom.",
+    zoom: "Zoom",
+    useCrop: "Use photo",
+    cropFailed: "Could not crop this image. Choose another photo.",
     avatarUpdated: "Profile photo updated", avatarUploadFailed: "Failed to upload profile photo", backgroundUpdated: "Background updated",
     backgroundUploadFailed: "Failed to upload background", changeBackground: "Change background", editProfile: "Edit profile", enterNickname: "Enter a nickname",
     female: "Female", gender: "Gender", loadFailed: "Failed to load profile", male: "Male", nickname: "Nickname",
@@ -359,6 +371,12 @@ const ja = {
     current: "現在のパスワード", fillAll: "すべてのパスワード欄を入力してください", newMismatch: "新しいパスワードが一致しません"
   },
   profile: {
+    cropAvatar: "プロフィール画像を切り抜く",
+    cropBackground: "背景を切り抜く",
+    cropHint: "ドラッグで位置を調整し、スライダーで拡大できます。",
+    zoom: "ズーム",
+    useCrop: "この画像を使う",
+    cropFailed: "切り抜けませんでした。画像を選び直してください。",
     avatarUpdated: "プロフィール画像を更新しました", avatarUploadFailed: "プロフィール画像をアップロードできませんでした", backgroundUpdated: "背景を更新しました",
     backgroundUploadFailed: "背景をアップロードできませんでした", changeBackground: "背景を変更", editProfile: "プロフィール編集", enterNickname: "ニックネームを入力してください",
     female: "女性", gender: "性別", loadFailed: "プロフィールを読み込めませんでした", male: "男性", nickname: "ニックネーム",
@@ -503,6 +521,12 @@ const ko = {
     current: "현재 비밀번호", fillAll: "비밀번호 항목을 모두 입력해 주세요", newMismatch: "새 비밀번호가 일치하지 않습니다"
   },
   profile: {
+    cropAvatar: "프로필 사진 자르기",
+    cropBackground: "배경 자르기",
+    cropHint: "사진을 끌어 위치를 조정하고 슬라이더로 확대하세요.",
+    zoom: "확대",
+    useCrop: "사진 사용",
+    cropFailed: "사진을 자를 수 없습니다. 다시 선택해 주세요.",
     avatarUpdated: "프로필 사진을 변경했습니다", avatarUploadFailed: "프로필 사진을 업로드하지 못했습니다", backgroundUpdated: "배경을 변경했습니다",
     backgroundUploadFailed: "배경을 업로드하지 못했습니다", changeBackground: "배경 변경", editProfile: "프로필 수정", enterNickname: "닉네임을 입력해 주세요",
     female: "여성", gender: "성별", loadFailed: "프로필을 불러오지 못했습니다", male: "남성", nickname: "닉네임",

@@ -22,7 +22,8 @@
 
     <template v-else>
       <view class="profile-hero">
-        <view class="hero-stars" />
+        <image v-if="backgroundUrl" class="profile-background" :src="backgroundUrl" mode="aspectFill" />
+        <view v-else class="hero-stars" />
         <view class="top-actions">
           <view class="round-action" @tap="openMessages">
             <image src="/static/native/homehot_message.png" mode="aspectFit" />
@@ -145,6 +146,7 @@ const moreServices = computed(() => [
 ]);
 
 const name = computed(() => user.value?.user_nicename || user.value?.user_nickname || t("me.defaultUser"));
+const backgroundUrl = computed(() => absolutizeUrl(user.value?.bg_img));
 const avatarUrl = computed(() => absolutizeUrl(firstText(user.value?.avatar_thumb, user.value?.avatar, session.value.user?.avatar_thumb, session.value.user?.avatar)) || "/static/icons/avatar-default.svg");
 const sexLabel = computed(() => (String(user.value?.sex || "") === "1" ? "♂" : "♀"));
 const medalSrc = computed(() => medalForLevel(user.value?.level));
@@ -417,6 +419,15 @@ onPullDownRefresh(() => {
   height: 230px;
   padding: calc(130rpx + var(--status-bar-height)) 28rpx 0;
   background: linear-gradient(150deg, #3b2a86 0%, #6a3fb5 48%, #b04a96 100%);
+}
+
+.profile-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: .8;
+  pointer-events: none;
 }
 
 .hero-stars {

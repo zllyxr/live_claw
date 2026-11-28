@@ -490,32 +490,31 @@ func (s *Server) writeLotteryCompat(w http.ResponseWriter, err error, data any) 
 
 func (s *Server) compatUserProfile(ctx context.Context, userID int64, token string) (map[string]any, error) {
 	var id int64
-	var nickname, signature, objectKey string
+	var nickname, signature, avatarKey, backgroundKey string
 	var gender int
 	var coin, follows, fans int64
 	err := s.db.QueryRowContext(ctx, `
 		SELECT app_user.id,COALESCE(NULLIF(app_user.nickname,''),app_user.username),app_user.gender,app_user.signature,
-		       COALESCE(asset.object_key,''),
+		       COALESCE(asset.object_key,''),COALESCE(background.object_key,''),
 		       COALESCE(wallet.available,0),
 		       (SELECT COUNT(*) FROM user_follows WHERE target_user_id=app_user.id),
 		       (SELECT COUNT(*) FROM user_follows WHERE user_id=app_user.id)
 		FROM users app_user
 		LEFT JOIN media_assets asset ON asset.id=app_user.avatar_asset_id AND asset.status=1
+		LEFT JOIN media_assets background ON background.id=app_user.background_asset_id AND background.status=1
 		LEFT JOIN wallet_accounts wallet ON wallet.user_id=app_user.id AND wallet.currency='COIN'
 		WHERE app_user.id=?`,
 		userID,
-	).Scan(&id, &nickname, &gender, &signature, &objectKey, &coin, &fans, &follows)
+	).Scan(&id, &nickname, &gender, &signature, &avatarKey, &backgroundKey, &coin, &fans, &follows)
 	if err != nil {
 		return nil, err
 	}
-	avatar := ""
-	if objectKey != "" {
-		avatar = s.mediaBaseURL + "/" + strings.TrimLeft(objectKey, "/")
-	}
+	avatar := s.mediaURL(avatarKey)
 	return map[string]any{
 		"id": strconv.FormatInt(id, 10), "uid": strconv.FormatInt(id, 10), "token": token,
 		"user_nickname": nickname, "user_nicename": nickname, "userNiceName": nickname,
 		"avatar": avatar, "avatar_thumb": avatar, "sex": strconv.Itoa(gender),
+		"bg_img": s.mediaURL(backgroundKey),
 		"signature": signature, "coin": strconv.FormatInt(coin, 10), "votes": "0",
 		"follows": strconv.FormatInt(follows, 10), "fans": strconv.FormatInt(fans, 10),
 		"level": "1", "liang": map[string]string{"name": ""}, "liang_name": "",

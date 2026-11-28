@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -234,6 +235,42 @@ func TestCompatUploadIntegration(t *testing.T) {
 		info.SHA256 != hex.EncodeToString(expectedHash[:]) {
 		t.Fatalf("unexpected stored object: %#v", info)
 	}
+
+	callProfile := func(service string, values url.Values) map[string]any {
+		t.Helper()
+		values.Set("uid", strconv.FormatInt(userID, 10))
+		values.Set("token", token)
+		values.Set("service", service)
+		r := httptest.NewRequest(http.MethodPost, "/appapi/", strings.NewReader(values.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		server.compat(w, r)
+		var result struct {
+			Data struct {
+				Code int
+				Info []map[string]any
+			}
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || result.Data.Code != 0 || len(result.Data.Info) != 1 {
+			t.Fatalf("%s returned an invalid profile response (code %d): %v", service, result.Data.Code, err)
+		}
+		return result.Data.Info[0]
+	}
+	checkImages := func(wantAvatar, wantBackground string) {
+		t.Helper()
+		for _, service := range []string{"User.getBaseInfo", "User.getUserHome"} {
+			profile := callProfile(service, url.Values{})
+			if profile["avatar"] != wantAvatar || profile["avatar_thumb"] != wantAvatar || profile["bg_img"] != wantBackground {
+				t.Fatalf("%s: unexpected avatar %v or background %v", service, profile["avatar"], profile["bg_img"])
+			}
+		}
+	}
+	assetURL := payload.Data.Info[0].URL
+	checkImages("", "")
+	callProfile("User.updateBgImg", url.Values{"img": {strconv.FormatInt(assetID, 10)}})
+	checkImages("", assetURL)
+	callProfile("User.updateAvatar", url.Values{"avatar": {assetURL}})
+	checkImages(assetURL, assetURL)
 }
 
 func envOrDefault(key, fallback string) string {

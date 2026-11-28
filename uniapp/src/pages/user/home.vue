@@ -58,7 +58,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onLoad, onPullDownRefresh } from "@dcloudio/uni-app";
+import { onLoad, onPullDownRefresh, onShow } from "@dcloudio/uni-app";
 import EmptyState from "@/components/EmptyState.vue";
 import { getUserDynamics, getUserHome, setAttention, setBlack } from "@/api/services";
 import type { DynamicItem, UserProfile } from "@/types/api";
@@ -183,6 +183,9 @@ function editProfile() {
 
 onLoad((query) => {
   uid.value = String(query?.uid || getSession().uid || "");
+});
+
+onShow(() => {
   void load();
 });
 

@@ -13,7 +13,7 @@
           <text class="nav-arrow">‹</text>
         </view>
         <text class="nav-title">{{ t("misc.profile.title") }}</text>
-        <view class="nav-btn ghost" :class="{ busy: uploading }" @tap="chooseBg">
+        <view class="nav-btn ghost" :class="{ busy: uploading }" @tap="chooseProfileImage('background')">
           <text class="nav-chip-text">{{ uploading ? t("misc.common.uploading") : t("misc.profile.changeBackground") }}</text>
         </view>
       </view>
@@ -21,7 +21,7 @@
 
     <!-- 头像浮层 -->
     <view class="avatar-zone">
-      <view class="avatar-ring" @tap="chooseAvatar">
+      <view class="avatar-ring" @tap="chooseProfileImage('avatar')">
         <image class="avatar" :src="avatarDisplay" mode="aspectFill" @error="avatarFailed = true" />
         <view v-if="uploading" class="avatar-loading">
           <view class="spinner" />
@@ -81,6 +81,10 @@
       </view>
     </view>
 
+    <!-- #ifdef H5 -->
+    <ProfileImageCrop v-if="crop" :src="crop.src" :kind="crop.kind" @cancel="closeCrop" @error="cropFailed" @confirm="useCrop" />
+    <!-- #endif -->
+
     <!-- 保存 -->
     <view class="save-bar">
       <view class="save-btn" :class="{ disabled: saving || uploading }" @tap="save">
@@ -93,9 +97,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onShow } from "@dcloudio/uni-app";
+import { onLoad, onUnload } from "@dcloudio/uni-app";
 import { getBaseInfo, updateAvatar, updateUserBg, updateUserFields, uploadOne } from "@/api/services";
-import type { UploadResult, UserProfile } from "@/types/api";
+// #ifdef H5
+import ProfileImageCrop from "@/components/ProfileImageCrop.vue";
+// #endif
+import { profileImageSizes, type ProfileImageKind } from "@/utils/profile-crop";
+import type { UserProfile } from "@/types/api";
 import { absolutizeUrl } from "@/utils/url";
 import { requireLogin, saveUser } from "@/utils/session";
 import { t } from "@/i18n";
@@ -118,10 +126,6 @@ const avatarUrl = computed(() => absolutizeUrl(String(user.value?.avatar_thumb |
 const avatarDisplay = computed(() => (avatarFailed.value ? "/static/icons/avatar-default.svg" : avatarUrl.value));
 const hasBg = computed(() => Boolean(String(user.value?.bg_img || "").trim()));
 const bgUrl = computed(() => absolutizeUrl(String(user.value?.bg_img || "")));
-
-function uploadKey(result: UploadResult) {
-  return result.file || result.file_name || result.filepath || result.url || "";
-}
 
 function goBack() {
   if (getCurrentPages().length > 1) {
@@ -147,55 +151,77 @@ async function load() {
   }
 }
 
-function chooseAvatar() {
-  chooseImage(async (path) => {
-    uploading.value = true;
-    try {
-      const uploaded = await uploadOne(path);
-      const key = uploadKey(uploaded);
-      await updateAvatar(key);
-      uni.showToast({ title: t("misc.profile.avatarUpdated"), icon: "none" });
-      await load();
-    } catch (error: any) {
-      uni.showToast({ title: error?.message || t("misc.profile.avatarUploadFailed"), icon: "none" });
-    } finally {
-      uploading.value = false;
-    }
-  });
+const crop = ref<{ kind: ProfileImageKind; src: string }>();
+
+function closeCrop() {
+  // #ifdef H5
+  if (crop.value) URL.revokeObjectURL(crop.value.src);
+  // #endif
+  crop.value = undefined;
 }
 
-function chooseBg() {
-  chooseImage(async (path) => {
-    uploading.value = true;
-    try {
-      const uploaded = await uploadOne(path);
-      const key = uploadKey(uploaded);
-      await updateUserBg(key);
-      uni.showToast({ title: t("misc.profile.backgroundUpdated"), icon: "none" });
-      await load();
-    } catch (error: any) {
-      uni.showToast({ title: error?.message || t("misc.profile.backgroundUploadFailed"), icon: "none" });
-    } finally {
-      uploading.value = false;
-    }
-  });
+function cropFailed() {
+  closeCrop();
+  uni.showToast({ title: t("misc.profile.cropFailed"), icon: "none" });
 }
 
-function chooseImage(onPick: (path: string) => void) {
-  if (!requireLogin() || uploading.value) {
-    return;
-  }
+function useCrop(path: string) {
+  if (!crop.value) return;
+  const kind = crop.value.kind;
+  closeCrop();
+  void saveImage(kind, path);
+}
+
+function chooseProfileImage(kind: ProfileImageKind) {
+  if (!requireLogin() || !user.value || uploading.value || saving.value || crop.value) return;
   uni.chooseImage({
     count: 1,
-    sizeType: ["compressed"],
+    sizeType: ["original"],
     sourceType: ["album", "camera"],
-    success: (res) => {
-      const path = res.tempFilePaths[0];
-      if (path) {
-        onPick(path);
-      }
+    // #ifdef APP-PLUS
+    crop: { ...profileImageSizes[kind], quality: 90, resize: true, saveToAlbum: false },
+    // #endif
+    success: (result) => {
+      // #ifdef H5
+      const file = Array.isArray(result.tempFiles) ? result.tempFiles[0] : result.tempFiles;
+      if (!(file instanceof Blob)) return cropFailed();
+      crop.value = { kind, src: URL.createObjectURL(file) };
+      // #endif
+      // #ifdef APP-PLUS
+      const path = Array.isArray(result.tempFilePaths) ? result.tempFilePaths[0] : result.tempFilePaths;
+      if (path) void saveImage(kind, path);
+      // #endif
+    },
+    fail: (error) => {
+      if (!/cancel/i.test(error.errMsg || "")) cropFailed();
     }
   });
+}
+
+async function saveImage(kind: ProfileImageKind, path: string) {
+  if (!user.value || uploading.value) return;
+  uploading.value = true;
+  try {
+    const uploaded = await uploadOne(path);
+    const url = uploaded.url || uploaded.file || uploaded.file_name || uploaded.filepath;
+    if (!url) throw new Error(t("misc.profile.cropFailed"));
+    const key = String(uploaded.asset_id || url);
+    if (kind === "avatar") {
+      await updateAvatar(key);
+      user.value = { ...user.value, avatar: url, avatar_thumb: url };
+      avatarFailed.value = false;
+    } else {
+      await updateUserBg(key);
+      user.value = { ...user.value, bg_img: url };
+    }
+    saveUser(user.value);
+    uni.showToast({ title: t(kind === "avatar" ? "misc.profile.avatarUpdated" : "misc.profile.backgroundUpdated"), icon: "none" });
+  } catch (error: any) {
+    const fallback = kind === "avatar" ? "misc.profile.avatarUploadFailed" : "misc.profile.backgroundUploadFailed";
+    uni.showToast({ title: error?.message || t(fallback), icon: "none" });
+  } finally {
+    uploading.value = false;
+  }
 }
 
 async function save() {
@@ -226,7 +252,9 @@ async function save() {
   }
 }
 
-onShow(() => {
+onUnload(closeCrop);
+
+onLoad(() => {
   void load();
 });
 </script>
@@ -286,7 +314,7 @@ onShow(() => {
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: 0.5;
+  opacity: 0.85;
 }
 
 .hero-shade {

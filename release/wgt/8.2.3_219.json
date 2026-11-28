@@ -1,0 +1,8 @@
+{
+  "note": "修复个人背景显示，支持裁剪头像和背景。",
+  "min_app_code": 216,
+  "force": false,
+  "silent": false,
+  "size": 8131841,
+  "sha256": "7cdfc4965bf8bc9eac0fefc35b0c471f2f06d9186501e4876a75d951438fe16c"
+}
