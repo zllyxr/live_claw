@@ -104,8 +104,8 @@ services:
       LOG: /var/log/bepusdt
       LISTEN: :8080
     ports:
-      # Loopback-only maintenance access for an SSH tunnel. The public Nginx
-      # server still exposes only checkout paths, never the gateway admin UI.
+      # Loopback-only maintenance access. The dedicated HTTPS host
+      # pay.travelig.vip proxies the authenticated management UI via Nginx.
       - "127.0.0.1:${V2_BEPUSDT_ADMIN_PORT:-29002}:8080"
     volumes:
       - bepusdt_data:/var/lib/bepusdt
