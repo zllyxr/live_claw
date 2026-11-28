@@ -22,19 +22,23 @@ var (
 )
 
 type updateUserProfileRequest struct {
-	Username    string `json:"username"`
-	Nickname    string `json:"nickname"`
-	CountryCode string `json:"country_code"`
-	Mobile      string `json:"mobile"`
-	Email       string `json:"email"`
+	Avatar      *profilePhotoChange `json:"avatar,omitempty"`
+	Background  *profilePhotoChange `json:"background,omitempty"`
+	Username    string              `json:"username"`
+	Nickname    string              `json:"nickname"`
+	CountryCode string              `json:"country_code"`
+	Mobile      string              `json:"mobile"`
+	Email       string              `json:"email"`
 }
 
 type editableUserProfile struct {
-	Username    string `json:"username"`
-	Nickname    string `json:"nickname"`
-	CountryCode string `json:"country_code"`
-	Mobile      string `json:"mobile"`
-	Email       string `json:"email"`
+	AvatarID     decimalIDInput `json:"avatar_asset_id"`
+	BackgroundID decimalIDInput `json:"background_asset_id"`
+	Username     string         `json:"username"`
+	Nickname     string         `json:"nickname"`
+	CountryCode  string         `json:"country_code"`
+	Mobile       string         `json:"mobile"`
+	Email        string         `json:"email"`
 }
 
 func (request *updateUserProfileRequest) normalize() error {
@@ -152,11 +156,20 @@ func (h *Handler) updateUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request updateUserProfileRequest
-	if !decodeJSON(w, r, &request) {
+	if !decodeLimitedJSON(w, r, &request, 4<<20) {
 		return
 	}
 	if validationErr := request.normalize(); validationErr != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, validationErr.Error())
+		return
+	}
+
+	if err := request.Avatar.validate(512, 512); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "头像"+err.Error())
+		return
+	}
+	if err := request.Background.validate(1200, 675); err != nil {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "背景"+err.Error())
 		return
 	}
 
@@ -170,13 +183,13 @@ func (h *Handler) updateUserProfile(w http.ResponseWriter, r *http.Request) {
 	var before editableUserProfile
 	var beforeMobile, beforeEmail sql.NullString
 	err = tx.QueryRowContext(r.Context(), `
-		SELECT username,nickname,country_code,mobile,email
+		SELECT username,nickname,country_code,mobile,email,avatar_asset_id,background_asset_id
 		FROM users
 		WHERE id=?
 		FOR UPDATE`,
 		userID,
 	).Scan(
-		&before.Username, &before.Nickname, &before.CountryCode, &beforeMobile, &beforeEmail,
+		&before.Username, &before.Nickname, &before.CountryCode, &beforeMobile, &beforeEmail, &before.AvatarID, &before.BackgroundID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusNotFound, 404, "用户不存在")
@@ -189,13 +202,39 @@ func (h *Handler) updateUserProfile(w http.ResponseWriter, r *http.Request) {
 	before.Mobile = beforeMobile.String
 	before.Email = beforeEmail.String
 	after := request.profile()
+	after.AvatarID, after.BackgroundID = before.AvatarID, before.BackgroundID
+	if request.Avatar.conflicts(before.AvatarID) || request.Background.conflicts(before.BackgroundID) {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusConflict, 409, "图片已被更新，请刷新用户列表后重新编辑")
+		return
+	}
+	var uploaded []string
+	defer func() { h.discardProfileUploads(uploaded) }()
+	for _, photo := range []struct {
+		change *profilePhotoChange
+		id     *decimalIDInput
+	}{
+		{request.Avatar, &after.AvatarID}, {request.Background, &after.BackgroundID},
+	} {
+		if photo.change == nil {
+			continue
+		}
+		assetID, objectKey, uploadErr := h.storeProfilePhoto(r.Context(), tx, userID, photo.change)
+		if objectKey != "" {
+			uploaded = append(uploaded, objectKey)
+		}
+		if uploadErr != nil {
+			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "保存用户图片失败")
+			return
+		}
+		*photo.id = decimalIDInput(assetID)
+	}
 
 	_, err = tx.ExecContext(r.Context(), `
 		UPDATE users
-		SET username=?,nickname=?,country_code=?,mobile=?,email=?
+		SET username=?,nickname=?,country_code=?,mobile=?,email=?,avatar_asset_id=?,background_asset_id=?
 		WHERE id=?`,
 		after.Username, after.Nickname, after.CountryCode,
-		nullableUserField(after.Mobile), nullableUserField(after.Email), userID,
+		nullableUserField(after.Mobile), nullableUserField(after.Email), after.AvatarID, after.BackgroundID, userID,
 	)
 	if err != nil {
 		if message, conflict := userProfileConflictMessage(err); conflict {
@@ -211,6 +250,8 @@ func (h *Handler) updateUserProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "记录用户审计失败")
 		return
 	}
+	// A lost commit acknowledgement may still mean the new images are in use.
+	uploaded = nil
 	if err = tx.Commit(); err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "更新用户资料失败")
 		return

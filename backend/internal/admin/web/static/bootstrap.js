@@ -4,7 +4,7 @@
 
   function loadApplication() {
     var script = document.createElement("script");
-    script.src = "/admin/static/app.js?v=20261128-2";
+    script.src = "/admin/static/app.js?v=20261128-3";
     script.async = false;
     document.body.appendChild(script);
   }

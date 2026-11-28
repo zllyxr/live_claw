@@ -13,24 +13,29 @@ import (
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/idgen"
+	"github.com/zllyxr/live_claw/backend/internal/storage"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
 )
 
 type adminUserListItem struct {
-	ID          string `json:"id"`
-	Username    string `json:"username"`
-	CountryCode string `json:"country_code"`
-	Mobile      string `json:"mobile"`
-	Email       string `json:"email"`
-	Nickname    string `json:"nickname"`
-	Status      int    `json:"status"`
-	IsVirtual   bool   `json:"is_virtual"`
-	TeamCode    string `json:"team_code"`
-	TeamName    string `json:"team_name"`
-	Available   int64  `json:"available"`
-	Frozen      int64  `json:"frozen"`
-	LastLoginAt any    `json:"last_login_at"`
-	CreatedAt   int64  `json:"created_at"`
+	AvatarID      string `json:"avatar_asset_id"`
+	BackgroundID  string `json:"background_asset_id"`
+	AvatarURL     string `json:"avatar_url"`
+	BackgroundURL string `json:"background_url"`
+	ID            string `json:"id"`
+	Username      string `json:"username"`
+	CountryCode   string `json:"country_code"`
+	Mobile        string `json:"mobile"`
+	Email         string `json:"email"`
+	Nickname      string `json:"nickname"`
+	Status        int    `json:"status"`
+	IsVirtual     bool   `json:"is_virtual"`
+	TeamCode      string `json:"team_code"`
+	TeamName      string `json:"team_name"`
+	Available     int64  `json:"available"`
+	Frozen        int64  `json:"frozen"`
+	LastLoginAt   any    `json:"last_login_at"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
@@ -62,10 +67,14 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(app_user.email,''),app_user.nickname,app_user.status,app_user.is_virtual,
 		       COALESCE(team.code,''),COALESCE(team.name,''),
 		       COALESCE(wallet.available,0),COALESCE(wallet.frozen,0),
-		       app_user.last_login_at,app_user.created_at
+		       app_user.last_login_at,app_user.created_at,
+		       app_user.avatar_asset_id,app_user.background_asset_id,
+		       COALESCE(avatar.object_key,''),COALESCE(background.object_key,'')
 		FROM users app_user
 		LEFT JOIN teams team ON team.id=app_user.team_id
 		LEFT JOIN wallet_accounts wallet ON wallet.user_id=app_user.id AND wallet.currency='COIN'
+		LEFT JOIN media_assets avatar ON avatar.id=app_user.avatar_asset_id AND avatar.bucket='claw-public' AND avatar.status=1
+		LEFT JOIN media_assets background ON background.id=app_user.background_asset_id AND background.bucket='claw-public' AND background.status=1
 		WHERE (?='' OR CAST(app_user.id AS CHAR) LIKE ?
 		       OR app_user.username LIKE ? OR app_user.mobile LIKE ?
 		       OR app_user.email LIKE ? OR app_user.nickname LIKE ?
@@ -83,6 +92,8 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	items := make([]adminUserListItem, 0, pageSize)
 	for rows.Next() {
+		var avatarID, backgroundID int64
+		var avatarKey, backgroundKey string
 		var id, available, frozen int64
 		var username, countryCode, mobile, email, nickname, teamCode, teamName string
 		var userStatus, virtual int
@@ -91,11 +102,14 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		if err = rows.Scan(
 			&id, &username, &countryCode, &mobile, &email, &nickname, &userStatus, &virtual,
 			&teamCode, &teamName, &available, &frozen, &lastLogin, &createdAt,
+			&avatarID, &backgroundID, &avatarKey, &backgroundKey,
 		); err != nil {
 			httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取用户失败")
 			return
 		}
 		items = append(items, adminUserListItem{
+			AvatarID: apiDecimalID(avatarID), BackgroundID: apiDecimalID(backgroundID),
+			AvatarURL: h.mediaAssetURL(storage.PublicBucket, avatarKey), BackgroundURL: h.mediaAssetURL(storage.PublicBucket, backgroundKey),
 			ID: apiDecimalID(id), Username: username, CountryCode: countryCode, Mobile: mobile,
 			Email: email, Nickname: nickname, Status: userStatus, IsVirtual: virtual == 1,
 			TeamCode: teamCode, TeamName: teamName, Available: available, Frozen: frozen,

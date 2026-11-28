@@ -1989,8 +1989,15 @@
       }).join("") + "</div></form>";
     layer.open({
       type: 1, title: esc(title), area: ["620px", "auto"], content: html, btn: [options.submitLabel || "保存", "取消"],
+      success: () => { if (options.mount) options.mount(document.getElementById(formID)); },
       yes: async function (index) {
         const form = document.getElementById(formID);
+        if (form.dataset.submitting === "1") return;
+        if (form.querySelector('.profile-image-field[aria-busy="true"]')) {
+          notify("请等待图片读取完成后再保存", true);
+          return;
+        }
+        form.dataset.submitting = "1";
         const values = {};
         new FormData(form).forEach((value, key) => {
           const normalized = value instanceof File ? value : String(value);
@@ -2005,6 +2012,7 @@
         try {
           outcome = await submit(values);
         } catch (error) {
+          delete form.dataset.submitting;
           notify(error.message || "操作失败", true);
           return;
         }
@@ -2773,6 +2781,7 @@
         notify("用户数据已刷新，请重试", true);
         return;
       }
+      const imageChanges = {};
       return openForm("编辑用户资料", [
         { name: "username", label: "登录账号（必填）", value: row.username, wide: true },
         { name: "nickname", label: "昵称", value: row.nickname },
@@ -2810,10 +2819,11 @@
             nickname,
             country_code: countryCode,
             mobile,
-            email
+            email,
+            ...imageChanges
           }
         });
-      });
+      }, { mount: (form) => window.ClawProfileImages.mount(form, row, imageChanges) });
     }
     if (action === "user-password") {
       const row = cached("users", id);
