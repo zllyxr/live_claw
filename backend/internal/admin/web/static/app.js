@@ -20,7 +20,6 @@
     tableSequence: 0,
     tables: {},
     tablePreferences: {},
-    remoteFilters: { online: "", permission: "", permission_granted: "1" },
     routeLoadSerial: 0
   };
 
@@ -38,7 +37,6 @@
     bets: ["投注管理", "全平台投注", "统一查看彩票、体育和游戏投注与派彩"],
     im: ["IM 管理", "会话与群组", "原生单聊、群聊、成员、禁言和消息处置"],
     app: ["App 管理", "客户端版本", "原生强制更新与 WGT 静默热更新"],
-    remote: ["远程设备", "远程协助设备", "用户主动授权、在线状态与一次性协助凭据"],
     rbac: ["角色与权限", "管理员权限", "最小权限角色和管理员授权"],
     system: ["系统设置", "系统设置与审计", "配置版本控制、密钥掩码和完整审计"]
   };
@@ -1911,197 +1909,12 @@
     });
   }
 
-  function remotePermissionSummary(value) {
-    const labels = {
-      notification: "通知", media_projection: "录屏", accessibility: "无障碍", battery: "电池白名单"
-    };
-    let source = value;
-    if (typeof source === "string") {
-      try { source = JSON.parse(source); } catch (_) { source = {}; }
-    }
-    source = source && typeof source === "object" ? source : {};
-    return Object.entries(labels).map(([key, label]) =>
-      '<span class="tag ' + (source[key] ? "ok" : "warn") + '">' +
-      esc(label + (source[key] ? " ✓" : " ×")) + "</span>").join(" ");
-  }
-
-  async function remoteView(loadContext) {
-    const data = await remoteTableData("remote-devices", "/admin/api/remote/devices", state.remoteFilters);
-    if (!isCurrentRouteLoad(loadContext)) return;
-    state.cache.remoteDevices = data.items || [];
-    const deviceTable = table([
-      { label: "用户", render: (row) => "<strong>" + esc(row.username || row.user_id) +
-        "</strong><br><small>ID " + esc(row.user_id) + "</small>" },
-      { label: "设备", render: (row) => esc(row.device_name || row.model || "未命名设备") +
-        "<br><small>" + esc([row.manufacturer, row.model, "Android " + row.android_version].filter(Boolean).join(" · ")) + "</small>" },
-      { label: "设备代码", render: (row) => row.device_code ? "<strong>" + esc(row.device_code) + "</strong>" : "—" },
-      { label: "状态", render: (row) => '<span class="tag ' + (row.online ? "ok" : "warn") + '">' +
-        (row.online ? "在线" : "离线") + "</span> " + esc(row.service_status || "unknown") +
-        (Number(row.status) === 2 ? ' <span class="tag warn">撤销中</span>' : "") +
-        (row.current_session ? ' <span class="tag ok">会话中</span>' : "") },
-      { label: "权限", render: (row) => remotePermissionSummary(row.permission_status), className: "wrap" },
-      { label: "版本 / 最后在线", render: (row) => esc((row.app_version || "—") + " / 插件 " + (row.plugin_version || "—")) +
-        "<br><small>" + esc(formatTime(row.last_seen_at)) + "</small>" },
-      { label: "操作", render: (row) => {
-        const controls = [];
-        if (has("remote.control")) {
-          controls.push(Number(row.status) === 1 && row.online && row.service_status === "running" && row.device_code ?
-            button("发起协助", "remote-credential", row.id, "layui-btn-normal") :
-            disabledButton("发起协助", "设备需在线并运行远程服务"));
-        }
-        if (has("remote.revoke")) controls.push(Number(row.status) === 1 ?
-          button("停用", "remote-revoke", row.id, "layui-btn-danger") : disabledButton("停用中", "等待设备确认停止"));
-        return controls.join(" ") || "—";
-      }}
-    ], data.items, {
-      key: "remote-devices", page: data.page, pageSize: data.page_size,
-      total: data.total, hasMore: data.has_more,
-      remote: { path: "/admin/api/remote/devices", cacheName: "remoteDevices", params: state.remoteFilters }
-    });
-    const filters = '<div class="toolbar">' +
-      '<select id="remote-filter-online" class="layui-select"><option value="">全部在线状态</option>' +
-      '<option value="1"' + (state.remoteFilters.online === "1" ? " selected" : "") + '>在线</option>' +
-      '<option value="0"' + (state.remoteFilters.online === "0" ? " selected" : "") + '>离线</option></select>' +
-      '<select id="remote-filter-permission" class="layui-select"><option value="">全部权限状态</option>' +
-      Object.entries({ notification: "前台通知", media_projection: "屏幕共享", accessibility: "无障碍", battery: "电池白名单" })
-        .map(([value, label]) => '<option value="' + esc(value) + '"' + (state.remoteFilters.permission === value ? " selected" : "") + '>' + esc(label) + '</option>').join("") +
-      '</select><select id="remote-filter-permission-state" class="layui-select">' +
-      '<option value="1"' + (state.remoteFilters.permission_granted === "1" ? " selected" : "") + '>已开启</option>' +
-      '<option value="0"' + (state.remoteFilters.permission_granted === "0" ? " selected" : "") + '>未开启</option></select>' +
-      '<button class="layui-btn" data-action="remote-filter">应用筛选</button></div>';
-    content.innerHTML = panel("远程设备", "在线判定为 20 秒内收到心跳；打开控制台前需要复核管理员密码", filters + deviceTable);
-  }
-
   const loaders = {
     "agent-teams": agentTeams,
     dashboard, users, agents: agentsView, wallet: walletView, payments: paymentsView, games, live: liveView,
     lottery: lotteryView, sports: sportsView, bets: betsView,
-    im: imView, app: appView, remote: remoteView, rbac: rbacView, system: systemView
+    im: imView, app: appView, rbac: rbacView, system: systemView
   };
-
-  function showRemoteConsole(authorization, device) {
-    const modalID = "remote-console-" + Date.now();
-    const token = String(authorization.control_token || "");
-    const deviceID = String(device.id || "");
-    const html = '<div id="' + modalID + '" class="remote-console">' +
-      '<div class="remote-console-main"><div class="remote-screen-stage">' +
-      '<div class="remote-screen-placeholder">正在等待手机画面…</div>' +
-      '<img class="remote-screen" alt="远程设备实时画面" draggable="false"></div>' +
-      '<div class="remote-console-status">已授权，等待第一帧</div></div>' +
-      '<div class="remote-console-tools">' +
-      '<div class="remote-system-actions"><button type="button" data-system-action="back">返回</button>' +
-      '<button type="button" data-system-action="home">主页</button>' +
-      '<button type="button" data-system-action="recents">最近任务</button></div>' +
-      '<label>文字输入<textarea class="remote-text" maxlength="2048" placeholder="输入后发送到手机当前输入框"></textarea></label>' +
-      '<button type="button" class="layui-btn remote-send-text">发送文字</button>' +
-      '<button type="button" class="layui-btn layui-btn-primary remote-set-clipboard">写入手机剪贴板</button>' +
-      '<p>在画面上点击或拖动即可操作。手机必须已开启无障碍服务。</p></div></div>';
-    let active = true;
-    let frameTimer = 0;
-    let objectURL = "";
-    let lastSequence = "";
-    let pointerStart = null;
-    const updateStatus = (message, failed) => {
-      const node = document.querySelector("#" + modalID + " .remote-console-status");
-      if (node) { node.textContent = message; node.classList.toggle("error", Boolean(failed)); }
-    };
-    const remoteRequest = async (path, options) => {
-      const config = Object.assign({ credentials: "same-origin" }, options || {});
-      config.headers = Object.assign({ "X-Remote-Session": token }, config.headers || {});
-      if (config.body && typeof config.body !== "string") {
-        config.headers["Content-Type"] = "application/json";
-        config.body = JSON.stringify(config.body);
-      }
-      if (config.method && config.method !== "GET") config.headers["X-CSRF-Token"] = csrfToken();
-      const response = await fetch(path, config);
-      if (!response.ok) {
-        let message = response.status === 401 ? "控制授权已过期，请关闭后重新发起" : "远程控制请求失败";
-        try { message = (await response.json()).message || message; } catch (_) { }
-        throw new Error(message);
-      }
-      return response;
-    };
-    const sendControl = async (type, payload) => {
-      try {
-        await remoteRequest("/admin/api/remote/devices/" + encodeURIComponent(deviceID) + "/control", {
-          method: "POST", body: { type: type, payload: payload || {} }
-        });
-        updateStatus("控制命令已发送", false);
-      } catch (error) {
-        updateStatus(error.message || "控制命令发送失败", true);
-      }
-    };
-    const pollFrame = async () => {
-      if (!active) return;
-      try {
-        const response = await remoteRequest("/admin/api/remote/devices/" + encodeURIComponent(deviceID) + "/frame");
-        if (response.status === 204) {
-          updateStatus("手机在线，正在等待画面", false);
-        } else {
-          const sequence = response.headers.get("X-Frame-Sequence") || "";
-          if (sequence !== lastSequence) {
-            const blob = await response.blob();
-            const nextURL = URL.createObjectURL(blob);
-            const image = document.querySelector("#" + modalID + " .remote-screen");
-            if (image) { image.src = nextURL; image.classList.add("ready"); }
-            const placeholder = document.querySelector("#" + modalID + " .remote-screen-placeholder");
-            if (placeholder) placeholder.hidden = true;
-            if (objectURL) URL.revokeObjectURL(objectURL);
-            objectURL = nextURL;
-            lastSequence = sequence;
-          }
-          updateStatus("画面已连接 · 帧 " + (sequence || "—"), false);
-        }
-      } catch (error) {
-        updateStatus(error.message || "画面连接中断", true);
-      } finally {
-        if (active) frameTimer = window.setTimeout(pollFrame, 500);
-      }
-    };
-    layer.open({
-      type: 1, title: "远程控制 · " + esc(device.device_name || device.device_code || deviceID),
-      area: ["960px", "88vh"], content: html,
-      success: function () {
-        const root = document.getElementById(modalID);
-        const image = root?.querySelector(".remote-screen");
-        image?.addEventListener("pointerdown", function (event) {
-          event.preventDefault();
-          image.setPointerCapture?.(event.pointerId);
-          const bounds = image.getBoundingClientRect();
-          pointerStart = { x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, at: Date.now() };
-        });
-        image?.addEventListener("pointerup", function (event) {
-          if (!pointerStart) return;
-          event.preventDefault();
-          const bounds = image.getBoundingClientRect();
-          const end = { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) };
-          const start = pointerStart;
-          pointerStart = null;
-          const distance = Math.hypot(end.x - start.x, end.y - start.y);
-          if (distance < 0.015) void sendControl("tap", { x: start.x, y: start.y });
-          else void sendControl("swipe", { x1: start.x, y1: start.y, x2: end.x, y2: end.y, duration_ms: Math.max(80, Math.min(1500, Date.now() - start.at)) });
-        });
-        root?.querySelectorAll("[data-system-action]").forEach((button) => button.addEventListener("click", function () {
-          void sendControl("system_action", { action: button.dataset.systemAction });
-        }));
-        root?.querySelector(".remote-send-text")?.addEventListener("click", function () {
-          const value = root.querySelector(".remote-text")?.value || "";
-          if (value) void sendControl("text", { text: value });
-        });
-        root?.querySelector(".remote-set-clipboard")?.addEventListener("click", function () {
-          const value = root.querySelector(".remote-text")?.value || "";
-          if (value) void sendControl("clipboard_set", { text: value });
-        });
-        void pollFrame();
-      },
-      end: function () {
-        active = false;
-        if (frameTimer) window.clearTimeout(frameTimer);
-        if (objectURL) URL.revokeObjectURL(objectURL);
-        void remoteRequest("/admin/api/remote/devices/" + encodeURIComponent(deviceID) + "/sessions/end", { method: "POST", body: {} }).catch(() => {});
-      }
-    });
-  }
 
   function resetTableRegistry() {
     Object.values(state.tables).forEach((model) => {
@@ -2954,47 +2767,6 @@
       ], (values) => api("/admin/api/agents/" + encodeURIComponent(agentID) + "/team-prefixes/" +
         encodeURIComponent(id) + "/unassign", { method: "POST", body: { reason: values.reason } }));
     }
-    if (action === "remote-filter") {
-      const online = document.getElementById("remote-filter-online")?.value || "";
-      const permission = document.getElementById("remote-filter-permission")?.value || "";
-      const permissionGranted = document.getElementById("remote-filter-permission-state")?.value || "1";
-      state.remoteFilters = {
-        online,
-        permission,
-        permission_granted: permission ? permissionGranted : ""
-      };
-      const model = Object.values(state.tables).find((item) => item.key === "remote-devices");
-      if (!model || !model.remote) return;
-      model.remote.params = state.remoteFilters;
-      model.page = 1;
-      return loadRemoteTable(model, false);
-    }
-    if (action === "remote-credential") {
-      const credential = await api("/admin/api/remote/devices/" + encodeURIComponent(id) + "/credential-requests", { method: "POST" });
-      notify("正在等待手机确认控制授权");
-      let status = credential;
-      const deadline = Date.now() + 16000;
-      while (status.status === "pending" && Date.now() < deadline) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-        status = await api("/admin/api/remote/credential-requests/" + encodeURIComponent(credential.id));
-      }
-      if (status.status !== "ready") throw new Error("手机未在 15 秒内确认控制授权，请检查设备状态后重试");
-      return openForm("验证管理员身份", [{
-        name: "password", label: "请输入当前管理员密码", type: "password",
-        placeholder: "密码仅用于本次身份复核", wide: true
-      }], async (values) => {
-        const revealed = await api("/admin/api/remote/credential-requests/" + encodeURIComponent(credential.id) + "/reveal", {
-          method: "POST", body: { password: String(values.password || "") }
-        });
-        const device = (state.cache.remoteDevices || []).find((item) => String(item.id) === String(id)) || { id: id };
-        showRemoteConsole(revealed, device);
-        return { __skipRefresh: true, __formMessage: "身份验证成功" };
-      });
-    }
-    if (action === "remote-revoke") {
-      if (!window.confirm("确定停用这台设备的远程协助并撤销凭据吗？")) return;
-      return mutateAndRefresh("/admin/api/remote/devices/" + encodeURIComponent(id) + "/revoke", { method: "POST" }, "已发送停用命令");
-    }
     if (action === "user-edit") {
       const row = cached("users", id);
       if (!row) {
@@ -3196,7 +2968,8 @@
         },
         {
           name: "public_base_url", label: "用户可访问的支付根地址",
-          value: row.public_base_url || "", placeholder: "https://pay.example.com", wide: true
+          value: row.required_public_base_url || row.public_base_url || "", wide: true,
+          help: row.required_public_base_url ? "当前环境要求填写 " + row.required_public_base_url : ""
         },
         {
           name: "api_token", label: row.token_configured ?
@@ -3234,6 +3007,9 @@
         const name = String(values.name || "").trim();
         const apiBaseURL = requirePaymentBaseURL(values.api_base_url, "API 根地址");
         const publicBaseURL = requirePaymentBaseURL(values.public_base_url, "支付根地址");
+        if (row.required_public_base_url && publicBaseURL !== row.required_public_base_url) {
+          throw new Error("用户可访问的支付根地址请填写 " + row.required_public_base_url);
+        }
         const apiToken = String(values.api_token || "").trim();
         const tradeType = String(values.trade_type || "").trim().toLowerCase();
         const fiat = String(values.fiat || "").trim().toUpperCase();

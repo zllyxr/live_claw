@@ -21,7 +21,6 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/live"
 	"github.com/zllyxr/live_claw/backend/internal/mailer"
 	"github.com/zllyxr/live_claw/backend/internal/paymentconfig"
-	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/storage"
 	"github.com/zllyxr/live_claw/backend/internal/wallet"
 )
@@ -55,7 +54,6 @@ type Handler struct {
 	publicURL          string
 	environment        string
 	secureCookies      bool
-	remote             *remoteassist.Service
 	emailSettings      *mailer.Store
 	emailTestNext      atomic.Int64
 }
@@ -86,7 +84,6 @@ func New(
 	publicURL string,
 	environment string,
 	dataEncryptionKey string,
-	remoteService *remoteassist.Service,
 	smtpFallback ...mailer.Config,
 ) (*Handler, error) {
 	loginBody, err := webFiles.ReadFile("web/login.html")
@@ -156,14 +153,13 @@ func New(
 		publicURL:         strings.TrimRight(strings.TrimSpace(publicURL), "/"),
 		environment:       strings.ToLower(strings.TrimSpace(environment)),
 		secureCookies:     environment != "local" && environment != "development",
-		remote:            remoteService,
 		emailSettings:     emailSettings,
 	}, nil
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin", h.root)
-	mux.HandleFunc("GET /admin/", h.root)
+	mux.HandleFunc("GET /admin/{$}", h.root)
 	mux.HandleFunc("GET /admin/login", h.loginPage)
 	mux.HandleFunc("GET /admin/app", h.requirePage(h.appPage))
 	mux.Handle("GET /admin/static/", h.static)
@@ -279,14 +275,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/rbac/admins", h.requireAPI("rbac.write", true, h.createAdministrator))
 	mux.HandleFunc("POST /admin/api/rbac/admins/{id}", h.requireAPI("rbac.write", true, h.updateAdministrator))
 	mux.HandleFunc("POST /admin/api/rbac/admins/{id}/password", h.requireAPI("rbac.write", true, h.resetAdministratorPassword))
-	mux.HandleFunc("GET /admin/api/remote/devices", h.requireAPI("remote.read", false, h.listRemoteDevices))
-	mux.HandleFunc("POST /admin/api/remote/devices/{id}/credential-requests", h.requireAPI("remote.control", true, h.createRemoteCredential))
-	mux.HandleFunc("GET /admin/api/remote/credential-requests/{id}", h.requireAPI("remote.control", false, h.remoteCredentialStatus))
-	mux.HandleFunc("POST /admin/api/remote/credential-requests/{id}/reveal", h.requireAPI("remote.control", true, h.revealRemoteCredential))
-	mux.HandleFunc("GET /admin/api/remote/devices/{id}/frame", h.requireAPI("remote.control", false, h.remoteFrame))
-	mux.HandleFunc("POST /admin/api/remote/devices/{id}/control", h.requireAPI("remote.control", true, h.remoteControl))
-	mux.HandleFunc("POST /admin/api/remote/devices/{id}/sessions/end", h.requireAPI("remote.control", true, h.endRemoteControl))
-	mux.HandleFunc("POST /admin/api/remote/devices/{id}/revoke", h.requireAPI("remote.revoke", true, h.revokeRemoteDevice))
 	h.registerAgentConsole(mux)
 	h.registerTeamConsole(mux)
 }

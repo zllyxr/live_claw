@@ -3,7 +3,7 @@ package admin
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"regexp"
 	"testing"
 )
 
@@ -35,13 +35,11 @@ func TestAdminApplicationAssetVersionsMatch(t *testing.T) {
 		t.Fatalf("read embedded bootstrap script: %v", err)
 	}
 
-	const version = "v=20260822-1"
-	for name, source := range map[string]string{
-		"app page":  string(page),
-		"bootstrap": string(bootstrap),
-	} {
-		if !strings.Contains(source, version) {
-			t.Errorf("%s does not reference release asset version %q", name, version)
-		}
+	styles := regexp.MustCompile(`/admin/static/app\.css\?v=([A-Za-z0-9-]+)"`).FindSubmatch(page)
+	loader := regexp.MustCompile(`/admin/static/bootstrap\.js\?v=([A-Za-z0-9-]+)"`).FindSubmatch(page)
+	app := regexp.MustCompile(`/admin/static/app\.js\?v=([A-Za-z0-9-]+)"`).FindSubmatch(bootstrap)
+	if len(styles) != 2 || len(loader) != 2 || len(app) != 2 ||
+		string(styles[1]) != string(loader[1]) || string(loader[1]) != string(app[1]) {
+		t.Fatal("admin page, bootstrap and application must share a release version")
 	}
 }

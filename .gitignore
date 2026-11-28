@@ -47,8 +47,3 @@ coverage/
 # Local packaging output (release artifacts under release/wgt are intentional)
 uniapp/release/
 uniapp/unpackage/
-
-# In-house Android remote-host build outputs are generated locally.
-native/rustdesk-host-sdk/host-sdk/build/
-native/rustdesk-host-sdk/build/
-uniapp/src/uni_modules/claw-rustdesk-host/utssdk/app-android/libs/

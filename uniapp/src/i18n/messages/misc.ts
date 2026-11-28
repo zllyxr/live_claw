@@ -93,20 +93,6 @@ const zhCN = {
     send: "发红包", sendRedpack: "发送红包", sent: "红包已发送", title: "直播间红包", tooSlow: "手慢了",
     type: "红包类型", won: "抢到"
   },
-  remote: {
-    accessibility: "无障碍服务", accessibilityDesc: "用于触控和文字输入协助", batteryWhitelist: "电池白名单",
-    batteryWhitelistDesc: "降低系统在后台结束服务的概率", boundNotRunning: "已绑定，当前未运行", cannotEnable: "无法开启",
-    componentMissing: "当前安装包缺少远程协助组件", confirmScreenSharing: "请按系统提示确认屏幕共享", deviceCode: "设备代码",
-    disabled: "未开启", enable: "开启远程协助", enabled: "已开启", foregroundNotification: "前台通知",
-    foregroundNotificationDesc: "运行期间固定显示，Android 13+ 需要通知权限", notAssigned: "尚未分配", notEnabled: "尚未开启",
-    notSupported: "当前安装包不支持", noticeDescription: "开启后，管理员可在你授权的范围内查看屏幕并协助操作。系统会持续显示“星域远程协助正在运行”通知；重启、强制停止或录屏授权失效后，需要你再次确认。",
-    noticeTitle: "仅在你需要协助时开启", offline: "离线", online: "在线", openSettingsFailed: "无法打开设置",
-    permissions: "权限与系统状态", privacy: "管理员无法隐藏系统通知，也无法绕过 Android 的屏幕共享确认。协助授权和画面不会写入业务日志。",
-    running: "正在运行，等待管理员连接", screenSharing: "屏幕共享", screenSharingDesc: "每次失效后都必须由你重新确认",
-    serverConnection: "服务器连接", status: "协助状态", stop: "停止远程协助", stopped: "远程协助已停止",
-    tapSettings: "点按可前往设置", unavailable: "远程协助暂不可用", unbind: "解绑此设备",
-    unbindConfirm: "解绑会立即停止服务、撤销设备凭据并清除远程控制授权。确定继续？", unbindFailed: "解绑失败"
-  },
   room: {
     adminList: "房管列表", description: "查看我的直播间房管与基础管理入口", editHostProfile: "编辑主播资料",
     hostVerification: "主播认证信息", loadFailed: "房管加载失败", loadingAdmins: "正在加载房管", noAdmins: "暂无房管",
@@ -246,22 +232,6 @@ const en = {
     missingStream: "Live stream information is missing, so red packets cannot be loaded.", normal: "Standard", quantity: "Number of packets",
     seconds: "sec", send: "Send a red packet", sendRedpack: "Send red packet", sent: "Red packet sent", title: "Live-room red packets",
     tooSlow: "Too slow", type: "Red packet type", won: "You got"
-  },
-  remote: {
-    accessibility: "Accessibility service", accessibilityDesc: "Allows assisted touch and text input", batteryWhitelist: "Battery allowlist",
-    batteryWhitelistDesc: "Reduces the chance of the system stopping the service in the background", boundNotRunning: "Linked, currently stopped",
-    cannotEnable: "Unable to start", componentMissing: "This build is missing the remote assistance component",
-    confirmScreenSharing: "Confirm screen sharing when prompted by the system", deviceCode: "Device code", disabled: "Off",
-    enable: "Start remote assistance", enabled: "On", foregroundNotification: "Foreground notification",
-    foregroundNotificationDesc: "Shown while running; Android 13+ requires notification permission", notAssigned: "Not assigned", notEnabled: "Not started",
-    notSupported: "This build is not supported", noticeDescription: "Once enabled, an administrator can view your screen and assist only within the permissions you grant. A persistent notification will show that Starfield Remote Assistance is running. You must confirm again after a restart, forced stop, or expired screen-recording permission.",
-    noticeTitle: "Turn on only when you need help", offline: "Offline", online: "Online", openSettingsFailed: "Unable to open settings",
-    permissions: "Permissions and system status", privacy: "Administrators cannot hide the system notification or bypass Android's screen-sharing confirmation. Assistance permissions and screen content are not written to business logs.",
-    running: "Running and waiting for an administrator", screenSharing: "Screen sharing", screenSharingDesc: "You must confirm again whenever permission expires",
-    serverConnection: "Server connection", status: "Assistance status", stop: "Stop remote assistance", stopped: "Remote assistance stopped",
-    tapSettings: "Tap to open settings", unavailable: "Remote assistance is currently unavailable", unbind: "Unlink this device",
-    unbindConfirm: "Unlinking immediately stops the service, revokes device credentials, and clears remote-control permissions. Continue?",
-    unbindFailed: "Failed to unlink device"
   },
   room: {
     adminList: "Moderator list", description: "View your live-room moderators and basic management options", editHostProfile: "Edit host profile",
@@ -404,21 +374,6 @@ const ja = {
     missingStream: "配信情報がないため、レッドパケットを読み込めません。", normal: "通常", quantity: "個数", seconds: "秒",
     send: "レッドパケットを送る", sendRedpack: "レッドパケットを送信", sent: "レッドパケットを送信しました", title: "配信ルームのレッドパケット",
     tooSlow: "間に合いませんでした", type: "タイプ", won: "獲得"
-  },
-  remote: {
-    accessibility: "ユーザー補助サービス", accessibilityDesc: "タッチ操作と文字入力のサポートに使用します", batteryWhitelist: "バッテリーの許可リスト",
-    batteryWhitelistDesc: "バックグラウンドでサービスが停止される可能性を下げます", boundNotRunning: "連携済み、現在は停止中", cannotEnable: "開始できません",
-    componentMissing: "このアプリにはリモートサポート機能が含まれていません", confirmScreenSharing: "システムの案内に従って画面共有を許可してください",
-    deviceCode: "デバイスコード", disabled: "オフ", enable: "リモートサポートを開始", enabled: "オン", foregroundNotification: "フォアグラウンド通知",
-    foregroundNotificationDesc: "実行中は常に表示されます。Android 13以降では通知権限が必要です", notAssigned: "未割り当て", notEnabled: "未開始",
-    notSupported: "このアプリではサポートされていません", noticeDescription: "有効にすると、管理者は許可された範囲内で画面を確認し、操作をサポートできます。「星域リモートサポート実行中」の通知が常に表示されます。再起動、強制終了、画面録画権限の失効後は、再度確認が必要です。",
-    noticeTitle: "サポートが必要なときだけ有効にしてください", offline: "オフライン", online: "オンライン", openSettingsFailed: "設定を開けませんでした",
-    permissions: "権限とシステム状態", privacy: "管理者はシステム通知を非表示にしたり、Androidの画面共有確認を回避したりできません。サポート権限と画面は業務ログに記録されません。",
-    running: "実行中・管理者の接続待ち", screenSharing: "画面共有", screenSharingDesc: "権限が失効するたびに再確認が必要です",
-    serverConnection: "サーバー接続", status: "サポート状態", stop: "リモートサポートを停止", stopped: "リモートサポートを停止しました",
-    tapSettings: "タップして設定を開く", unavailable: "リモートサポートは現在利用できません", unbind: "このデバイスの連携を解除",
-    unbindConfirm: "連携を解除するとサービスを直ちに停止し、デバイス認証情報とリモート操作権限を削除します。続行しますか？",
-    unbindFailed: "デバイスの連携を解除できませんでした"
   },
   room: {
     adminList: "モデレーター一覧", description: "配信ルームのモデレーターと基本設定を確認", editHostProfile: "配信者プロフィールを編集",
@@ -563,21 +518,6 @@ const ko = {
     missingStream: "라이브 스트림 정보가 없어 홍바오를 불러올 수 없습니다.", normal: "일반 홍바오", quantity: "홍바오 개수", seconds: "초",
     send: "홍바오 보내기", sendRedpack: "홍바오 전송", sent: "홍바오를 보냈습니다", title: "라이브룸 홍바오", tooSlow: "늦었습니다",
     type: "홍바오 유형", won: "획득"
-  },
-  remote: {
-    accessibility: "접근성 서비스", accessibilityDesc: "터치 및 문자 입력 지원에 사용됩니다", batteryWhitelist: "배터리 허용 목록",
-    batteryWhitelistDesc: "백그라운드에서 서비스가 종료될 가능성을 낮춥니다", boundNotRunning: "연결됨, 현재 중지 상태", cannotEnable: "시작할 수 없음",
-    componentMissing: "현재 앱에 원격 지원 구성 요소가 없습니다", confirmScreenSharing: "시스템 안내에 따라 화면 공유를 확인해 주세요",
-    deviceCode: "기기 코드", disabled: "꺼짐", enable: "원격 지원 시작", enabled: "켜짐", foregroundNotification: "포그라운드 알림",
-    foregroundNotificationDesc: "실행 중 항상 표시되며 Android 13 이상에서는 알림 권한이 필요합니다", notAssigned: "할당되지 않음", notEnabled: "시작하지 않음",
-    notSupported: "현재 앱에서 지원하지 않습니다", noticeDescription: "켜면 관리자가 허용된 범위 안에서 화면을 보고 조작을 도울 수 있습니다. '성역 원격 지원 실행 중' 알림이 계속 표시됩니다. 재부팅, 강제 종료 또는 화면 녹화 권한 만료 후에는 다시 확인해야 합니다.",
-    noticeTitle: "도움이 필요할 때만 켜세요", offline: "오프라인", online: "온라인", openSettingsFailed: "설정을 열 수 없습니다",
-    permissions: "권한 및 시스템 상태", privacy: "관리자는 시스템 알림을 숨기거나 Android의 화면 공유 확인을 우회할 수 없습니다. 지원 권한과 화면은 서비스 로그에 기록되지 않습니다.",
-    running: "실행 중, 관리자 연결 대기", screenSharing: "화면 공유", screenSharingDesc: "권한이 만료될 때마다 다시 확인해야 합니다",
-    serverConnection: "서버 연결", status: "지원 상태", stop: "원격 지원 중지", stopped: "원격 지원을 중지했습니다",
-    tapSettings: "눌러서 설정 열기", unavailable: "현재 원격 지원을 사용할 수 없습니다", unbind: "이 기기 연결 해제",
-    unbindConfirm: "연결을 해제하면 서비스가 즉시 중지되고 기기 자격 증명과 원격 제어 권한이 삭제됩니다. 계속할까요?",
-    unbindFailed: "기기 연결을 해제하지 못했습니다"
   },
   room: {
     adminList: "관리자 목록", description: "내 라이브룸 관리자와 기본 관리 메뉴 보기", editHostProfile: "호스트 프로필 수정",

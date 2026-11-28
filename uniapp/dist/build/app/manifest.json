@@ -7,8 +7,8 @@
   "id": "__UNI__D917A6C",
   "name": "星域",
   "version": {
-    "name": "8.2.1",
-    "code": "217"
+    "name": "8.2.2",
+    "code": "218"
   },
   "description": "星域 uni-app Android MVP",
   "developer": {
@@ -74,13 +74,11 @@
           "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
           "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
           "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
-          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION\"/>",
           "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MICROPHONE\"/>",
           "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>",
           "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
           "<uses-permission android:name=\"android.permission.SYSTEM_ALERT_WINDOW\"/>",
           "<uses-permission android:name=\"android.permission.MANAGE_EXTERNAL_STORAGE\"/>",
-          "<uses-permission android:name=\"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS\"/>",
           "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\"/>"
         ]
       },
@@ -146,6 +144,7 @@
             "en": "Home",
             "ja": "ホーム",
             "ko": "홈",
+            "vi": "Trang chủ",
             "zh-Hans": "首页"
           }
         },
@@ -158,6 +157,7 @@
             "en": "Games",
             "ja": "ゲーム",
             "ko": "게임",
+            "vi": "Trò chơi",
             "zh-Hans": "游戏"
           }
         },
@@ -170,6 +170,7 @@
             "en": "Sports",
             "ja": "スポーツ",
             "ko": "스포츠",
+            "vi": "Thể thao",
             "zh-Hans": "体育"
           }
         },
@@ -182,6 +183,7 @@
             "en": "Feed",
             "ja": "フィード",
             "ko": "피드",
+            "vi": "Bảng tin",
             "zh-Hans": "动态"
           }
         },
@@ -194,6 +196,7 @@
             "en": "Me",
             "ja": "マイページ",
             "ko": "마이",
+            "vi": "Tôi",
             "zh-Hans": "我的"
           }
         }

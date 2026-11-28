@@ -26,8 +26,6 @@ import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { cancelAccount, getCancelCondition } from "@/api/services";
 import { clearSession, requireLogin } from "@/utils/session";
-import { getRemoteInstallId, stopRemoteNative } from "@/utils/remote-assistance";
-import { unbindRemoteDevice } from "@/api/remote";
 import { t } from "@/i18n";
 
 interface CancelCondition {
@@ -76,8 +74,6 @@ function confirmCancel() {
 async function submitCancel() {
   submitting.value = true;
   try {
-    await stopRemoteNative(true);
-    await unbindRemoteDevice(getRemoteInstallId()).catch(() => undefined);
     await cancelAccount();
     clearSession();
     uni.showToast({ title: t("misc.cancel.success"), icon: "none" });

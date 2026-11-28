@@ -1,0 +1,8 @@
+{
+  "note": "移除远程协助入口和设备绑定",
+  "min_app_code": 216,
+  "force": false,
+  "silent": false,
+  "size": 8131005,
+  "sha256": "06652d56f943b589ec0195107cf5e1b68b1191a54bf2c33a440f47023758f568"
+}

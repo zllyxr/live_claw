@@ -149,6 +149,9 @@ func (h *Handler) listPaymentChannels(w http.ResponseWriter, r *http.Request) {
 			"config_verified":    paymentConfigVerified(ciphertext, verifiedHash, verifiedAt),
 			"config_verified_at": nullTime(verifiedAt),
 		}
+		if h.environment == "production" && provider == "bepusdt" {
+			item["required_public_base_url"] = h.publicURL
+		}
 		for key, value := range paymentConfigAPIData(h.paymentCipher, channelKey, ciphertext) {
 			item[key] = value
 		}

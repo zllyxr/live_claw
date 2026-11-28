@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,7 +41,6 @@ const requiredPermissions = [
   "android.permission.VIBRATE",
   "android.permission.WAKE_LOCK",
   "android.permission.FOREGROUND_SERVICE",
-  "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
   "android.permission.POST_NOTIFICATIONS"
 ];
 const requiredIOSDescriptions = [
@@ -73,21 +72,12 @@ if (missing.length) {
 
 const versionCode = Number(manifest.versionCode || 0);
 if (!Number.isInteger(versionCode) || versionCode < 216) {
-  console.error("远程协助原生母包 versionCode 必须为不小于 216 的整数");
+  console.error("原生母包 versionCode 必须为不小于 216 的整数");
   process.exit(1);
 }
 
 if (Number(android.minSdkVersion || 0) < 29 || Number(android.targetSdkVersion || 0) !== 36) {
-  console.error("远程协助母包必须使用 minSdk 29 和 targetSdk 36");
-  process.exit(1);
-}
-
-const aarPath = join(
-  here,
-  "../src/uni_modules/claw-rustdesk-host/utssdk/app-android/libs/claw-remote-host-1.0.0.aar"
-);
-if (!existsSync(aarPath) || statSync(aarPath).size < 30_000) {
-  console.error("远程协助 Host SDK AAR 不存在或无效；请运行 native/rustdesk-host-sdk/scripts/build-host-sdk.sh");
+  console.error("原生母包必须使用 minSdk 29 和 targetSdk 36");
   process.exit(1);
 }
 

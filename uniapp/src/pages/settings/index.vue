@@ -9,10 +9,6 @@
         <text>{{ t("settings.password") }}</text>
         <text class="arrow">›</text>
       </view>
-      <view class="menu-item" @tap="openRemote">
-        <text>{{ t("settings.remote") }}</text>
-        <text class="arrow">›</text>
-      </view>
       <view class="menu-item" @tap="openCancel">
         <text>{{ t("settings.cancel") }}</text>
         <text class="arrow">›</text>
@@ -64,12 +60,6 @@ function openProfile() {
 function openPassword() {
   if (requireLogin()) {
     uni.navigateTo({ url: "/pages/settings/password" });
-  }
-}
-
-function openRemote() {
-  if (requireLogin()) {
-    uni.navigateTo({ url: "/pages/remote/index" });
   }
 }
 

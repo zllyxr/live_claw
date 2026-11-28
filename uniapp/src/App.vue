@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from "@dcloudio/uni-app";
-import { onBeforeSessionClear, preloadSession } from "@/utils/session";
+import { preloadSession } from "@/utils/session";
 import { checkHotUpdate } from "@/utils/hotupdate";
 import { closeIMDatabase, initIMDatabase } from "@/utils/imDatabase";
-import { cleanupRemoteOnSessionEnd } from "@/utils/remote-assistance";
 import { applyTabBarLocale, useI18n } from "@/i18n";
 
 const { locale, setLocale } = useI18n();
 
-onBeforeSessionClear((session) => cleanupRemoteOnSessionEnd(session));
 
 onLaunch(() => {
   setLocale(locale.value);

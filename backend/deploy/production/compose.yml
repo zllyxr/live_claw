@@ -224,8 +224,6 @@ services:
       V2_SMTP_USERNAME: ${V2_SMTP_USERNAME:-}
       V2_SMTP_PASSWORD: ${V2_SMTP_PASSWORD:-}
       V2_SMTP_FROM: ${V2_SMTP_FROM:-}
-      V2_REMOTE_ASSISTANCE_ENABLED: ${V2_REMOTE_ASSISTANCE_ENABLED:-false}
-      V2_REMOTE_ASSISTANCE_ALLOWED_USER_IDS: ${V2_REMOTE_ASSISTANCE_ALLOWED_USER_IDS:-}
     depends_on:
       db-runtime-users:
         condition: service_completed_successfully
@@ -269,8 +267,6 @@ services:
       V2_REDIS_ADDR: redis:6379
       V2_REDIS_PASSWORD: ${V2_REDIS_PASSWORD:?set V2_REDIS_PASSWORD}
       V2_REDIS_DB: "0"
-      V2_REMOTE_ASSISTANCE_ENABLED: ${V2_REMOTE_ASSISTANCE_ENABLED:-false}
-      V2_REMOTE_ASSISTANCE_ALLOWED_USER_IDS: ${V2_REMOTE_ASSISTANCE_ALLOWED_USER_IDS:-}
     depends_on:
       db-runtime-users:
         condition: service_completed_successfully

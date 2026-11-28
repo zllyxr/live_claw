@@ -339,13 +339,6 @@
       }
     },
     {
-      "path": "pages/remote/index",
-      "style": {
-        "navigationBarTitleText": "%nav.remote%",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
       "path": "pages/service/chat",
       "style": {
         "navigationBarTitleText": "%nav.platformSupport%"

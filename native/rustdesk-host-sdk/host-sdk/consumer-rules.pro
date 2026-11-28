@@ -1,2 +1,0 @@
--keep class com.claw.remote.** { *; }
--keep class com.claw.remote.generated.** { *; }
