@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
@@ -18,6 +19,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/bankpayment"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/live"
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 	"github.com/zllyxr/live_claw/backend/internal/paymentconfig"
 	"github.com/zllyxr/live_claw/backend/internal/remoteassist"
 	"github.com/zllyxr/live_claw/backend/internal/storage"
@@ -54,6 +56,8 @@ type Handler struct {
 	environment        string
 	secureCookies      bool
 	remote             *remoteassist.Service
+	emailSettings      *mailer.Store
+	emailTestNext      atomic.Int64
 }
 
 type liveSourceProber interface {
@@ -83,6 +87,7 @@ func New(
 	environment string,
 	dataEncryptionKey string,
 	remoteService *remoteassist.Service,
+	smtpFallback ...mailer.Config,
 ) (*Handler, error) {
 	loginBody, err := webFiles.ReadFile("web/login.html")
 	if err != nil {
@@ -120,6 +125,14 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	var emailFallback mailer.Config
+	if len(smtpFallback) > 0 {
+		emailFallback = smtpFallback[0]
+	}
+	emailSettings, err := mailer.NewStore(db, dataEncryptionKey, emailFallback)
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		db:                 db,
 		auth:               authService,
@@ -144,6 +157,7 @@ func New(
 		environment:       strings.ToLower(strings.TrimSpace(environment)),
 		secureCookies:     environment != "local" && environment != "development",
 		remote:            remoteService,
+		emailSettings:     emailSettings,
 	}, nil
 }
 
@@ -254,6 +268,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/im/conversations/{id}/members/{user_id}", h.requireAPI("im.moderate", true, h.moderateIMMember))
 	mux.HandleFunc("POST /admin/api/im/messages/{message_id}/delete", h.requireAPI("im.moderate", true, h.deleteIMMessage))
 	mux.HandleFunc("GET /admin/api/system/settings", h.requireAPI("system.read", false, h.listSystemSettings))
+	mux.HandleFunc("GET /admin/api/system/email", h.requireAPI("system.read", false, h.getEmailSettings))
+	mux.HandleFunc("POST /admin/api/system/email", h.requireAPI("system.write", true, h.saveEmailSettings))
+	mux.HandleFunc("POST /admin/api/system/email/test", h.requireAPI("system.write", true, h.testEmailSettings))
 	mux.HandleFunc("POST /admin/api/system/settings/{key}", h.requireAPI("system.write", true, h.updateSystemSetting))
 	mux.HandleFunc("GET /admin/api/system/audit", h.requireAPI("system.read", false, h.listAuditLogs))
 	mux.HandleFunc("GET /admin/api/rbac", h.requireAPI("rbac.read", false, h.listRBAC))

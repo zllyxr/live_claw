@@ -54,7 +54,7 @@
     sports: [["matches", "赛事管理"], ["sync", "同步状态"]],
     bets: [["lottery", "彩票投注"], ["sports", "体育投注"], ["games", "游戏结算"]],
     rbac: [["admins", "管理员"], ["roles", "角色"], ["permissions", "权限字典"]],
-    system: [["settings", "系统设置"], ["audit", "审计日志"]]
+    system: [["settings", "系统设置"], ["email", "邮箱发送"], ["audit", "审计日志"]]
   };
 
   const metricLabels = [
@@ -1861,6 +1861,25 @@
   }
 
   async function systemView(loadContext) {
+	if (loadContext.section === "email") {
+	  const email = await api("/admin/api/system/email");
+	  if (!isCurrentRouteLoad(loadContext)) return;
+	  state.cache.emailSettings = email;
+	  const fields = [["发送状态", email.enabled ? "已启用" : "未启用"],
+	    ["SMTP 服务器", email.host || "未填写"], ["端口", email.port],
+	    ["加密方式", (email.tls_mode || "starttls").toUpperCase()],
+	    ["登录账号", email.username || "未填写"], ["发件邮箱", email.from || "未填写"],
+	    ["应用专用密码", email.password_configured ? "已配置" : "未配置"]];
+	  const actions = has("system.write") ? button("编辑邮箱设置", "email-edit", "", "layui-btn-normal") +
+	    (email.enabled ? button("发送测试邮件", "email-test", "", "layui-btn-primary") : "") :
+	    '<span class="read-only-reason">当前账号只有查看权限</span>';
+	  const card = '<article class="system-setting-card"><header><div><h3>验证码邮件发送</h3>' +
+	    '<p>用于注册和找回密码。保存后立即生效；建议先发送测试邮件确认收信。</p></div></header>' +
+	    '<dl class="setting-summary">' + fields.map(([label, value]) => '<div><dt>' + esc(label) +
+	      '</dt><dd>' + esc(value) + '</dd></div>').join("") + '</dl><footer>' + actions + '</footer></article>';
+	  content.innerHTML = sectionBody("system", "email", {email: panel("邮箱发送", "密码加密保存，不会回显；留空保留已保存密码", card)});
+	  return;
+	}
     const result = await Promise.all([
       api("/admin/api/system/settings"),
       remoteTableData("system-audit", "/admin/api/system/audit")
@@ -2113,7 +2132,7 @@
     }
   }
 
-  function openForm(title, fields, submit) {
+  function openForm(title, fields, submit, options = {}) {
     if (!layer) return;
     const formID = "modal-form-" + Date.now();
     const html = '<form id="' + formID + '" class="modal-form"><div class="form-grid">' +
@@ -2142,6 +2161,7 @@
           '<input name="' + esc(field.name) + '" type="' + esc(field.type || "text") +
           '" value="' + esc(field.value ?? "") + '" placeholder="' + esc(field.placeholder || "") + '"' + attributes +
           (field.inputmode ? ' inputmode="' + esc(field.inputmode) + '"' : "") +
+          (field.autocomplete ? ' autocomplete="' + esc(field.autocomplete) + '"' : "") +
           (field.readonly ? " readonly" : "") + ">";
         if (field.type === "checkboxes") {
           return '<div class="form-check-field ' + (field.wide ? "wide" : "") +
@@ -2151,7 +2171,7 @@
           esc(field.label) + options + help + "</label>";
       }).join("") + "</div></form>";
     layer.open({
-      type: 1, title: esc(title), area: ["620px", "auto"], content: html, btn: ["保存", "取消"],
+      type: 1, title: esc(title), area: ["620px", "auto"], content: html, btn: [options.submitLabel || "保存", "取消"],
       yes: async function (index) {
         const form = document.getElementById(formID);
         const values = {};
@@ -4304,6 +4324,33 @@
         { method: "POST", body: {} },
         lifecycle[1]
       ).catch((error) => notify(error.message, true));
+    }
+    if (action === "email-edit") {
+      const row = state.cache.emailSettings;
+      if (!row) return notify("请刷新邮箱发送设置后重试", true);
+      return openForm("编辑邮箱发送设置", [
+        { name: "enabled", label: "验证码邮件发送", options: [[0, "停用"], [1, "启用"]], value: row.enabled ? 1 : 0 },
+        { name: "host", label: "SMTP 服务器", value: row.host, placeholder: "smtp.gmail.com" },
+        { name: "port", label: "端口", type: "number", value: row.port || "587", min: 1, max: 65535, step: 1 },
+        { name: "tls_mode", label: "加密方式", value: row.tls_mode, options: [["starttls", "STARTTLS（通常端口 587）"], ["tls", "TLS（通常端口 465）"]] },
+        { name: "username", label: "SMTP 登录账号", value: row.username, autocomplete: "off" },
+        { name: "from", label: "发件邮箱", type: "email", value: row.from, placeholder: "通常与登录账号相同" },
+        { name: "password", label: "应用专用密码 / SMTP 授权码", type: "password", autocomplete: "new-password", wide: true,
+          placeholder: row.password_configured ? "已配置，留空保留原密码" : "填写邮箱服务商生成的专用密码",
+          help: "Gmail 请填写应用专用密码，不要填写 Google 登录密码。" }
+      ], async (values) => {
+        await api("/admin/api/system/email", {method: "POST", body: {...values, enabled: values.enabled === "1", version: row.version}});
+        return {__formMessage: "邮箱设置已保存，后续验证码请求立即使用新配置"};
+      });
+    }
+    if (action === "email-test") {
+      return openForm("发送测试邮件", [
+        {name: "to", label: "测试收件邮箱", type: "email", required: true, wide: true,
+          help: "使用已保存配置发送一封测试邮件，每分钟最多一次。"}
+      ], async (values) => {
+        const result = await api("/admin/api/system/email/test", {method: "POST", body: values});
+        return {__formMessage: result.message};
+      }, {submitLabel: "发送测试邮件"});
     }
     if (action === "setting-edit") {
       const row = cached("settings", id);

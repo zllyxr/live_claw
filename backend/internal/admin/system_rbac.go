@@ -13,6 +13,7 @@ import (
 	"github.com/zllyxr/live_claw/backend/internal/adminauth"
 	"github.com/zllyxr/live_claw/backend/internal/httpx"
 	"github.com/zllyxr/live_claw/backend/internal/idgen"
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 )
 
 var (
@@ -24,7 +25,7 @@ var (
 func (h *Handler) listSystemSettings(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT setting_key,setting_value,is_secret,version,updated_by,updated_at
-		FROM system_settings ORDER BY setting_key`)
+		FROM system_settings WHERE setting_key<>? ORDER BY setting_key`, mailer.SettingKey)
 	if err != nil {
 		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusInternalServerError, 500, "读取系统设置失败")
 		return
@@ -61,6 +62,10 @@ func (h *Handler) listSystemSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateSystemSetting(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToLower(strings.TrimSpace(r.PathValue("key")))
+	if key == mailer.SettingKey {
+		httpx.Error(w, httpx.RequestID(r.Context()), http.StatusBadRequest, 400, "请使用邮箱发送设置页面修改此配置")
+		return
+	}
 	var request struct {
 		Value    json.RawMessage `json:"value"`
 		IsSecret bool            `json:"is_secret"`

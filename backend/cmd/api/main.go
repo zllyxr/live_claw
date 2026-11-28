@@ -87,14 +87,12 @@ func main() {
 		storageService, walletService, paymentService, imService, cfg.MediaBaseURL, cfg.PublicURL,
 		cfg.Environment, cfg.DataEncryptionKey, remoteService, logger,
 	)
-	verificationMailer, err := mailer.New(cfg.SMTP)
+	verificationMailer, err := mailer.NewStore(dependencies.DB, cfg.DataEncryptionKey, cfg.SMTP)
 	if err != nil {
 		logger.Error("initialize verification mailer", "error", err)
 		os.Exit(1)
 	}
-	if verificationMailer != nil {
-		apiServer.SetVerificationMailer(verificationMailer)
-	}
+	apiServer.SetVerificationMailerProvider(verificationMailer)
 	err = servicehost.Serve(
 		ctx, "api", servicehost.Address("V2_API_LISTEN_ADDR", cfg.ListenAddress),
 		apiServer.Handler(), cfg.ShutdownGrace, logger,

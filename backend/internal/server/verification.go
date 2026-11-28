@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 )
 
 type verificationMailer interface {
@@ -20,8 +21,25 @@ type verificationMailer interface {
 
 func (s *Server) SetVerificationMailer(sender verificationMailer) { s.verificationMailer = sender }
 
-func (s *Server) debugVerification() bool {
-	return s.verificationMailer == nil && (s.environment == "local" || s.environment == "development" || s.environment == "test")
+type verificationMailerProvider interface {
+	Sender(context.Context) (*mailer.Sender, error)
+}
+
+func (s *Server) SetVerificationMailerProvider(provider verificationMailerProvider) {
+	s.verificationProvider = provider
+}
+
+type verificationSnapshotKey struct{}
+type verificationSnapshot struct{ sender verificationMailer }
+
+func (s *Server) verificationSender(ctx context.Context) verificationMailer {
+	if snapshot, ok := ctx.Value(verificationSnapshotKey{}).(verificationSnapshot); ok {
+		return snapshot.sender
+	}
+	return s.verificationMailer
+}
+func (s *Server) debugVerification(ctx context.Context) bool {
+	return s.verificationSender(ctx) == nil && (s.environment == "local" || s.environment == "development" || s.environment == "test")
 }
 
 // Rate limits share an email key across phone numbers and purposes to prevent
@@ -36,7 +54,7 @@ if redis.call('INCR', KEYS[3]) == 1 then redis.call('EXPIRE', KEYS[3], 3600) end
 return 1`)
 
 func (s *Server) allowVerification(ctx context.Context, email, ip string) (bool, error) {
-	if s.debugVerification() && s.redis == nil {
+	if s.debugVerification(ctx) && s.redis == nil {
 		return true, nil
 	}
 	if s.redis == nil {
@@ -53,7 +71,7 @@ func (s *Server) allowVerification(ctx context.Context, email, ip string) (bool,
 
 func (s *Server) issueVerification(ctx context.Context, purpose, target, email string) (string, error) {
 	code := "123456"
-	if !s.debugVerification() {
+	if !s.debugVerification(ctx) {
 		n, err := rand.Int(rand.Reader, big.NewInt(1000000))
 		if err != nil {
 			return "", err
@@ -75,11 +93,12 @@ func (s *Server) issueVerification(ctx context.Context, purpose, target, email s
 		VALUES(?,?,?,DATE_ADD(CURRENT_TIMESTAMP(3),INTERVAL 10 MINUTE))`, purpose, target, hex.EncodeToString(sum[:])); err != nil {
 		return "", err
 	}
-	if !s.debugVerification() {
-		if s.verificationMailer == nil {
+	if !s.debugVerification(ctx) {
+		sender := s.verificationSender(ctx)
+		if sender == nil {
 			return "", errors.New("verification mailer not configured")
 		}
-		if err = s.verificationMailer.SendCode(ctx, email, purpose, code); err != nil {
+		if err = sender.SendCode(ctx, email, purpose, code); err != nil {
 			return "", err
 		}
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/zllyxr/live_claw/backend/internal/auth"
 	"github.com/zllyxr/live_claw/backend/internal/database"
+	"github.com/zllyxr/live_claw/backend/internal/mailer"
 	"github.com/zllyxr/live_claw/backend/migrations"
 )
 
@@ -28,6 +29,33 @@ type capturedVerification struct {
 	code, purpose, email string
 	fail                 bool
 	sends                int
+}
+
+type unavailableEmailProvider struct{ err error }
+
+func (p unavailableEmailProvider) Sender(context.Context) (*mailer.Sender, error) { return nil, p.err }
+
+func TestVerificationProviderFailsClosedAndPreservesRequestSnapshot(t *testing.T) {
+	for _, env := range []string{"production", "local"} {
+		s := &Server{environment: env}
+		s.SetVerificationMailerProvider(unavailableEmailProvider{err: errors.New("encrypted setting unavailable")})
+		code, body := callVerificationAPI(t, s, "Login.getCode", url.Values{"mobile": {"18800000001"}, "email": {"test@example.com"}})
+		if code != 503 || strings.Contains(body, "debug_code") || strings.Contains(body, "123456") {
+			t.Fatalf("provider error did not fail closed in %s", env)
+		}
+	}
+	s := &Server{environment: "production"}
+	s.SetVerificationMailerProvider(unavailableEmailProvider{})
+	code, _ := callVerificationAPI(t, s, "Login.getCode", url.Values{"mobile": {"18800000001"}, "email": {"test@example.com"}})
+	if code != 503 {
+		t.Fatal("disabled provider did not preserve unconfigured response")
+	}
+	first, second := &capturedVerification{}, &capturedVerification{}
+	s.SetVerificationMailer(first)
+	ctx := context.WithValue(context.Background(), verificationSnapshotKey{}, verificationSnapshot{sender: second})
+	if s.verificationSender(ctx) != second || s.verificationSender(context.Background()) != first {
+		t.Fatal("request snapshot was not isolated")
+	}
 }
 
 func (m *capturedVerification) SendCode(_ context.Context, email, purpose, code string) error {

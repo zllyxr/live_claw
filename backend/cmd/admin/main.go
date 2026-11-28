@@ -59,7 +59,7 @@ func main() {
 			LegacyAuthCode: cfg.LegacyAuthCode, LegacyTablePrefix: cfg.LegacyTablePrefix,
 		}), storageService,
 		wallet.New(dependencies.DB), live.New(dependencies.DB, dependencies.Redis),
-		cfg.MediaBaseURL, cfg.PublicURL, cfg.Environment, cfg.DataEncryptionKey, remoteService,
+		cfg.MediaBaseURL, cfg.PublicURL, cfg.Environment, cfg.DataEncryptionKey, remoteService, cfg.SMTP,
 	)
 	if err != nil {
 		logger.Error("initialize admin", "error", err)

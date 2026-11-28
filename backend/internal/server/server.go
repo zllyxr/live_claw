@@ -52,7 +52,8 @@ type Server struct {
 	bankCipher   *bankpayment.Cipher
 	remote       *remoteassist.Service
 
-	verificationMailer verificationMailer
+	verificationMailer   verificationMailer
+	verificationProvider verificationMailerProvider
 }
 
 func New(

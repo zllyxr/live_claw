@@ -82,7 +82,19 @@ func (s *Server) compatSendCode(w http.ResponseWriter, r *http.Request, purpose 
 		writeCompat(w, 400, "请输入有效手机号和邮箱", nil)
 		return
 	}
-	if !s.debugVerification() && s.verificationMailer == nil {
+	if s.verificationProvider != nil {
+		sender, err := s.verificationProvider.Sender(r.Context())
+		if err != nil {
+			writeCompat(w, 503, "验证码发送配置暂不可用", nil)
+			return
+		}
+		snapshot := verificationSnapshot{}
+		if sender != nil {
+			snapshot.sender = sender
+		}
+		r = r.WithContext(context.WithValue(r.Context(), verificationSnapshotKey{}, snapshot))
+	}
+	if !s.debugVerification(r.Context()) && s.verificationSender(r.Context()) == nil {
 		writeCompat(w, 503, "验证码发送通道尚未配置", nil)
 		return
 	}
@@ -116,7 +128,7 @@ func (s *Server) compatSendCode(w http.ResponseWriter, r *http.Request, purpose 
 		writeCompat(w, 500, "验证码服务暂不可用", nil)
 		return
 	}
-	if s.debugVerification() {
+	if s.debugVerification(r.Context()) {
 		writeCompat(w, 0, "本地验证码：123456", map[string]string{"debug_code": code, "expires_in": "600"})
 		return
 	}

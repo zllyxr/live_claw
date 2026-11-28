@@ -15,7 +15,12 @@ import (
 )
 
 type Config struct {
-	Host, Port, Username, Password, From, TLSMode string
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+	TLSMode  string `json:"tls_mode"`
 }
 
 type Sender struct {
@@ -63,6 +68,17 @@ func (s *Sender) SendCode(ctx context.Context, to, purpose, code string) error {
 		action = "找回密码"
 	} else if purpose != "register" {
 		return fmt.Errorf("invalid verification purpose")
+	}
+	return s.send(ctx, to, "星域"+action+"验证码", fmt.Sprintf("您正在%s，验证码为：%s\r\n验证码 10 分钟内有效，请勿向他人透露。如非本人操作，请忽略此邮件。\r\n", action, code))
+}
+
+func (s *Sender) SendTest(ctx context.Context, to string) error {
+	return s.send(ctx, to, "星域邮箱发送测试", "这是一封由管理员主动发送的测试邮件，用于确认邮箱发送配置。此邮件不包含登录或注册验证码。\r\n")
+}
+
+func (s *Sender) send(ctx context.Context, to, subject, text string) error {
+	if !ValidAddress(to) {
+		return fmt.Errorf("invalid recipient")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -113,11 +129,11 @@ func (s *Sender) SendCode(ctx context.Context, to, purpose, code string) error {
 	}
 	var body strings.Builder
 	encodedBody := quotedprintable.NewWriter(&body)
-	_, _ = fmt.Fprintf(encodedBody, "您正在%s，验证码为：%s\r\n验证码 10 分钟内有效，请勿向他人透露。如非本人操作，请忽略此邮件。\r\n", action, code)
+	_, _ = encodedBody.Write([]byte(text))
 	_ = encodedBody.Close()
 	message := "From: " + (&mail.Address{Name: "星域", Address: s.config.From}).String() + "\r\n" +
 		"To: " + (&mail.Address{Address: to}).String() + "\r\n" +
-		"Subject: " + mime.BEncoding.Encode("UTF-8", "星域"+action+"验证码") + "\r\n" +
+		"Subject: " + mime.BEncoding.Encode("UTF-8", subject) + "\r\n" +
 		"Date: " + time.Now().Format(time.RFC1123Z) + "\r\n" +
 		"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n" + body.String()
 	if _, err = writer.Write([]byte(message)); err != nil {
