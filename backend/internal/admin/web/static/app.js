@@ -608,8 +608,12 @@
     topTitle.textContent = meta[0];
     heading.textContent = meta[1];
     description.textContent = meta[2];
-    document.querySelectorAll(".menu-item").forEach((item) => {
-      item.classList.toggle("active", item.getAttribute("href") === "#" + route);
+    const menuItems = Array.from(document.querySelectorAll(".menu-item"));
+    const sectionHref = "#" + state.routeKey;
+    const activeHref = menuItems.some((item) => item.getAttribute("href") === sectionHref) ?
+      sectionHref : "#" + route;
+    menuItems.forEach((item) => {
+      item.classList.toggle("active", item.getAttribute("href") === activeHref);
     });
     actions.innerHTML = '<button class="layui-btn layui-btn-primary" data-action="refresh">刷新数据</button>';
   }
